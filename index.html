@@ -395,6 +395,40 @@
     cursor:not-allowed;
   }
 
+  /* A single, deliberate startup screen prevents the device-setup view from
+     flashing while the site list and saved data are still arriving. */
+  .startup-screen{
+    min-height:100vh;
+    min-height:100dvh;
+    display:grid;
+    place-items:center;
+    padding:32px 22px;
+    background:
+      radial-gradient(circle at 50% 38%,rgba(226,34,45,.12),transparent 38%),
+      var(--bg);
+  }
+  .startup-card{width:min(360px,92vw);text-align:center;}
+  .startup-logo{display:block;width:min(270px,76vw);height:auto;margin:0 auto 30px;}
+  .startup-rule{width:54px;height:3px;background:var(--amber);margin:0 auto 18px;border-radius:3px;}
+  .startup-title{font-family:'Oswald',sans-serif;font-size:26px;font-weight:600;letter-spacing:.02em;}
+  .startup-copy{margin-top:8px;color:var(--muted);font-size:13px;}
+  .startup-progress{
+    width:150px;height:3px;margin:26px auto 0;border-radius:3px;
+    background:var(--line-soft);overflow:hidden;
+  }
+  .startup-progress::after{
+    content:'';display:block;width:46%;height:100%;background:var(--amber);
+    border-radius:inherit;animation:startup-slide 1.05s ease-in-out infinite;
+  }
+  @keyframes startup-slide{
+    0%{transform:translateX(-110%);}
+    50%{transform:translateX(115%);}
+    100%{transform:translateX(330%);}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .startup-progress::after{animation:none;width:100%;opacity:.75;}
+  }
+
 </style>
 </head>
 <body>
@@ -1695,7 +1729,15 @@ function _render(){
 }
 
 function renderLoading(){
-  return `<div class="flow"><div class="flow-card"><h2>Loading…</h2></div></div>`;
+  return `<div class="startup-screen" role="status" aria-live="polite">
+    <div class="startup-card">
+      <img class="startup-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services">
+      <div class="startup-rule"></div>
+      <div class="startup-title">SHIFT BOARD</div>
+      <div class="startup-copy">Loading your workspace</div>
+      <div class="startup-progress" aria-hidden="true"></div>
+    </div>
+  </div>`;
 }
 
 function topstrip(){
@@ -1961,7 +2003,7 @@ function renderHolidayConfirm(){
 
 /* ---------- ADMIN PIN ---------- */
 function renderAdminPin(){
-  const buildStamp = 'Build 2026-09-14 · paper-order timesheets + Tony above Neil + installable full-screen Shift Board + workshop sales rules + filling stations no lateness + date-range sales + print/download';
+  const buildStamp = 'Build 2026-09-15 · clean startup + paper-order timesheets + Tony above Neil + installable full-screen Shift Board + workshop sales rules + filling stations no lateness + date-range sales + print/download';
   return `${topstrip()}
   <div class="flow"><div class="flow-card" style="width:380px;">
     <h2>Manager sign in</h2>
@@ -5684,15 +5726,10 @@ async function init(){
     }, {passive:true});
   });
 
-  // Render a usable screen immediately. Remote storage can be slow/unavailable;
-  // the old version left the page effectively dead until every request finished.
+  // Show one stable startup screen until the initial data requests finish. Do
+  // not briefly show kiosk setup: on a normal load that looked like a glitch.
   state.config = DEFAULT_CONFIG();
-  try{
-    const kioskSite = getKioskSite();
-    state.view = (kioskSite && state.config.sites.find(s=>s.id===kioskSite)) ? 'home' : 'kiosk-setup';
-  }catch(_e){
-    state.view = 'kiosk-setup';
-  }
+  state.view = 'loading';
   render();
 
   // Kiosks aren't signed in, so they can't read the data table. Fetch just
@@ -5701,7 +5738,6 @@ async function init(){
     if(!(state.config.sites||[]).length){
       const sites = await callRpc('public_site_list', {});
       if(Array.isArray(sites) && sites.length) state.config.sites = sites;
-      render();
     }
   }catch(_e){ /* offline: the screen will say so */ }
 
@@ -5712,8 +5748,11 @@ async function init(){
     render();
   }catch(e){
     console.error('Shift Board startup failed:', e);
-    // Keep the already-rendered local/default UI usable.
+    // If the network really did fail, leave the branded loader and move to a
+    // usable screen instead of spinning forever.
     state.config = state.config || DEFAULT_CONFIG();
+    const kioskSite = getKioskSite();
+    state.view = (kioskSite && state.config.sites.find(s=>s.id===kioskSite)) ? 'home' : 'kiosk-setup';
     render();
   }
 

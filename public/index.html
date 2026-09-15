@@ -5732,8 +5732,9 @@ async function init(){
   state.view = 'loading';
   render();
 
-  // Kiosks aren't signed in, so they can't read the data table. Fetch just
-  // the site names via the public function so the setup screen works.
+  // Kiosks aren't signed in, so they can't read the private data table. Fetch
+  // only the public site names. Loading the private table here used to replace
+  // this successful result with an empty default config and show "Setting up".
   try{
     if(!(state.config.sites||[]).length){
       const sites = await callRpc('public_site_list', {});
@@ -5742,7 +5743,9 @@ async function init(){
   }catch(_e){ /* offline: the screen will say so */ }
 
   try{
-    await loadAll();
+    // A restored manager session may load the full private dataset. A normal
+    // public kiosk already has everything it needs from public_site_list.
+    if(_session) await loadAll();
     const kioskSite = getKioskSite();
     state.view = (kioskSite && state.config.sites.find(s=>s.id===kioskSite)) ? 'home' : 'kiosk-setup';
     render();

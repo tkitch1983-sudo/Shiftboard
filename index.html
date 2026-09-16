@@ -2384,7 +2384,8 @@ const BONUS_SITE_RULES = {
   chester:       {label:'Chester',       staffStart:70000, staffBase:350, davantiTarget:50,  tonyStart:75000, tonyBase:250},
   gateshead:     {label:'Gateshead',     staffStart:70000, staffBase:350, davantiTarget:75,  tonyStart:null,  tonyBase:0},
   seaham:        {label:'Seaham',        staffStart:70000, staffBase:350, davantiTarget:100, tonyStart:60000, tonyBase:50},
-  hartlepool:    {label:'Hartlepool',    staffStart:45000, staffBase:400, davantiTarget:50,  tonyStart:45000, tonyBase:50}
+  hartlepool:    {label:'Hartlepool',    staffStart:45000, staffBase:400, davantiTarget:50,  tonyStart:45000, tonyBase:50},
+  lido:          {label:'Lido',          staffStart:null,  staffBase:0,   davantiTarget:null,tonyStart:null,  tonyBase:0, bonusActive:false}
 };
 const BONUS_RECEPTION_NAMES = new Set([
   'dparker','scasselden','scassledon','thope','tmoody','ldunn','mmccormick','kwalsh',
@@ -2393,6 +2394,7 @@ const BONUS_RECEPTION_NAMES = new Set([
 function bonusNorm(v){ return String(v||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function bonusSiteKey(v){
   const n=bonusNorm(v);
+  if(n.includes('etacworkshop') || n==='etac') return 'peterlee';
   return Object.keys(BONUS_SITE_RULES).find(k=>n.includes(k)) || '';
 }
 function bonusMoney(v){
@@ -2516,8 +2518,9 @@ function renderAdminBonus(){
   Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{
     const snap=snaps[key];
     const sales=snap?bonusAmount(snap.total_current):0, units=snap?bonusAmount(snap.davanti):0, addOnBonus=bonusAddOn(snap);
-    const siteCalc={siteKey:key,sales,staffBonus:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:bonusDavanti(units,rule.davantiTarget),addOnBonus};
-    totalSales+=sales; totalDavanti+=units; if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
+    const siteCalc={siteKey:key,sales,staffBonus:rule.bonusActive===false?0:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:rule.bonusActive===false?0:bonusDavanti(units,rule.davantiTarget),addOnBonus:rule.bonusActive===false?0:addOnBonus};
+    if(rule.bonusActive!==false){ totalSales+=sales; totalDavanti+=units; }
+    if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
     const site=state.config.sites.find(s=>bonusSiteKey(s.name)===key);
     const employees=site ? state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false) : [];
     const receptionCount=employees.filter(e=>bonusRole(e)==='reception').length;
@@ -2530,7 +2533,7 @@ function renderAdminBonus(){
         <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
     }).join('');
     if(bonusSite==='all'||bonusSite===key) sections.push(`<div class="card" id="bonus-site-${key}" style="padding:0;overflow:auto;break-inside:avoid;">
-      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
+      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(siteCalc.addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${rule.bonusActive===false?`<div style="color:var(--amber);font-size:11px;margin-top:5px;">No bonus structure set. Automatic bonuses remain £0 until one is added.</div>`:''}${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
       <table style="min-width:1210px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th>Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Manager extra</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Manual extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="13">No active employees matched to this site.</td></tr>'}</tbody></table>
     </div>`);
   });

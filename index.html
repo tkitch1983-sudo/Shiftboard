@@ -780,10 +780,15 @@ const state = {
   events: [],
   timesheetExtras: {},
   absences: [],
+  bonusSheets: {},
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, _loadingSales:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, bonusMonth:new Date().toISOString().slice(0,7), _loadingSales:false },
 };
+
+function isTonyLogin(){
+  return state.admin.role==='super' && !!_session && String(_session.email||'').trim().toLowerCase()==='tony@neautoservices.com';
+}
 
 async function loadAll(){
   state.config = await storageGet('config', DEFAULT_CONFIG());
@@ -819,10 +824,12 @@ async function loadAll(){
   state.events = await storageGet('clockEvents', []);
   state.timesheetExtras = await storageGet('timesheetExtras', {});
   state.absences = await storageGet('absences', []);
+  state.bonusSheets = isTonyLogin() ? await storageGet('bonusSheets', {}) : {};
   if(!Array.isArray(state.requests)) state.requests = [];
   if(!Array.isArray(state.events)) state.events = [];
   if(!state.timesheetExtras || typeof state.timesheetExtras!=='object' || Array.isArray(state.timesheetExtras)) state.timesheetExtras = {};
   if(!Array.isArray(state.absences)) state.absences = [];
+  if(!state.bonusSheets || typeof state.bonusSheets!=='object' || Array.isArray(state.bonusSheets)) state.bonusSheets = {};
 
   // Defensive cleanup for older/partial live records. Register must never crash
   // because one old holiday/event row has missing fields.
@@ -854,6 +861,10 @@ async function saveRequests(){ return await storageSet('holidayRequests', state.
 async function saveEvents(){ return await storageSet('clockEvents', state.events); }
 async function saveTimesheetExtras(){ return await storageSet('timesheetExtras', state.timesheetExtras); }
 async function saveAbsences(){ return await storageSet('absences', state.absences); }
+async function saveBonusSheets(){
+  if(!isTonyLogin()) return false;
+  return await storageSet('bonusSheets', state.bonusSheets);
+}
 function getWeekExtras(weekIso){
   if(!state.timesheetExtras[weekIso]) state.timesheetExtras[weekIso] = { employees:{}, notes:{} };
   if(!state.timesheetExtras[weekIso].employees) state.timesheetExtras[weekIso].employees = {};
@@ -1247,7 +1258,6 @@ function printSicknessRecord(key){
   w.document.open(); w.document.write(html); w.document.close();
   setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_e){} },250);
 }
-
 function safeReportFilename(value){
   return String(value||'form').trim().replace(/[^a-z0-9_-]+/gi,'-').replace(/^-+|-+$/g,'').toLowerCase() || 'form';
 }
@@ -1291,7 +1301,9 @@ function selectedReportHtml(selector, title, orientation){
     .att-table-wrap{overflow:visible}.att-table{width:100%;border-collapse:collapse;font-size:10px}.att-table th,.att-table td{border:1px solid #000;padding:5px 6px;text-align:center;color:#000}
     .att-table th{background:#f2f2f2;font-weight:700;text-transform:uppercase}.att-table td.att-name{text-align:left;font-weight:700;white-space:nowrap}.att-hol{font-style:italic;color:#444}
     .att-other-info{border-top:1px solid #000}.att-other-info td{padding:7px}.att-other-info label{font-weight:700;display:block;margin-bottom:4px}.att-footnote{padding:7px 12px;font-size:9px;font-weight:700;border-top:1px solid #000}
-    .report-field-value{display:block;min-height:13px;white-space:pre-wrap}.empty-state{padding:16px;color:#555}.no-print{display:none!important}
+    .card{border:1px solid #aaa;border-radius:6px;padding:8px;margin:0 0 8px;background:#fff;color:#000}.admin-actions,.no-print{display:none!important}
+    table:not(.att-table){width:100%;border-collapse:collapse;font-size:8px}table:not(.att-table) th,table:not(.att-table) td{border:1px solid #aaa;padding:4px;text-align:left;color:#000}table:not(.att-table) th{background:#eee;font-weight:700}
+    .report-field-value{display:block;min-height:13px;white-space:pre-wrap;color:#000}.empty-state{padding:16px;color:#555}
   `;
   const safeTitle=String(title||'Form').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>${css}</style></head><body>${clone.innerHTML}</body></html>`;
@@ -2359,6 +2371,140 @@ function renderAdminSales(){
   <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Nightly data is read-only in the portal. Autowork credentials are not stored in this page or in the sales tables.</div>`;
 }
 
+/* ---------- TONY-ONLY MONTHLY BONUS SHEET ---------- */
+const BONUS_SITE_RULES = {
+  peterlee:      {label:'Peterlee',      staffStart:90000, staffBase:350, davantiTarget:150, tonyStart:85000, tonyBase:250},
+  middlesbrough: {label:'Middlesbrough', staffStart:90000, staffBase:350, davantiTarget:150, tonyStart:85000, tonyBase:250},
+  fairfield:     {label:'Fairfield',     staffStart:80000, staffBase:450, davantiTarget:100, tonyStart:75000, tonyBase:250},
+  chester:       {label:'Chester',       staffStart:70000, staffBase:350, davantiTarget:50,  tonyStart:75000, tonyBase:250},
+  gateshead:     {label:'Gateshead',     staffStart:70000, staffBase:350, davantiTarget:75,  tonyStart:null,  tonyBase:0},
+  seaham:        {label:'Seaham',        staffStart:70000, staffBase:350, davantiTarget:100, tonyStart:60000, tonyBase:50},
+  hartlepool:    {label:'Hartlepool',    staffStart:45000, staffBase:400, davantiTarget:50,  tonyStart:45000, tonyBase:50}
+};
+const BONUS_RECEPTION_NAMES = new Set([
+  'dparker','scasselden','scassledon','thope','tmoody','ldunn','mmccormick','kwalsh',
+  'sjauncey','bsaccone','sgibson','astorey','mbarnett','mriley'
+]);
+function bonusNorm(v){ return String(v||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function bonusSiteKey(v){
+  const n=bonusNorm(v);
+  return Object.keys(BONUS_SITE_RULES).find(k=>n.includes(k)) || '';
+}
+function bonusMoney(v){
+  const n=Number(v||0);
+  return Number.isFinite(n) ? '£'+n.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}) : '£0.00';
+}
+function bonusAmount(v){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
+function bonusTier(value,start,base){
+  value=bonusAmount(value);
+  return start!=null && value>=start ? base+(Math.floor((value-start)/5000)*50) : 0;
+}
+function bonusDavanti(units,target){
+  units=bonusAmount(units);
+  return units>=target ? 50+Math.max(0,units-target)*2 : 0;
+}
+function bonusTonyDavanti(units){
+  units=bonusAmount(units);
+  return units>=600 ? 100+(Math.floor((units-600)/25)*25) : 0;
+}
+function bonusNeilTurnover(value){
+  value=bonusAmount(value);
+  return value>=500000 ? 700+(Math.floor((value-500000)/25000)*25) : 0;
+}
+function bonusNeilDavanti(units){
+  units=bonusAmount(units);
+  return units>=550 ? 100+(Math.floor((units-550)/25)*25) : 0;
+}
+function bonusWeekdays(month){
+  const parts=String(month||'').split('-').map(Number), y=parts[0], m=parts[1];
+  if(!y||!m) return 0;
+  let total=0;
+  for(let d=new Date(y,m-1,1);d.getMonth()===m-1;d.setDate(d.getDate()+1)) if(d.getDay()>=1&&d.getDay()<=5) total++;
+  return total;
+}
+function bonusSickDays(empId,month){
+  return state.absences.filter(a=>{
+    if(String(a.employeeId)!==String(empId) || String(a.type||'').toLowerCase()!=='sick' || !String(a.date||'').startsWith(month+'-')) return false;
+    const d=fromIso(a.date); return d.getDay()>=1&&d.getDay()<=5;
+  }).length;
+}
+function bonusRole(emp){
+  const saved=String(emp.bonusRole||'auto').toLowerCase();
+  if(['reception','workshop','none'].includes(saved)) return saved;
+  return BONUS_RECEPTION_NAMES.has(bonusNorm(emp.name))?'reception':'workshop';
+}
+function bonusMonthData(month){
+  if(!state.bonusSheets[month]) state.bonusSheets[month]={employees:{},tonyAdjustment:'',neilOwed:''};
+  const out=state.bonusSheets[month];
+  if(!out.employees) out.employees={};
+  return out;
+}
+function bonusSnapshotsForMonth(month){
+  const rows=(state.admin.salesHistory||[]).filter(r=>String(r.snapshot_date||'').startsWith(month+'-') || String(r.period_end||'').startsWith(month+'-'));
+  const sorted=rows.slice().sort((a,b)=>String(b.snapshot_date||'').localeCompare(String(a.snapshot_date||'')));
+  const found={};
+  sorted.forEach(r=>{ const key=bonusSiteKey(r.site_name||r.site_key); if(key&&!found[key]) found[key]=r; });
+  return found;
+}
+function bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount){
+  const role=bonusRole(emp), edit=draft.employees[emp.id]||{};
+  const baseOverride=String(edit.baseOverride??'').trim();
+  const base=baseOverride===''?siteCalc.staffBonus:bonusAmount(baseOverride);
+  const addOn=role==='reception'&&receptionCount?siteCalc.addOnValue/receptionCount:0;
+  const davanti=role==='reception'?siteCalc.davantiBonus:0;
+  const sickDays=bonusSickDays(emp.id,month), weekdays=bonusWeekdays(month);
+  const sickDeduction=weekdays?base/ weekdays*sickDays:0;
+  const damages=bonusAmount(edit.damages), owed=bonusAmount(edit.owed), extra=bonusAmount(edit.extra);
+  const gross=role==='none'?0:base+addOn+davanti;
+  return {role,base,addOn,davanti,sickDays,sickDeduction,damages,owed,extra,total:gross-sickDeduction-damages+owed+extra};
+}
+function bonusInput(empId,field,value,label){
+  return `<label style="display:block;font-size:10px;color:var(--muted);">${label}<input type="number" inputmode="decimal" step="0.01" data-bonus-emp="${salesHtml(empId)}" data-bonus-field="${field}" value="${salesHtml(value??'')}" style="width:92px;min-width:82px;margin-top:3px;padding:7px;"></label>`;
+}
+function renderAdminBonus(){
+  if(!isTonyLogin()) return '<h2>Bonus Sheet</h2><div class="card">This page is only available on Tony’s login.</div>';
+  const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7), draft=bonusMonthData(month);
+  const snaps=bonusSnapshotsForMonth(month), weekdays=bonusWeekdays(month);
+  const sections=[]; let staffGrand=0, totalSales=0, totalDavanti=0, latest='';
+  Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{
+    const snap=snaps[key];
+    const sales=snap?bonusAmount(snap.total_current):0, units=snap?bonusAmount(snap.davanti):0, addOnValue=snap?bonusAmount(snap.add_on_value):0;
+    const siteCalc={staffBonus:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:bonusDavanti(units,rule.davantiTarget),addOnValue};
+    totalSales+=sales; totalDavanti+=units; if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
+    const site=state.config.sites.find(s=>bonusSiteKey(s.name)===key);
+    const employees=site ? state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false) : [];
+    const receptionCount=employees.filter(e=>bonusRole(e)==='reception').length;
+    const rows=employees.map(emp=>{
+      const edit=draft.employees[emp.id]||{}, calc=bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount); staffGrand+=calc.total;
+      return `<tr><td style="font-weight:700;white-space:nowrap;">${salesHtml(emp.name)}</td>
+        <td><select data-bonus-role="${salesHtml(emp.id)}" style="min-width:105px;padding:7px;"><option value="auto" ${!emp.bonusRole||emp.bonusRole==='auto'?'selected':''}>Auto (${calc.role})</option><option value="reception" ${emp.bonusRole==='reception'?'selected':''}>Reception</option><option value="workshop" ${emp.bonusRole==='workshop'?'selected':''}>Workshop</option><option value="none" ${emp.bonusRole==='none'?'selected':''}>Excluded</option></select></td>
+        <td>${bonusMoney(calc.base)}</td><td>${bonusMoney(calc.davanti)}</td><td>${bonusMoney(calc.addOn)}</td><td>${calc.sickDays}</td><td>−${bonusMoney(calc.sickDeduction)}</td>
+        <td>${bonusInput(emp.id,'damages',edit.damages,'Damages')}</td><td>${bonusInput(emp.id,'owed',edit.owed,'Owed')}</td><td>${bonusInput(emp.id,'extra',edit.extra,'Extra')}</td><td>${bonusInput(emp.id,'baseOverride',edit.baseOverride,'Base override')}</td>
+        <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
+    }).join('');
+    sections.push(`<div class="card" style="padding:0;overflow:auto;break-inside:avoid;">
+      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)}) · Add-ons ${bonusMoney(addOnValue)}</span>${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
+      <table style="min-width:1120px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th>Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="12">No active employees matched to this site.</td></tr>'}</tbody></table>
+    </div>`);
+  });
+  let tonySales=0, tonySalesBonus=0;
+  Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{ if(rule.tonyStart==null) return; const value=bonusAmount(snaps[key]?.total_current); tonySales+=value; tonySalesBonus+=bonusTier(value,rule.tonyStart,rule.tonyBase); });
+  const tonyDavanti=bonusTonyDavanti(Object.entries(snaps).filter(([key])=>key!=='gateshead').reduce((n,[,r])=>n+bonusAmount(r.davanti),0));
+  const tonyAdjustment=bonusAmount(draft.tonyAdjustment), tonyTotal=tonySalesBonus+tonyDavanti+tonyAdjustment;
+  const neilSales=bonusNeilTurnover(totalSales), neilDavanti=bonusNeilDavanti(totalDavanti), neilOwed=bonusAmount(draft.neilOwed), neilTotal=neilSales+neilDavanti+neilOwed;
+  return `<h2>Monthly Bonus Sheet</h2>
+  <div class="admin-actions" style="flex-wrap:wrap;"><label style="font-size:12px;color:var(--muted);">Month<input id="bonus-month" type="month" value="${salesHtml(month)}" style="margin-left:8px;width:auto;"></label><button type="button" class="add-btn" data-action="save-bonus">Save Bonus Sheet</button><button type="button" class="add-btn secondary" data-action="bonus-print">Print</button><button type="button" class="add-btn secondary" data-action="bonus-download">Download</button></div>
+  <div id="bonus-sheet-output">
+    <div class="card" style="border-left:4px solid var(--red);"><div style="font-weight:800;font-size:18px;">${new Date(month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div><div style="color:var(--muted);font-size:12px;margin-top:4px;">${weekdays} working weekdays · sales through ${latest?salesDateLabel(latest):'no snapshot yet'} · Gateshead excluded from Tony’s personal bonus</div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:14px;">
+      <div class="card" style="margin:0;"><b>Tony</b><div style="font-size:12px;color:var(--muted);margin-top:5px;">Eligible sales ${bonusMoney(tonySales)} · Sales bonus ${bonusMoney(tonySalesBonus)} · Davanti ${bonusMoney(tonyDavanti)}</div><label style="display:block;margin-top:10px;font-size:11px;color:var(--muted);">Manual adjustment<input id="bonus-tony-adjustment" type="number" step="0.01" value="${salesHtml(draft.tonyAdjustment??'')}" style="width:135px;margin-left:8px;"></label><div style="font-size:23px;font-weight:800;margin-top:10px;">${bonusMoney(tonyTotal)}</div></div>
+      <div class="card" style="margin:0;"><b>Neil</b><div style="font-size:12px;color:var(--muted);margin-top:5px;">Group sales ${bonusMoney(totalSales)} · Sales bonus ${bonusMoney(neilSales)} · Davanti ${bonusMoney(neilDavanti)}</div><label style="display:block;margin-top:10px;font-size:11px;color:var(--muted);">Owed / adjustment<input id="bonus-neil-owed" type="number" step="0.01" value="${salesHtml(draft.neilOwed??'')}" style="width:135px;margin-left:8px;"></label><div style="font-size:23px;font-weight:800;margin-top:10px;">${bonusMoney(neilTotal)}</div></div>
+      <div class="card" style="margin:0;"><b>Staff total</b><div style="font-size:12px;color:var(--muted);margin-top:5px;">All site employee totals after sickness and adjustments</div><div style="font-size:23px;font-weight:800;margin-top:36px;">${bonusMoney(staffGrand)}</div></div>
+    </div>${sections.join('')}
+  </div>
+  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Automatic figures come from the latest sales snapshot in the selected month and recorded weekday sickness. Change an employee’s role only where Auto is wrong.</div>`;
+}
+
 /* ---------- ADMIN DASHBOARD ---------- */
 function renderAdmin(){
   const isSuper = state.admin.role==='super';
@@ -2368,6 +2514,7 @@ function renderAdmin(){
   ] : [
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['contacts','Contacts'],['clocklog','Clock Log'],['settings','My account']
   ];
+  if(isTonyLogin()) tabs.splice(4,0,['bonus','Bonus Sheet']);
   if(!isSuper && !isFillingStationSite(state.admin.scopeSite)) tabs.splice(3,0,['sales','Live Sales']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
@@ -2392,6 +2539,13 @@ function renderAdmin(){
   else if(state.admin.tab==='sales'){
     body = renderAdminSales();
     if(state.admin.salesRows===null && !state.admin._loadingSales){
+      state.admin._loadingSales=true;
+      (async ()=>{ state.admin._loadingSales=false; await loadSalesData(false); render(); })();
+    }
+  }
+  else if(state.admin.tab==='bonus'){
+    body = renderAdminBonus();
+    if(state.admin.salesHistory===null && !state.admin._loadingSales){
       state.admin._loadingSales=true;
       (async ()=>{ state.admin._loadingSales=false; await loadSalesData(false); render(); })();
     }
@@ -4146,6 +4300,9 @@ function attachHandlers(){
   const salesRangeTo = document.getElementById('sales-range-to');
   if(salesRangeTo) salesRangeTo.addEventListener('change', ()=>{ state.admin.salesRangeTo = salesRangeTo.value; render(); });
 
+  const bonusMonth = document.getElementById('bonus-month');
+  if(bonusMonth) bonusMonth.addEventListener('change', ()=>{ state.admin.bonusMonth = bonusMonth.value || new Date().toISOString().slice(0,7); render(); });
+
   const reqSiteSel = document.getElementById('req-site-select');
   if(reqSiteSel) reqSiteSel.addEventListener('change', ()=>{ state.admin.reqSite = reqSiteSel.value; render(); });
 
@@ -4367,6 +4524,36 @@ async function onAction(e){
     const val = document.getElementById('kiosk-site-select').value;
     const ok = setKioskSite(val);
     if(ok){ state.view='home'; } else { showToast('Could not save on this device — check browser storage isn\'t blocked.', true); }
+  }
+
+  else if(action==='save-bonus'){
+    if(!isTonyLogin()){ showToast('This page is only available on Tony’s login.',true); return render(); }
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7), draft=bonusMonthData(month);
+    document.querySelectorAll('[data-bonus-emp][data-bonus-field]').forEach(inp=>{
+      const empId=inp.dataset.bonusEmp, field=inp.dataset.bonusField;
+      if(!draft.employees[empId]) draft.employees[empId]={};
+      draft.employees[empId][field]=inp.value.trim();
+    });
+    document.querySelectorAll('[data-bonus-role]').forEach(sel=>{
+      const emp=state.config.employees.find(e=>String(e.id)===String(sel.dataset.bonusRole));
+      if(emp) emp.bonusRole=sel.value;
+    });
+    draft.tonyAdjustment=(document.getElementById('bonus-tony-adjustment')||{}).value?.trim()||'';
+    draft.neilOwed=(document.getElementById('bonus-neil-owed')||{}).value?.trim()||'';
+    draft.updatedAt=Date.now(); draft.updatedBy=String(_session.email||'');
+    const [bonusOk,configOk]=await Promise.all([saveBonusSheets(),saveConfig()]);
+    if(bonusOk&&configOk) showToast('Bonus Sheet saved.'); else showToast('Bonus Sheet could not be saved.',true);
+    render(); return;
+  }
+  else if(action==='bonus-print'){
+    if(!isTonyLogin()){ showToast('This page is only available on Tony’s login.',true); return render(); }
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
+    printSelectedReport('#bonus-sheet-output','Monthly Bonus Sheet '+month,'landscape'); return;
+  }
+  else if(action==='bonus-download'){
+    if(!isTonyLogin()){ showToast('This page is only available on Tony’s login.',true); return render(); }
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
+    downloadSelectedReport('#bonus-sheet-output','Monthly Bonus Sheet '+month,`bonus-sheet-${month}.html`,'landscape'); return;
   }
 
   else if(action==='print-sales'){

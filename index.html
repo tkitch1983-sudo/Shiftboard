@@ -915,8 +915,19 @@ function roundTimesheetHours(value){
   if(!Number.isFinite(n)) return 0;
   return Math.max(0, Math.round((n + Number.EPSILON) * 4) / 4);
 }
-function formatTimesheetHours(value){
-  return roundTimesheetHours(value).toFixed(2);
+function roundFillingStationHours(value){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return 0;
+  // Filling-station starts are on quarter-hours but finishes are on five-minute
+  // boundaries, so their resulting paid duration must retain five-minute units.
+  return Math.max(0, Math.round((n + Number.EPSILON) * 12) / 12);
+}
+function normaliseTimesheetHours(value, emp, siteId){
+  const effectiveSiteId = (emp && emp.siteId) || siteId;
+  return isFillingStationSite(effectiveSiteId) ? roundFillingStationHours(value) : roundTimesheetHours(value);
+}
+function formatTimesheetHours(value, emp, siteId){
+  return normaliseTimesheetHours(value, emp, siteId).toFixed(2);
 }
 
 /* Computes the same figures the Timesheets tab displays, for one week, so
@@ -952,12 +963,12 @@ function timesheetRowsForWeek(weekIso){
         const dayShifts = empData.shifts.filter(s=>s.date===dateStr).sort((a,b)=>a.inTs-b.inTs);
         const computed = paidHoursForDay(dayShifts,dateStr,site.id,emp);
         const hasOverride = !isVisitor && hoursOverride[dateStr]!==undefined && hoursOverride[dateStr]!=='';
-        const hours = hasOverride ? roundTimesheetHours(parseFloat(hoursOverride[dateStr])||0) : computed;
+        const hours = hasOverride ? normaliseTimesheetHours(parseFloat(hoursOverride[dateStr])||0,emp,site.id) : computed;
         if(isHol) holCount += holAmt;
         if(!sevenDay && i===5) satHours += hours; else weekTotal += hours;
         const abs = absenceFor(emp.id, dateStr);
-        if(isHol) { anyActivity = true; return isHourly(emp) ? formatTimesheetHours(holAmt)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
-        if(hours>0){ anyActivity = true; return formatTimesheetHours(hours) + (pendingHol ? ' ⏳' : '') + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
+        if(isHol) { anyActivity = true; return isHourly(emp) ? formatTimesheetHours(holAmt,emp,site.id)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
+        if(hours>0){ anyActivity = true; return formatTimesheetHours(hours,emp,site.id) + (pendingHol ? ' ⏳' : '') + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
         if(pendingHol){ anyActivity = true; return '⏳ Pending'; }
         if(abs){ anyActivity = true; return abs.type; }
         return '';
@@ -968,11 +979,11 @@ function timesheetRowsForWeek(weekIso){
         site: site.name,
         name: emp.name + (isVisitor ? ' (visiting)' : ''),
         days: dayVals,
-        total: weekTotal>0 ? formatTimesheetHours(weekTotal) : '',
-        overtime: empExtras.overtime!==undefined && empExtras.overtime!=='' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : ''),
+        total: weekTotal>0 ? formatTimesheetHours(weekTotal,emp,site.id) : '',
+        overtime: empExtras.overtime!==undefined && empExtras.overtime!=='' ? formatTimesheetHours(empExtras.overtime,emp,site.id) : (satHours>0 ? formatTimesheetHours(satHours,emp,site.id) : ''),
         hols: empExtras.hols!==undefined && empExtras.hols!==''
-          ? (isHourly(emp) ? formatTimesheetHours(empExtras.hols) : empExtras.hols)
-          : (holCount>0 ? (isHourly(emp) ? formatTimesheetHours(holCount) : holCount) : ''),
+          ? (isHourly(emp) ? formatTimesheetHours(empExtras.hols,emp,site.id) : empExtras.hols)
+          : (holCount>0 ? (isHourly(emp) ? formatTimesheetHours(holCount,emp,site.id) : holCount) : ''),
         sick: empExtras.sick!==undefined ? empExtras.sick : '',
         notes: (extras.notes||{})[site.id] || '',
         locked: lock
@@ -1695,7 +1706,7 @@ function paidHoursForDay(dayShifts, dateStr, siteId, emp){
     }
     hours=Math.max(0,hours-Math.max(0,0.5-breakHours));
   }
-  return roundTimesheetHours(hours);
+  return normaliseTimesheetHours(hours,emp,siteId);
 }
 
 function scheduledStartForDow(dow, siteId, emp){
@@ -1734,6 +1745,13 @@ function roundUpToQuarterHour(ts){
   d.setMinutes(mins+add,0,0);
   return d.getTime();
 }
+function roundTimestampToNearestMinutes(ts, intervalMinutes){
+  const d=new Date(ts);
+  const minuteValue=d.getMinutes()+(d.getSeconds()/60)+(d.getMilliseconds()/60000);
+  const rounded=Math.round(minuteValue/intervalMinutes)*intervalMinutes;
+  d.setMinutes(rounded,0,0);
+  return d.getTime();
+}
 function clampedHoursForShift(dateStr, inTs, outTs, siteId, roundLateStart, emp){
   const d = fromIso(dateStr);
   const dow = d.getDay();
@@ -1743,13 +1761,23 @@ function clampedHoursForShift(dateStr, inTs, outTs, siteId, roundLateStart, emp)
   const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(startMin/60), startMin%60).getTime();
   const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(endMin/60), endMin%60).getTime();
 
-  // Early/on-time starts are credited from the scheduled start.
-  // If the FIRST clock-in of the day is late, round it UP to the next
-  // 15-minute boundary: 08:31 -> 08:45, 08:46 -> 09:00.
-  let effectiveIn = Math.max(inTs, dayStart);
-  if(roundLateStart && inTs > dayStart) effectiveIn = roundUpToQuarterHour(inTs);
-
-  const clampedOut = Math.min(outTs, dayEnd);
+  const fillingStation=isFillingStationSite((emp&&emp.siteId)||siteId);
+  let effectiveIn;
+  let clampedOut;
+  if(fillingStation){
+    // Station shifts can begin throughout the day: clock-in goes to the
+    // closest quarter-hour and clock-out to the closest five minutes.
+    effectiveIn=Math.max(roundTimestampToNearestMinutes(inTs,15),dayStart);
+    clampedOut=Math.min(roundTimestampToNearestMinutes(outTs,5),dayEnd);
+  } else {
+    // Workshops credit an early/on-time arrival from the scheduled start.
+    // From 08:31 (or one minute after a custom start) the first clock-in is
+    // moved forward to the next quarter-hour. Work after the scheduled finish
+    // is capped at that finish (normally 17:30).
+    effectiveIn=Math.max(inTs,dayStart);
+    if(roundLateStart && inTs>=dayStart+60000) effectiveIn=roundUpToQuarterHour(inTs);
+    clampedOut=Math.min(outTs,dayEnd);
+  }
   return Math.max(0, (clampedOut-effectiveIn)/3600000);
 }
 
@@ -1763,9 +1791,17 @@ function clampedIntervalForShift(dateStr, inTs, outTs, siteId, roundLateStart, e
   const startMin = hhmmToMinutes(startStr), endMin = hhmmToMinutes(endStr);
   const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(startMin/60), startMin%60).getTime();
   const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(endMin/60), endMin%60).getTime();
-  let effectiveIn = Math.max(inTs, dayStart);
-  if(roundLateStart && inTs > dayStart) effectiveIn = roundUpToQuarterHour(inTs);
-  const clampedOut = Math.min(outTs, dayEnd);
+  const fillingStation=isFillingStationSite((emp&&emp.siteId)||siteId);
+  let effectiveIn;
+  let clampedOut;
+  if(fillingStation){
+    effectiveIn=Math.max(roundTimestampToNearestMinutes(inTs,15),dayStart);
+    clampedOut=Math.min(roundTimestampToNearestMinutes(outTs,5),dayEnd);
+  } else {
+    effectiveIn=Math.max(inTs,dayStart);
+    if(roundLateStart && inTs>=dayStart+60000) effectiveIn=roundUpToQuarterHour(inTs);
+    clampedOut=Math.min(outTs,dayEnd);
+  }
   return { start: effectiveIn, end: Math.max(effectiveIn, clampedOut) };
 }
 function firstInToday(empId, dateStr){
@@ -1831,7 +1867,12 @@ function isHourly(emp){ return !!(emp && (emp.holidayUnit==='hours' || isFilling
 function unitLabel(emp){ return isHourly(emp) ? 'hrs' : 'days'; }
 function fmtBalance(emp, asOfDate){
   const bal = availableBalance(emp, asOfDate);
-  return isHourly(emp) ? bal.toFixed(1)+' hrs' : bal.toFixed(2)+' days';
+  return bal.toFixed(2)+' '+unitLabel(emp);
+}
+function formatHolidayAmount(emp, value){
+  const n=Number(value);
+  if(!Number.isFinite(n)) return isHourly(emp)?'0.00':'0';
+  return isHourly(emp)?n.toFixed(2):String(n);
 }
 
 /* ============================= RENDER ROOT ============================= */
@@ -2127,7 +2168,7 @@ function renderHoliday(){
     <div class="field"><label>End date</label><input type="date" id="hol-end" value="${end}"></div>
     ${extraControls}
     <div class="req-summary">
-      <b>${totalRequested} ${hourly?'hour':'day'}${totalRequested===1?'':'s'} of holiday</b>
+      <b>${hourly?Number(totalRequested).toFixed(2):totalRequested} ${hourly?'hour':'day'}${totalRequested===1?'':'s'} of holiday</b>
       ${workingDays.length ? workingDays.map(fmtDateShort).join(' · ') : 'Pick a start and end date.'}
       ${excludedCount ? `<div class="excl">Sundays, Saturdays and bank holidays in this range aren't counted.</div>` : ''}
       ${totalRequested > remaining ? `<div class="excl" style="color:var(--red);">This takes your balance to ${(remaining-totalRequested).toFixed(2)} ${unitLabel(emp)} — negative. That's fine, but it needs admin approval.</div>` : ''}
@@ -2144,7 +2185,7 @@ function renderHolidayConfirm(){
   <div class="flow"><div class="flow-card">
     <div class="big-check">✓</div>
     <h2>Request Sent</h2>
-    <div class="sub">${requestDayCount(req)} ${isHourly(emp)?'hour':'day'}${requestDayCount(req)===1?'':'s'} · ${fmtDateShort(dateEntryDate(req.dates[0]))} – ${fmtDateShort(dateEntryDate(req.dates[req.dates.length-1]))}</div>
+    <div class="sub">${formatHolidayAmount(emp,requestDayCount(req))} ${isHourly(emp)?'hour':'day'}${requestDayCount(req)===1?'':'s'} · ${fmtDateShort(dateEntryDate(req.dates[0]))} – ${fmtDateShort(dateEntryDate(req.dates[req.dates.length-1]))}</div>
     <div style="color:var(--muted);font-size:13px;margin-top:10px;">Waiting for admin approval.</div>
     <button type="button" class="action-btn secondary" data-action="go-home">Done</button>
   </div></div>`;
@@ -3577,7 +3618,7 @@ function renderAdminRequests(){
     return `<tr>
       <td>${emp.name}<br><span style="color:var(--muted-2);font-size:11px;">${siteName(emp.siteId)}</span></td>
       <td>${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))}</td>
-      <td>${requestDayCount({r:r, dates:safeDates})} ${unitLabel(emp)}</td>
+      <td>${formatHolidayAmount(emp,requestDayCount({r:r, dates:safeDates}))} ${unitLabel(emp)}</td>
       <td>${statusPill}</td>
       <td>${actions}</td>
     </tr>`;
@@ -3590,7 +3631,7 @@ function renderAdminRequests(){
     return `<tr>
       <td>${emp.name}</td>
       <td>${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))}</td>
-      <td>${requestDayCount({r:r, dates:safeDates})} ${unitLabel(emp)}</td>
+      <td>${formatHolidayAmount(emp,requestDayCount({r:r, dates:safeDates}))} ${unitLabel(emp)}</td>
       <td><span class="pill ${r.status==='approved'?'pill-approved':'pill-rejected'}">${r.status}</span></td>
       <td>${r.status==='rejected' ? `<button type="button" class="icon-btn" data-action="delete-request" data-id="${r.id}">Delete</button>` : ''}</td>
     </tr>`;
@@ -3675,7 +3716,7 @@ function renderBalanceSheet(){
     const rows = emps.map(emp=>{
       const bal = availableBalance(emp, asOf);
       const u = unitLabel(emp);
-      return `<tr><td class="att-name">${emp.name}</td><td style="text-align:left;">${siteName(emp.siteId)}</td><td>${emp.allowanceDays||20} ${u}/yr</td><td style="${bal<0?'color:#b3261e;':''}">${bal.toFixed(2)} ${u}</td></tr>`;
+      return `<tr><td class="att-name">${emp.name}</td><td style="text-align:left;">${siteName(emp.siteId)}</td><td>${formatHolidayAmount(emp,emp.allowanceDays||20)} ${u}/yr</td><td style="${bal<0?'color:#b3261e;':''}">${bal.toFixed(2)} ${u}</td></tr>`;
     }).join('');
     return `
     <div class="att-sheet">
@@ -3698,7 +3739,7 @@ function renderBalanceSheet(){
   const rows = emps.map(emp=>{
     const bal = availableBalance(emp, asOf);
     const u = unitLabel(emp);
-    return `<tr><td class="att-name">${emp.name}</td><td>${emp.allowanceDays||20} ${u}/yr</td><td style="${bal<0?'color:#b3261e;':''}">${bal.toFixed(2)} ${u}</td></tr>`;
+    return `<tr><td class="att-name">${emp.name}</td><td>${formatHolidayAmount(emp,emp.allowanceDays||20)} ${u}/yr</td><td style="${bal<0?'color:#b3261e;':''}">${bal.toFixed(2)} ${u}</td></tr>`;
   }).join('');
   return `
   <div class="att-sheet">
@@ -3735,9 +3776,9 @@ function renderHolidaySheet(){
       const totalHoliday = datesInRange.reduce((sum,d)=>sum+dateEntryAmount(d),0);
       const dateLabels = datesInRange.map(d=>{
         const amount=dateEntryAmount(d);
-        return fmtDateShort(dateEntryDate(d))+(isHourly(emp)?` (${amount} hrs)`:(amount===0.5?' (½)':''));
+        return fmtDateShort(dateEntryDate(d))+(isHourly(emp)?` (${formatHolidayAmount(emp,amount)} hrs)`:(amount===0.5?' (½)':''));
       }).join(', ');
-      rows.push(`<tr><td class="att-name">${emp.name}</td><td style="text-align:left;">${dateLabels}</td><td>${totalHoliday} ${unitLabel(emp)}</td></tr>`);
+      rows.push(`<tr><td class="att-name">${emp.name}</td><td style="text-align:left;">${dateLabels}</td><td>${formatHolidayAmount(emp,totalHoliday)} ${unitLabel(emp)}</td></tr>`);
     });
     if(!rows.length) return;
     sheets += `
@@ -3774,7 +3815,7 @@ function renderApproveModal(){
   return `<div class="modal-overlay" data-modal-overlay="1">
     <div class="modal">
       <h3>Approve holiday — ${emp?emp.name:''}</h3>
-      <div style="font-size:13px;color:var(--muted);">${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))} · ${holidayAmount} ${unit}</div>
+      <div style="font-size:13px;color:var(--muted);">${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))} · ${emp?formatHolidayAmount(emp,holidayAmount):holidayAmount} ${unit}</div>
       ${r.status==='recommended'
         ? `<div style="font-size:13px;color:var(--green);margin-top:6px;">Recommended by ${r.recommendedBy||'the site manager'}.</div>`
         : `<div class="conflict-box">The site manager hasn't reviewed this yet. You can still authorise it, but it hasn't been through them.</div>`}
@@ -3782,7 +3823,7 @@ function renderApproveModal(){
         Approving this pushes the company over the cap of ${state.config.settings.capOff} on: ${conflicts.map(c=>fmtDateShort(c.date)+' ('+(c.count+1)+' off)').join(', ')}.
       </div>` : ''}
       ${projectedBalance<0 ? `<div class="conflict-box">
-        This takes ${emp.name}'s balance to ${projectedBalance.toFixed(isHourly(emp)?1:2)} ${unit} — negative. That's allowed with approval, but they'll owe the difference back against future accrual.
+        This takes ${emp.name}'s balance to ${projectedBalance.toFixed(2)} ${unit} — negative. That's allowed with approval, but they'll owe the difference back against future accrual.
       </div>` : ''}
       <div class="modal-actions">
         <button type="button" class="action-btn ${(conflicts.length||projectedBalance<0)?'danger':''}" data-action="confirm-approve" data-id="${r.id}">${(conflicts.length||projectedBalance<0)?'Approve anyway':'Approve'}</button>
@@ -3973,19 +4014,19 @@ function renderAdminTimesheets(){
         const dow = d.getDay();
         const computedHours = paidHoursForDay(dayShifts,dateStr,site.id,emp);
         const hasOverride = !isVisitor && hoursOverride[dateStr]!==undefined && hoursOverride[dateStr]!=='';
-        const dayHours = hasOverride ? roundTimesheetHours(parseFloat(hoursOverride[dateStr])||0) : computedHours;
+        const dayHours = hasOverride ? normaliseTimesheetHours(parseFloat(hoursOverride[dateStr])||0,emp,site.id) : computedHours;
         if(isHol) holCount += holAmt;
         if(!sevenDay && i===5) satHours += dayHours; // Sat = overtime, standard sites only
         else weekTotal += dayHours; // everything else counts (all 7 days for seven-day sites)
         let content;
-        if(isHol) content = `<span class="att-hol">${isHourly(emp)?formatTimesheetHours(holAmt)+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
+        if(isHol) content = `<span class="att-hol">${isHourly(emp)?formatTimesheetHours(holAmt,emp,site.id)+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
         else if(dow===0 && !sevenDay && dayHours===0){
           content = `<span style="color:#999;font-style:italic;">Closed</span>`;
         }
         else if(dow!==0 || sevenDay){
           // Every working day takes typed hours, whether or not anyone clocked
           // in — otherwise past days could never be filled in by hand.
-          const hrsBox = `<input type="text" inputmode="decimal" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?formatTimesheetHours(dayHours):''}" placeholder="–" ${weekLocked?'disabled':''}>`;
+          const hrsBox = `<input type="text" inputmode="decimal" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?formatTimesheetHours(dayHours,emp,site.id):''}" placeholder="–" ${weekLocked?'disabled':''}>`;
           // The absence dropdown sits underneath, but only when no hours are
           // recorded — you can't be both working and absent the same day.
           const abs = absenceFor(emp.id, dateStr);
@@ -4006,16 +4047,16 @@ function renderAdminTimesheets(){
         return `<td title="${pendingHol ? 'Holiday requested — awaiting approval. ' : ''}${(dow===0 && !sevenDay && dayHours>0) ? 'Closed — but a clock event exists this day, worth checking. ' : ''}${awayNote}${hasAutoClosed ? 'Never clocked out — automatically closed at the applicable site cut-off. Correct it here if wrong. ' : ''}${dayShifts.some(s=>s.managerEntered) ? 'Time entered or corrected by a manager. ' : ''}${dayShifts.map(s=>timeOnly(s.inTs)+'–'+timeOnly(s.outTs)+(s.autoClosed?' (auto)':'')).join(', ')}">${content}${pendingMark}${awayMark}</td>`;
       }).join('');
 
-      const overtimeVal = empExtras.overtime !== undefined && empExtras.overtime !== '' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : '');
+      const overtimeVal = empExtras.overtime !== undefined && empExtras.overtime !== '' ? formatTimesheetHours(empExtras.overtime,emp,site.id) : (satHours>0 ? formatTimesheetHours(satHours,emp,site.id) : '');
       const holsVal = empExtras.hols !== undefined && empExtras.hols !== ''
-        ? (isHourly(emp) ? formatTimesheetHours(empExtras.hols) : empExtras.hols)
-        : (holCount>0 ? (isHourly(emp) ? formatTimesheetHours(holCount) : holCount) : '');
+        ? (isHourly(emp) ? formatTimesheetHours(empExtras.hols,emp,site.id) : empExtras.hols)
+        : (holCount>0 ? (isHourly(emp) ? formatTimesheetHours(holCount,emp,site.id) : holCount) : '');
       const sickVal = empExtras.sick !== undefined ? empExtras.sick : '';
 
       return `<tr>
         <td class="att-name">${emp.name}${isVisitor?` <span style="font-weight:400;font-style:italic;color:#666;">(visiting)</span>`:''}</td>
         ${dayCells}
-        <td><b>${weekTotal>0?formatTimesheetHours(weekTotal):''}</b></td>
+        <td><b>${weekTotal>0?formatTimesheetHours(weekTotal,emp,site.id):''}</b></td>
         <td><input type="text" inputmode="decimal" data-ts-field="overtime" data-ts-emp="${emp.id}" value="${overtimeVal}" ${weekLocked?'disabled':''}></td>
         <td><input type="text" data-ts-field="hols" data-ts-emp="${emp.id}" value="${holsVal}" ${weekLocked?'disabled':''}></td>
         <td><input type="text" data-ts-field="sick" data-ts-emp="${emp.id}" value="${sickVal}" ${weekLocked?'disabled':''}></td>
@@ -4051,7 +4092,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. Paid hours are rounded to the closest 15 minutes and shown to two decimal places (for example 7.50, 7.75 or 8.00). The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break; filling-station shifts do not have a dinner deduction. If workshop staff clock a shorter break, the difference is still deducted. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour and clock-outs to the closest 5 minutes. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break; filling-station shifts do not have a dinner deduction. If workshop staff clock a shorter break, the difference is still deducted. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>
@@ -4090,7 +4131,7 @@ function renderAdminEmployees(){
       <td>${e.name}</td>
       <td>${siteName(e.siteId)}</td>
       <td class="mono">${e.pin}</td>
-      <td>${e.allowanceDays||20} ${u}/yr</td>
+      <td>${formatHolidayAmount(e,e.allowanceDays||20)} ${u}/yr</td>
       <td class="mono">${e.monthlyRate!==undefined ? e.monthlyRate : (state.config.settings.monthlyAccrualRate||1.66)} ${u}</td>
       <td class="mono" style="${bal<0?'color:var(--red);':''}">${bal.toFixed(2)} ${u}</td>
       <td style="font-size:11px;color:var(--muted);">${holidayStatusLabel(e)}</td>
@@ -4222,7 +4263,7 @@ function renderEmployeeModal(){
         <option value="hours" ${unit==='hours'?'selected':''}>Hours (variable shifts — petrol stations)</option>
       </select>${fillingStation?'<div style="font-size:11px;color:var(--muted-2);margin-top:4px;">Filling-station holidays are always recorded in hours.</div>':''}</div>
       <div class="form-row">
-        <div class="field"><label id="emp-allowance-label">Annual entitlement (${unit})</label><input type="number" id="emp-allowance" value="${emp.allowanceDays||20}"></div>
+        <div class="field"><label id="emp-allowance-label">Annual entitlement (${unit})</label><input type="number" step="0.01" id="emp-allowance" value="${fillingStation?Number(emp.allowanceDays||20).toFixed(2):(emp.allowanceDays||20)}"></div>
         <div class="field"><label id="emp-rate-label">Monthly accrual rate (${unit}/mo)</label><input type="number" step="0.01" id="emp-rate" value="${rate}"></div>
       </div>
       <div class="field">
@@ -4780,7 +4821,7 @@ function attachHandlers(){
           inp.focus();
           return;
         }
-        value = formatTimesheetHours(parsed);
+        value = formatTimesheetHours(parsed,employeeById(empId));
         inp.value = value;
       }
       extras.employees[empId][inp.dataset.tsField] = value;
@@ -4824,7 +4865,7 @@ function attachHandlers(){
         inp.focus();
         return;
       }
-      const storedValue = raw==='' ? '' : formatTimesheetHours(parsed);
+      const storedValue = raw==='' ? '' : formatTimesheetHours(parsed,emp);
       inp.value = storedValue;
       const extras = getWeekExtras(weekIso);
       if(!extras.employees[inp.dataset.hrsEmp]) extras.employees[inp.dataset.hrsEmp] = {};
@@ -6042,7 +6083,7 @@ async function onAction(e){
     const noLunchBreak = fillingStation || (nlEl ? nlEl.checked : false);
     const pin = document.getElementById('emp-pin').value.trim();
     const holidayUnit = fillingStation ? 'hours' : document.getElementById('emp-unit').value;
-    const allowanceDays = parseInt(document.getElementById('emp-allowance').value,10) || 20;
+    const allowanceDays = parseFloat(document.getElementById('emp-allowance').value) || 20;
     const monthlyRate = parseFloat(document.getElementById('emp-rate').value) || (state.config.settings.monthlyAccrualRate||1.66);
     const openingBalance = parseFloat(document.getElementById('emp-opening-balance').value) || 0;
     const errEl = document.getElementById('emp-modal-error');

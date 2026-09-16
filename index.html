@@ -918,9 +918,9 @@ function roundTimesheetHours(value){
 function roundFillingStationHours(value){
   const n = Number(value);
   if(!Number.isFinite(n)) return 0;
-  // Filling-station starts are on quarter-hours but finishes are on five-minute
-  // boundaries, so their resulting paid duration must retain five-minute units.
-  return Math.max(0, Math.round((n + Number.EPSILON) * 12) / 12);
+  // After the station timestamps have been rounded, payroll uses only fully
+  // completed quarter-hours: 8h55 becomes 8h45 / 8.75 hours.
+  return Math.max(0, Math.floor((n + Number.EPSILON) * 4) / 4);
 }
 function normaliseTimesheetHours(value, emp, siteId){
   const effectiveSiteId = (emp && emp.siteId) || siteId;
@@ -1766,8 +1766,10 @@ function clampedHoursForShift(dateStr, inTs, outTs, siteId, roundLateStart, emp)
   let clampedOut;
   if(fillingStation){
     // Station shifts can begin throughout the day: clock-in goes to the
-    // closest quarter-hour and clock-out to the closest five minutes.
-    effectiveIn=Math.max(roundTimestampToNearestMinutes(inTs,15),dayStart);
+    // closest quarter-hour and clock-out to the closest five minutes. Do not
+    // clamp the start to the public opening time because station shift patterns
+    // can legitimately begin earlier (for example 05:45).
+    effectiveIn=roundTimestampToNearestMinutes(inTs,15);
     clampedOut=Math.min(roundTimestampToNearestMinutes(outTs,5),dayEnd);
   } else {
     // Workshops credit an early/on-time arrival from the scheduled start.
@@ -1795,7 +1797,7 @@ function clampedIntervalForShift(dateStr, inTs, outTs, siteId, roundLateStart, e
   let effectiveIn;
   let clampedOut;
   if(fillingStation){
-    effectiveIn=Math.max(roundTimestampToNearestMinutes(inTs,15),dayStart);
+    effectiveIn=roundTimestampToNearestMinutes(inTs,15);
     clampedOut=Math.min(roundTimestampToNearestMinutes(outTs,5),dayEnd);
   } else {
     effectiveIn=Math.max(inTs,dayStart);
@@ -4092,7 +4094,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour and clock-outs to the closest 5 minutes. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break; filling-station shifts do not have a dinner deduction. If workshop staff clock a shorter break, the difference is still deducted. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour, clock-outs to the closest 5 minutes, then the final daily total rounds down to the last completed quarter-hour. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break; filling-station shifts do not have a dinner deduction. If workshop staff clock a shorter break, the difference is still deducted. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>

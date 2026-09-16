@@ -2932,6 +2932,37 @@ function targetMoney(value,decimals=0){
   const n=Number(value||0);
   return '£'+(Number.isFinite(n)?n:0).toLocaleString('en-GB',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
 }
+function targetSignedMoney(value){
+  const n=Number(value||0);
+  if(Math.abs(n)<0.005) return targetMoney(0,2);
+  return (n>0?'+':'−')+targetMoney(Math.abs(n),2);
+}
+function targetSetFormulaCell(cell,value){
+  if(!cell) return;
+  cell.textContent=targetSignedMoney(value);
+  cell.style.fontWeight='700';
+  cell.style.color=value>0?'#12824c':value<0?'#b3261e':'#555';
+}
+function targetRecalculateVisibleSheet(siteId){
+  const rows=[...document.querySelectorAll('[data-target-formula-row]')].filter(row=>String(row.dataset.targetFormulaRow)===String(siteId));
+  if(!rows.length) return;
+  let running=0,actualTotal=0,filled=0,monthlyTarget=0;
+  rows.forEach(row=>{
+    const targetInput=row.querySelector('[data-target-day-site]');
+    const target=targetInput?Math.max(0,Number(targetInput.value)||0):Math.max(0,Number(row.dataset.targetValue)||0);
+    const actualInput=row.querySelector('[data-target-actual-site]'), raw=actualInput?String(actualInput.value||'').trim():'';
+    const actual=raw===''?0:Math.max(0,Number(raw)||0), variance=actual-target;
+    if(raw!=='') filled++;
+    actualTotal+=actual; monthlyTarget+=target; running+=variance;
+    targetSetFormulaCell(row.querySelector('[data-target-day-formula]'),variance);
+    targetSetFormulaCell(row.querySelector('[data-target-month-formula]'),running);
+  });
+  const sheet=document.getElementById('target-site-'+siteId);
+  if(!sheet) return;
+  const totalEl=sheet.querySelector('[data-target-actual-total]'); if(totalEl) totalEl.textContent=targetMoney(actualTotal,2);
+  const monthEl=sheet.querySelector('[data-target-total-variance]'); targetSetFormulaCell(monthEl,actualTotal-monthlyTarget);
+  const countEl=sheet.querySelector('[data-target-filled-count]'); if(countEl) countEl.textContent=filled+'/'+rows.filter(r=>Number(r.dataset.targetValue||0)>0||r.querySelector('[data-target-day-site]')).length;
+}
 function targetSetupPanel(month,plan){
   if(state.admin.role!=='super') return '';
   const cards=targetWorkshopSites().map(({site,key})=>{
@@ -2958,22 +2989,22 @@ function targetSiteSheet(sitePlan,isSuper){
   const rows=(sitePlan.days||[]).map(day=>{
     const date=fromIso(day.date), dayLabel=date.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
     if(!day.open){
-      return `<tr style="color:#777;background:#f3f3f3;"><td>${dayLabel}</td><td colspan="4" style="text-align:left;">${day.bankHoliday?'Bank holiday':'Closed'}</td></tr>`;
+      return `<tr data-target-formula-row="${salesHtml(sitePlan.siteId)}" data-target-value="0" style="color:#777;background:#f3f3f3;"><td>${dayLabel}<div style="font-size:9px;">${day.bankHoliday?'Bank holiday':'Closed'}</div></td><td>—</td><td>—</td><td data-target-day-formula>${targetMoney(0,2)}</td><td data-target-month-formula>${targetSignedMoney(running)}</td></tr>`;
     }
     const hasActual=day.actual!==''&&day.actual!==null&&day.actual!==undefined;
-    const actual=hasActual?Number(day.actual):0, variance=hasActual?actual-Number(day.target||0):null;
-    if(hasActual) running+=variance;
+    const actual=hasActual?Number(day.actual):0, variance=actual-Number(day.target||0);
+    running+=variance;
     const targetCell=isSuper
       ? `<input type="number" step="${sitePlan.roundTo||10}" min="0" data-target-day-site="${salesHtml(sitePlan.siteId)}" data-target-day-date="${day.date}" value="${Number(day.target||0)}" style="width:105px;text-align:right;">`
       : `<b>${targetMoney(day.target)}</b>`;
-    return `<tr><td>${dayLabel}${day.saturday?' <span style="font-size:9px;color:#8a5a00;">SAT</span>':''}</td><td>${targetCell}</td><td><input type="number" inputmode="decimal" step="0.01" min="0" data-target-actual-site="${salesHtml(sitePlan.siteId)}" data-target-actual-date="${day.date}" value="${hasActual?salesHtml(day.actual):''}" style="width:115px;text-align:right;"></td><td style="font-weight:700;color:${variance==null?'#777':variance>=0?'#12824c':'#b3261e'};">${variance==null?'—':(variance>=0?'+':'−')+targetMoney(Math.abs(variance),2)}</td><td style="font-weight:700;color:${hasActual?(running>=0?'#12824c':'#b3261e'):'#777'};">${hasActual?(running>=0?'+':'−')+targetMoney(Math.abs(running),2):'—'}</td></tr>`;
+    return `<tr data-target-formula-row="${salesHtml(sitePlan.siteId)}" data-target-value="${Number(day.target||0)}"><td>${dayLabel}${day.saturday?' <span style="font-size:9px;color:#8a5a00;">SAT</span>':''}</td><td>${targetCell}</td><td><input type="number" inputmode="decimal" step="0.01" min="0" data-target-actual-site="${salesHtml(sitePlan.siteId)}" data-target-actual-date="${day.date}" value="${hasActual?salesHtml(day.actual):''}" style="width:115px;text-align:right;"></td><td data-target-day-formula style="font-weight:700;color:${variance>0?'#12824c':variance<0?'#b3261e':'#555'};">${targetSignedMoney(variance)}</td><td data-target-month-formula style="font-weight:700;color:${running>0?'#12824c':running<0?'#b3261e':'#555'};">${targetSignedMoney(running)}</td></tr>`;
   }).join('');
   const filled=(sitePlan.days||[]).filter(d=>d.open&&d.actual!==''&&d.actual!==null&&d.actual!==undefined);
-  const actualTotal=filled.reduce((n,d)=>n+Number(d.actual||0),0), targetToDate=filled.reduce((n,d)=>n+Number(d.target||0),0);
+  const actualTotal=filled.reduce((n,d)=>n+Number(d.actual||0),0), monthVariance=actualTotal-Number(sitePlan.monthlyTarget||0);
   return `<div class="att-sheet" id="target-site-${salesHtml(sitePlan.siteId)}">
     <div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — ${salesHtml(sitePlan.label).toUpperCase()}</span></div>
     <div class="att-meta-row"><span>${salesHtml(targetMonthLabel(sitePlan.month||state.admin.targetMonth))}</span><span class="site-tag">TARGET ${targetMoney(sitePlan.monthlyTarget)}</span></div>
-    <div style="padding:8px 10px;font-size:11px;border-bottom:1px solid #bbb;display:flex;gap:18px;flex-wrap:wrap;"><span><b>${sitePlan.openingDays}</b> opening days</span><span>Saturday target <b>${sitePlan.saturdayTarget?targetMoney(sitePlan.saturdayTarget):'Closed'}</b></span><span>Actual entered <b>${filled.length}/${(sitePlan.days||[]).filter(d=>d.open).length}</b></span><span>Actual to date <b>${targetMoney(actualTotal,2)}</b></span><span>Target for entered days <b>${targetMoney(targetToDate)}</b></span></div>
+    <div style="padding:8px 10px;font-size:11px;border-bottom:1px solid #bbb;display:flex;gap:18px;flex-wrap:wrap;"><span><b>${sitePlan.openingDays}</b> opening days</span><span>Saturday target <b>${sitePlan.saturdayTarget?targetMoney(sitePlan.saturdayTarget):'Closed'}</b></span><span>Actual entered <b data-target-filled-count>${filled.length}/${(sitePlan.days||[]).filter(d=>d.open).length}</b></span><span>Actual total <b data-target-actual-total>${targetMoney(actualTotal,2)}</b></span><span>+ / − Month <b data-target-total-variance style="color:${monthVariance>0?'#12824c':monthVariance<0?'#b3261e':'#555'};">${targetSignedMoney(monthVariance)}</b></span></div>
     <div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Date</th><th>Target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
@@ -2986,18 +3017,17 @@ function targetGroupSheet(plan){
   let running=0;
   const rows=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).map(d=>{
     const dt=fromIso(d.date), label=dt.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
-    if(!d.open) return `<tr style="color:#777;background:#f3f3f3;"><td>${label}</td><td colspan="4" style="text-align:left;">All workshops closed</td></tr>`;
-    const complete=d.filled===d.open, variance=complete?d.actual-d.target:null;
-    if(complete) running+=variance;
-    return `<tr><td style="text-align:left;">${label}</td><td>${targetMoney(d.target)}</td><td>${d.filled?targetMoney(d.actual,2):'—'}<div style="font-size:9px;color:#777;">${d.filled}/${d.open} sites</div></td><td>${complete?(variance>=0?'+':'−')+targetMoney(Math.abs(variance),2):'—'}</td><td>${complete?(running>=0?'+':'−')+targetMoney(Math.abs(running),2):'—'}</td></tr>`;
+    if(!d.open) return `<tr style="color:#777;background:#f3f3f3;"><td style="text-align:left;">${label}<div style="font-size:9px;">All workshops closed</div></td><td>—</td><td>—</td><td>${targetMoney(0,2)}</td><td>${targetSignedMoney(running)}</td></tr>`;
+    const variance=d.actual-d.target; running+=variance;
+    return `<tr><td style="text-align:left;">${label}</td><td>${targetMoney(d.target)}</td><td>${targetMoney(d.actual,2)}<div style="font-size:9px;color:#777;">${d.filled}/${d.open} sites entered</div></td><td style="color:${variance>0?'#12824c':variance<0?'#b3261e':'#555'};font-weight:700;">${targetSignedMoney(variance)}</td><td style="color:${running>0?'#12824c':running<0?'#b3261e':'#555'};font-weight:700;">${targetSignedMoney(running)}</td></tr>`;
   }).join('');
   const groupTarget=sitePlans.reduce((n,s)=>n+Number(s.monthlyTarget||0),0);
   const summary=sitePlans.map(s=>{
     const filled=(s.days||[]).filter(d=>d.open&&d.actual!==''&&d.actual!==null&&d.actual!==undefined);
-    const actual=filled.reduce((n,d)=>n+Number(d.actual||0),0), due=filled.reduce((n,d)=>n+Number(d.target||0),0), variance=actual-due;
-    return `<tr><td style="text-align:left;font-weight:700;">${salesHtml(s.label)}</td><td>${targetMoney(s.monthlyTarget)}</td><td>${targetMoney(actual,2)}</td><td>${filled.length}/${(s.days||[]).filter(d=>d.open).length}</td><td style="color:${variance>=0?'#12824c':'#b3261e'};">${filled.length?(variance>=0?'+':'−')+targetMoney(Math.abs(variance),2):'—'}</td></tr>`;
+    const actual=filled.reduce((n,d)=>n+Number(d.actual||0),0), variance=actual-Number(s.monthlyTarget||0);
+    return `<tr><td style="text-align:left;font-weight:700;">${salesHtml(s.label)}</td><td>${targetMoney(s.monthlyTarget)}</td><td>${targetMoney(actual,2)}</td><td>${filled.length}/${(s.days||[]).filter(d=>d.open).length}</td><td style="font-weight:700;color:${variance>0?'#12824c':variance<0?'#b3261e':'#555'};">${targetSignedMoney(variance)}</td></tr>`;
   }).join('');
-  return `<div class="att-sheet" id="target-group-output"><div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — GROUP</span></div><div class="att-meta-row"><span>${salesHtml(targetMonthLabel(plan.month))}</span><span class="site-tag">TARGET ${targetMoney(groupTarget)}</span></div><div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Site</th><th>Monthly target</th><th>Actual entered</th><th>Days entered</th><th>Variance to date</th></tr></thead><tbody>${summary}</tbody></table><table class="att-table" style="margin-top:12px;"><thead><tr><th style="text-align:left;">Date</th><th>Group target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  return `<div class="att-sheet" id="target-group-output"><div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — GROUP</span></div><div class="att-meta-row"><span>${salesHtml(targetMonthLabel(plan.month))}</span><span class="site-tag">TARGET ${targetMoney(groupTarget)}</span></div><div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Site</th><th>Monthly target</th><th>Actual total</th><th>Days entered</th><th>+ / − Month</th></tr></thead><tbody>${summary}</tbody></table><table class="att-table" style="margin-top:12px;"><thead><tr><th style="text-align:left;">Date</th><th>Group target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 function renderAdminTargets(){
   const isSuper=state.admin.role==='super', month=state.admin.targetMonth||new Date().toISOString().slice(0,7), plan=targetMonthPlan(month);
@@ -5038,6 +5068,9 @@ function attachHandlers(){
     });
   });
   app.querySelectorAll('[data-target-weekday]').forEach(input=>input.addEventListener('input',()=>{ input.dataset.manual='1'; }));
+  app.querySelectorAll('[data-target-actual-site],[data-target-day-site]').forEach(input=>{
+    input.addEventListener('input',()=>targetRecalculateVisibleSheet(input.dataset.targetActualSite||input.dataset.targetDaySite));
+  });
 
   const reqSiteSel = document.getElementById('req-site-select');
   if(reqSiteSel) reqSiteSel.addEventListener('change', ()=>{ state.admin.reqSite = reqSiteSel.value; render(); });

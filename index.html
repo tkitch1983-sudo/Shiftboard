@@ -2403,6 +2403,17 @@ function bonusDavanti(units,target){
   units=bonusAmount(units);
   return units>=target ? 50+Math.max(0,units-target)*2 : 0;
 }
+function bonusAddOn(snapshot){
+  if(!snapshot) return 0;
+  const tracking=bonusAmount(snapshot.tracking);
+  const trackingPay=Math.min(tracking,50)+(Math.max(0,tracking-50)*2);
+  return trackingPay+
+    bonusAmount(snapshot.pollen)+
+    bonusAmount(snapshot.bfc)+
+    bonusAmount(snapshot.diag)+
+    bonusAmount(snapshot.coolant)+
+    bonusAmount(snapshot.ac);
+}
 function bonusTonyDavanti(units){
   units=bonusAmount(units);
   return units>=600 ? 100+(Math.floor((units-600)/25)*25) : 0;
@@ -2446,11 +2457,11 @@ function bonusSnapshotsForMonth(month){
   sorted.forEach(r=>{ const key=bonusSiteKey(r.site_name||r.site_key); if(key&&!found[key]) found[key]=r; });
   return found;
 }
-function bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount){
+function bonusEmployeeCalc(emp,siteCalc,month,draft){
   const role=bonusRole(emp), edit=draft.employees[emp.id]||{};
   const baseOverride=String(edit.baseOverride??'').trim();
   const base=baseOverride===''?siteCalc.staffBonus:bonusAmount(baseOverride);
-  const addOn=role==='reception'&&receptionCount?siteCalc.addOnValue/receptionCount:0;
+  const addOn=role==='reception'?siteCalc.addOnBonus:0;
   const davanti=role==='reception'?siteCalc.davantiBonus:0;
   const sickDays=bonusSickDays(emp.id,month), weekdays=bonusWeekdays(month);
   const sickDeduction=weekdays?base/ weekdays*sickDays:0;
@@ -2468,14 +2479,13 @@ function renderAdminBonus(){
   const sections=[]; let staffGrand=0, totalSales=0, totalDavanti=0, latest='';
   Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{
     const snap=snaps[key];
-    const sales=snap?bonusAmount(snap.total_current):0, units=snap?bonusAmount(snap.davanti):0, addOnValue=snap?bonusAmount(snap.add_on_value):0;
-    const siteCalc={staffBonus:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:bonusDavanti(units,rule.davantiTarget),addOnValue};
+    const sales=snap?bonusAmount(snap.total_current):0, units=snap?bonusAmount(snap.davanti):0, addOnBonus=bonusAddOn(snap);
+    const siteCalc={staffBonus:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:bonusDavanti(units,rule.davantiTarget),addOnBonus};
     totalSales+=sales; totalDavanti+=units; if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
     const site=state.config.sites.find(s=>bonusSiteKey(s.name)===key);
     const employees=site ? state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false) : [];
-    const receptionCount=employees.filter(e=>bonusRole(e)==='reception').length;
     const rows=employees.map(emp=>{
-      const edit=draft.employees[emp.id]||{}, calc=bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount); staffGrand+=calc.total;
+      const edit=draft.employees[emp.id]||{}, calc=bonusEmployeeCalc(emp,siteCalc,month,draft); staffGrand+=calc.total;
       return `<tr><td style="font-weight:700;white-space:nowrap;">${salesHtml(emp.name)}</td>
         <td><select data-bonus-role="${salesHtml(emp.id)}" style="min-width:105px;padding:7px;"><option value="auto" ${!emp.bonusRole||emp.bonusRole==='auto'?'selected':''}>Auto (${calc.role})</option><option value="reception" ${emp.bonusRole==='reception'?'selected':''}>Reception</option><option value="workshop" ${emp.bonusRole==='workshop'?'selected':''}>Workshop</option><option value="none" ${emp.bonusRole==='none'?'selected':''}>Excluded</option></select></td>
         <td>${bonusMoney(calc.base)}</td><td>${bonusMoney(calc.davanti)}</td><td>${bonusMoney(calc.addOn)}</td><td>${calc.sickDays}</td><td>−${bonusMoney(calc.sickDeduction)}</td>
@@ -2483,7 +2493,7 @@ function renderAdminBonus(){
         <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
     }).join('');
     sections.push(`<div class="card" style="padding:0;overflow:auto;break-inside:avoid;">
-      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)}) · Add-ons ${bonusMoney(addOnValue)}</span>${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
+      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)}) · Add-on bonus ${bonusMoney(addOnBonus)} each receptionist</span>${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
       <table style="min-width:1120px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th>Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="12">No active employees matched to this site.</td></tr>'}</tbody></table>
     </div>`);
   });

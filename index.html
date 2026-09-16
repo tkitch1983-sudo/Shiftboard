@@ -2385,7 +2385,7 @@ const BONUS_SITE_RULES = {
   gateshead:     {label:'Gateshead',     staffStart:70000, staffBase:350, davantiTarget:75,  tonyStart:null,  tonyBase:0},
   seaham:        {label:'Seaham',        staffStart:70000, staffBase:350, davantiTarget:100, tonyStart:60000, tonyBase:50},
   hartlepool:    {label:'Hartlepool',    staffStart:45000, staffBase:400, davantiTarget:50,  tonyStart:45000, tonyBase:50},
-  lido:          {label:'Lido',          staffStart:null,  staffBase:0,   davantiTarget:null,tonyStart:null,  tonyBase:0, bonusActive:false}
+  lido:          {label:'Lido',          staffStart:null,  staffBase:0,   davantiTarget:100, tonyStart:null,  tonyBase:0, groupActive:false}
 };
 const BONUS_RECEPTION_NAMES = new Set([
   'dparker','scasselden','scassledon','thope','tmoody','ldunn','mmccormick','kwalsh',
@@ -2497,15 +2497,17 @@ function bonusSnapshotsForMonth(month){
 function bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount){
   const role=bonusRole(emp), edit=draft.employees[emp.id]||{};
   const baseOverride=String(edit.baseOverride??'').trim();
-  const base=baseOverride===''?siteCalc.staffBonus:bonusAmount(baseOverride);
-  const addOn=role==='reception'&&receptionCount?siteCalc.addOnBonus/receptionCount:0;
-  const davanti=role==='reception'?siteCalc.davantiBonus:0;
   const sickDays=bonusSickDays(emp.id,month), weekdays=bonusWeekdays(month);
+  const losesBonus=role!=='none'&&sickDays>2;
+  const normalBase=baseOverride===''?siteCalc.staffBonus:bonusAmount(baseOverride);
+  const base=losesBonus?0:normalBase;
+  const addOn=losesBonus?0:(role==='reception'&&receptionCount?siteCalc.addOnBonus/receptionCount:0);
+  const davanti=losesBonus?0:(role==='reception'?siteCalc.davantiBonus:0);
   const sickDeduction=weekdays?base/ weekdays*sickDays:0;
   const damages=bonusAmount(edit.damages), owed=bonusAmount(edit.owed), extra=bonusAmount(edit.extra);
-  const managerExtra=bonusManagerExtra(emp,siteCalc.siteKey,siteCalc.sales);
+  const managerExtra=losesBonus?0:bonusManagerExtra(emp,siteCalc.siteKey,siteCalc.sales);
   const gross=role==='none'?0:base+addOn+davanti;
-  return {role,base,addOn,davanti,sickDays,sickDeduction,damages,owed,extra,managerExtra,total:gross-sickDeduction-damages+owed+extra+managerExtra};
+  return {role,base,addOn,davanti,sickDays,sickDeduction,damages,owed,extra,managerExtra,losesBonus,total:gross-sickDeduction-damages+owed+extra+managerExtra};
 }
 function bonusInput(empId,field,value,label){
   return `<label style="display:block;font-size:10px;color:var(--muted);">${label}<input type="number" inputmode="decimal" step="0.01" data-bonus-emp="${salesHtml(empId)}" data-bonus-field="${field}" value="${salesHtml(value??'')}" style="width:92px;min-width:82px;margin-top:3px;padding:7px;"></label>`;
@@ -2518,22 +2520,22 @@ function renderAdminBonus(){
   Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{
     const snap=snaps[key];
     const sales=snap?bonusAmount(snap.total_current):0, units=snap?bonusAmount(snap.davanti):0, addOnBonus=bonusAddOn(snap);
-    const siteCalc={siteKey:key,sales,staffBonus:rule.bonusActive===false?0:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:rule.bonusActive===false?0:bonusDavanti(units,rule.davantiTarget),addOnBonus:rule.bonusActive===false?0:addOnBonus};
-    if(rule.bonusActive!==false){ totalSales+=sales; totalDavanti+=units; }
+    const siteCalc={siteKey:key,sales,staffBonus:rule.staffStart==null?0:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:rule.davantiTarget==null?0:bonusDavanti(units,rule.davantiTarget),addOnBonus};
+    if(rule.groupActive!==false){ totalSales+=sales; totalDavanti+=units; }
     if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
     const site=state.config.sites.find(s=>bonusSiteKey(s.name)===key);
     const employees=site ? state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false) : [];
     const receptionCount=employees.filter(e=>bonusRole(e)==='reception').length;
     const rows=employees.map(emp=>{
       const edit=draft.employees[emp.id]||{}, calc=bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount); staffGrand+=calc.total;
-      return `<tr><td style="font-weight:700;white-space:nowrap;">${salesHtml(emp.name)}</td>
+      return `<tr style="${calc.losesBonus?'color:var(--red);font-weight:800;':''}"><td style="font-weight:700;white-space:nowrap;">${salesHtml(emp.name)}${calc.losesBonus?`<div style="font-size:10px;color:var(--red);">Bonus lost — ${calc.sickDays} sick days</div>`:''}</td>
         <td><select data-bonus-role="${salesHtml(emp.id)}" style="min-width:105px;padding:7px;"><option value="auto" ${!emp.bonusRole||emp.bonusRole==='auto'?'selected':''}>Auto (${calc.role})</option><option value="reception" ${emp.bonusRole==='reception'?'selected':''}>Reception</option><option value="workshop" ${emp.bonusRole==='workshop'?'selected':''}>Workshop</option><option value="none" ${emp.bonusRole==='none'?'selected':''}>Excluded</option></select></td>
         <td>${bonusMoney(calc.base)}</td><td>${bonusMoney(calc.davanti)}</td><td>${bonusMoney(calc.addOn)}</td><td>${bonusMoney(calc.managerExtra)}</td><td>${calc.sickDays}</td><td>−${bonusMoney(calc.sickDeduction)}</td>
         <td>${bonusInput(emp.id,'damages',edit.damages,'Damages')}</td><td>${bonusInput(emp.id,'owed',edit.owed,'Owed')}</td><td>${bonusInput(emp.id,'extra',edit.extra,'Manual extra')}</td><td>${bonusInput(emp.id,'baseOverride',edit.baseOverride,'Base override')}</td>
         <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
     }).join('');
     if(bonusSite==='all'||bonusSite===key) sections.push(`<div class="card" id="bonus-site-${key}" style="padding:0;overflow:auto;break-inside:avoid;">
-      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(siteCalc.addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${rule.bonusActive===false?`<div style="color:var(--amber);font-size:11px;margin-top:5px;">No bonus structure set. Automatic bonuses remain £0 until one is added.</div>`:''}${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
+      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(siteCalc.addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${rule.staffStart==null?`<div style="color:var(--amber);font-size:11px;margin-top:5px;">Site turnover bonus is not set. Add On is active${rule.davantiTarget==null?'; Davanti target still required.':'.'}</div>`:''}${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
       <table style="min-width:1210px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th>Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Manager extra</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Manual extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="13">No active employees matched to this site.</td></tr>'}</tbody></table>
     </div>`);
   });

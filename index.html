@@ -784,9 +784,10 @@ const state = {
   timesheetExtras: {},
   absences: [],
   bonusSheets: {},
+  targetSheets: {},
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false, _loadingStock:false, _loadingAnalysis:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', _loadingSales:false, _loadingStock:false, _loadingAnalysis:false },
 };
 
 function isTonyLogin(){
@@ -833,11 +834,13 @@ async function loadAll(){
   state.timesheetExtras = await storageGet('timesheetExtras', {});
   state.absences = await storageGet('absences', []);
   state.bonusSheets = canAccessBonusSheet() ? await storageGet('bonusSheets', {}) : {};
+  state.targetSheets = await storageGet('targetSheets', {});
   if(!Array.isArray(state.requests)) state.requests = [];
   if(!Array.isArray(state.events)) state.events = [];
   if(!state.timesheetExtras || typeof state.timesheetExtras!=='object' || Array.isArray(state.timesheetExtras)) state.timesheetExtras = {};
   if(!Array.isArray(state.absences)) state.absences = [];
   if(!state.bonusSheets || typeof state.bonusSheets!=='object' || Array.isArray(state.bonusSheets)) state.bonusSheets = {};
+  if(!state.targetSheets || typeof state.targetSheets!=='object' || Array.isArray(state.targetSheets)) state.targetSheets = {};
 
   // Defensive cleanup for older/partial live records. Register must never crash
   // because one old holiday/event row has missing fields.
@@ -869,6 +872,7 @@ async function saveRequests(){ return await storageSet('holidayRequests', state.
 async function saveEvents(){ return await storageSet('clockEvents', state.events); }
 async function saveTimesheetExtras(){ return await storageSet('timesheetExtras', state.timesheetExtras); }
 async function saveAbsences(){ return await storageSet('absences', state.absences); }
+async function saveTargetSheets(){ return await storageSet('targetSheets', state.targetSheets); }
 async function saveBonusSheets(){
   if(!canAccessBonusSheet()) return false;
   return await storageSet('bonusSheets', state.bonusSheets);
@@ -2775,6 +2779,202 @@ function bonusSiteKey(v){
   if(n.includes('etacworkshop') || n==='etac') return 'peterlee';
   return Object.keys(BONUS_SITE_RULES).find(k=>n.includes(k)) || '';
 }
+
+/* ---------- MONTHLY SITE TARGET SHEETS ---------- */
+const TARGET_SITE_DEFAULTS = {
+  peterlee:      {label:'Peterlee',      monthly:130000, saturday:2000},
+  middlesbrough: {label:'Middlesbrough', monthly:120000, saturday:2000},
+  fairfield:     {label:'Fairfield',     monthly:105000, saturday:1500},
+  chester:       {label:'Chester',       monthly:80000,  saturday:1200},
+  gateshead:     {label:'Gateshead',     monthly:100000, saturday:1500},
+  hartlepool:    {label:'Hartlepool',    monthly:60000,  saturday:0},
+  seaham:        {label:'Seaham',        monthly:85000,  saturday:1500},
+  lido:          {label:'Lido',          monthly:80000,  saturday:1200}
+};
+const TARGET_SITE_ORDER = Object.keys(TARGET_SITE_DEFAULTS);
+function targetWorkshopSites(){
+  const seen=new Set();
+  return (state.config.sites||[]).map(site=>({site,key:bonusSiteKey(site.name)})).filter(x=>{
+    if(!x.key || !TARGET_SITE_DEFAULTS[x.key] || isFillingStationSite(x.site.id) || seen.has(x.key)) return false;
+    seen.add(x.key); return true;
+  }).sort((a,b)=>TARGET_SITE_ORDER.indexOf(a.key)-TARGET_SITE_ORDER.indexOf(b.key));
+}
+function targetSiteInfo(siteId){ return targetWorkshopSites().find(x=>String(x.site.id)===String(siteId))||null; }
+function targetMonthLabel(month){
+  if(!/^\d{4}-\d{2}$/.test(String(month||''))) return String(month||'');
+  return new Date(month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+}
+function targetDateAt(year,month,day){ return new Date(year,month,day,12,0,0,0); }
+function targetNthWeekday(year,month,weekday,n){
+  const d=targetDateAt(year,month,1);
+  d.setDate(1+((7+weekday-d.getDay())%7)+((n-1)*7));
+  return d;
+}
+function targetLastWeekday(year,month,weekday){
+  const d=targetDateAt(year,month+1,0);
+  d.setDate(d.getDate()-((7+d.getDay()-weekday)%7));
+  return d;
+}
+function targetEasterSunday(year){
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4;
+  const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30;
+  const i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31)-1, day=((h+l-7*m+114)%31)+1;
+  return targetDateAt(year,month,day);
+}
+function targetBankHolidaySet(year){
+  const out=new Set((state.config.bankHolidays||[]).filter(x=>String(x).startsWith(year+'-')));
+  const add=d=>out.add(iso(d));
+  const newYear=targetDateAt(year,0,1);
+  if(newYear.getDay()===6) add(targetDateAt(year,0,3));
+  else if(newYear.getDay()===0) add(targetDateAt(year,0,2));
+  else add(newYear);
+  const easter=targetEasterSunday(year);
+  const goodFriday=new Date(easter); goodFriday.setDate(easter.getDate()-2); add(goodFriday);
+  const easterMonday=new Date(easter); easterMonday.setDate(easter.getDate()+1); add(easterMonday);
+  add(targetNthWeekday(year,4,1,1));
+  add(targetLastWeekday(year,4,1));
+  add(targetLastWeekday(year,7,1));
+  const christmas=[targetDateAt(year,11,25),targetDateAt(year,11,26)];
+  christmas.forEach(d=>{ if(d.getDay()!==0&&d.getDay()!==6) add(d); });
+  christmas.forEach(d=>{
+    if(d.getDay()!==0&&d.getDay()!==6) return;
+    let observed=targetDateAt(year,11,27);
+    while(observed.getDay()===0||observed.getDay()===6||out.has(iso(observed))) observed.setDate(observed.getDate()+1);
+    add(observed);
+  });
+  return out;
+}
+function targetRound(value,unit){
+  const n=Number(value||0), u=Math.max(1,Number(unit||10));
+  return Math.max(0,Math.round(n/u)*u);
+}
+function targetDefaultSaturday(key,monthly,site,unit){
+  if(site.noSaturday) return 0;
+  const d=TARGET_SITE_DEFAULTS[key]||{monthly:1,saturday:0};
+  return targetRound((Number(monthly||0)*d.saturday)/d.monthly,Math.max(100,Number(unit||10)));
+}
+function targetBuildSitePlan(month,site,key,monthlyInput,saturdayInput,roundTo,oldSite){
+  const [year,monthNumber]=month.split('-').map(Number), monthIndex=monthNumber-1;
+  const bankHolidays=targetBankHolidaySet(year), lastDay=new Date(year,monthNumber,0).getDate();
+  const monthlyTarget=targetRound(monthlyInput,roundTo);
+  const saturdayTarget=site.noSaturday?0:targetRound(saturdayInput,roundTo);
+  const days=[];
+  for(let day=1;day<=lastDay;day++){
+    const date=targetDateAt(year,monthIndex,day), dateStr=iso(date), dow=date.getDay();
+    const bankHoliday=bankHolidays.has(dateStr), sunday=dow===0, saturday=dow===6;
+    const open=!bankHoliday&&!sunday&&!(saturday&&site.noSaturday);
+    const oldDay=(oldSite&&oldSite.days||[]).find(x=>x.date===dateStr)||{};
+    days.push({date:dateStr,dow,open,bankHoliday,saturday,target:open?(saturday?saturdayTarget:0):null,actual:oldDay.actual??''});
+  }
+  const weekdays=days.filter(d=>d.open&&!d.saturday), saturdays=days.filter(d=>d.open&&d.saturday);
+  const saturdayTotal=saturdays.length*saturdayTarget;
+  if(monthlyTarget<saturdayTotal) throw new Error(`${TARGET_SITE_DEFAULTS[key].label}: Saturday targets exceed the monthly target.`);
+  if(!weekdays.length && monthlyTarget!==saturdayTotal) throw new Error(`${TARGET_SITE_DEFAULTS[key].label}: no weekday opening days are available.`);
+  if(weekdays.length){
+    const weekdayTotal=monthlyTarget-saturdayTotal;
+    const base=targetRound(weekdayTotal/weekdays.length,roundTo);
+    weekdays.forEach(d=>{ d.target=base; });
+    let steps=Math.round((weekdayTotal-(base*weekdays.length))/roundTo);
+    const direction=steps<0?-1:1; steps=Math.abs(steps);
+    for(let i=0;i<steps;i++){
+      const idx=steps<=weekdays.length?Math.floor((i*weekdays.length)/steps):(i%weekdays.length);
+      weekdays[idx].target=Math.max(0,weekdays[idx].target+(direction*roundTo));
+    }
+  }
+  const calculated=days.reduce((n,d)=>n+(Number(d.target)||0),0);
+  if(Math.abs(calculated-monthlyTarget)>0.001) throw new Error(`${TARGET_SITE_DEFAULTS[key].label}: daily figures do not reconcile to the monthly target.`);
+  return {siteId:site.id,siteKey:key,label:TARGET_SITE_DEFAULTS[key].label,monthlyTarget,saturdayTarget,roundTo,days,openingDays:days.filter(d=>d.open).length,bankHolidayDates:days.filter(d=>d.bankHoliday).map(d=>d.date)};
+}
+function targetMonthPlan(month){ return state.targetSheets&&state.targetSheets[month] ? state.targetSheets[month] : null; }
+function targetMoney(value,decimals=0){
+  const n=Number(value||0);
+  return '£'+(Number.isFinite(n)?n:0).toLocaleString('en-GB',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
+}
+function targetSetupPanel(month,plan){
+  if(state.admin.role!=='super') return '';
+  const roundTo=Number(plan?.roundTo||10);
+  const cards=targetWorkshopSites().map(({site,key})=>{
+    const current=plan?.sites?.[site.id], def=TARGET_SITE_DEFAULTS[key];
+    const monthly=current?.monthlyTarget??def.monthly;
+    const saturday=site.noSaturday?0:(current?.saturdayTarget??targetDefaultSaturday(key,monthly,site,roundTo));
+    return `<div style="border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--panel-2);">
+      <div style="font-weight:700;margin-bottom:7px;">${salesHtml(def.label)}</div>
+      <label style="font-size:10px;color:var(--muted);display:block;">Monthly target<input type="number" step="${roundTo}" min="0" data-target-monthly="${salesHtml(site.id)}" value="${monthly}" style="margin-top:3px;width:100%;"></label>
+      <label style="font-size:10px;color:var(--muted);display:block;margin-top:7px;">Saturday target<input type="number" step="${roundTo}" min="0" data-target-saturday="${salesHtml(site.id)}" value="${saturday}" style="margin-top:3px;width:100%;" ${site.noSaturday?'disabled':''}></label>
+      ${site.noSaturday?'<div style="font-size:10px;color:var(--muted-2);margin-top:5px;">Closed Saturdays</div>':''}
+    </div>`;
+  }).join('');
+  return `<div class="card no-print" style="margin-top:14px;">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap;"><div><b>Set monthly targets</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">Saturday figures are suggested from the supplied workbook and remain editable.</div></div>
+    <label style="font-size:10px;color:var(--muted);">Round daily figures to<select id="target-round-to" style="width:auto;margin-left:7px;"><option value="10" ${roundTo===10?'selected':''}>£10</option><option value="50" ${roundTo===50?'selected':''}>£50</option><option value="100" ${roundTo===100?'selected':''}>£100</option></select></label></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px;margin-top:12px;">${cards}</div>
+    <button type="button" class="add-btn" data-action="target-generate" style="margin-top:12px;">${plan?'Recalculate target sheets':'Calculate target sheets'}</button>
+  </div>`;
+}
+function targetSiteSheet(sitePlan,isSuper){
+  let running=0;
+  const rows=(sitePlan.days||[]).map(day=>{
+    const date=fromIso(day.date), dayLabel=date.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    if(!day.open){
+      return `<tr style="color:#777;background:#f3f3f3;"><td>${dayLabel}</td><td colspan="4" style="text-align:left;">${day.bankHoliday?'Bank holiday':'Closed'}</td></tr>`;
+    }
+    const hasActual=day.actual!==''&&day.actual!==null&&day.actual!==undefined;
+    const actual=hasActual?Number(day.actual):0, variance=hasActual?actual-Number(day.target||0):null;
+    if(hasActual) running+=variance;
+    const targetCell=isSuper
+      ? `<input type="number" step="${sitePlan.roundTo||10}" min="0" data-target-day-site="${salesHtml(sitePlan.siteId)}" data-target-day-date="${day.date}" value="${Number(day.target||0)}" style="width:105px;text-align:right;">`
+      : `<b>${targetMoney(day.target)}</b>`;
+    return `<tr><td>${dayLabel}${day.saturday?' <span style="font-size:9px;color:#8a5a00;">SAT</span>':''}</td><td>${targetCell}</td><td><input type="number" inputmode="decimal" step="0.01" min="0" data-target-actual-site="${salesHtml(sitePlan.siteId)}" data-target-actual-date="${day.date}" value="${hasActual?salesHtml(day.actual):''}" style="width:115px;text-align:right;"></td><td style="font-weight:700;color:${variance==null?'#777':variance>=0?'#12824c':'#b3261e'};">${variance==null?'—':(variance>=0?'+':'−')+targetMoney(Math.abs(variance),2)}</td><td style="font-weight:700;color:${hasActual?(running>=0?'#12824c':'#b3261e'):'#777'};">${hasActual?(running>=0?'+':'−')+targetMoney(Math.abs(running),2):'—'}</td></tr>`;
+  }).join('');
+  const filled=(sitePlan.days||[]).filter(d=>d.open&&d.actual!==''&&d.actual!==null&&d.actual!==undefined);
+  const actualTotal=filled.reduce((n,d)=>n+Number(d.actual||0),0), targetToDate=filled.reduce((n,d)=>n+Number(d.target||0),0);
+  return `<div class="att-sheet" id="target-site-${salesHtml(sitePlan.siteId)}">
+    <div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — ${salesHtml(sitePlan.label).toUpperCase()}</span></div>
+    <div class="att-meta-row"><span>${salesHtml(targetMonthLabel(sitePlan.month||state.admin.targetMonth))}</span><span class="site-tag">TARGET ${targetMoney(sitePlan.monthlyTarget)}</span></div>
+    <div style="padding:8px 10px;font-size:11px;border-bottom:1px solid #bbb;display:flex;gap:18px;flex-wrap:wrap;"><span><b>${sitePlan.openingDays}</b> opening days</span><span>Saturday target <b>${sitePlan.saturdayTarget?targetMoney(sitePlan.saturdayTarget):'Closed'}</b></span><span>Actual entered <b>${filled.length}/${(sitePlan.days||[]).filter(d=>d.open).length}</b></span><span>Actual to date <b>${targetMoney(actualTotal,2)}</b></span><span>Target for entered days <b>${targetMoney(targetToDate)}</b></span></div>
+    <div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Date</th><th>Target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+function targetGroupSheet(plan){
+  const sitePlans=Object.values(plan.sites||{}), byDate={};
+  sitePlans.forEach(s=>(s.days||[]).forEach(d=>{
+    const row=byDate[d.date]||(byDate[d.date]={date:d.date,target:0,actual:0,open:0,filled:0});
+    if(d.open){ row.open++; row.target+=Number(d.target||0); if(d.actual!==''&&d.actual!==null&&d.actual!==undefined){row.filled++;row.actual+=Number(d.actual||0);} }
+  }));
+  let running=0;
+  const rows=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).map(d=>{
+    const dt=fromIso(d.date), label=dt.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+    if(!d.open) return `<tr style="color:#777;background:#f3f3f3;"><td>${label}</td><td colspan="4" style="text-align:left;">All workshops closed</td></tr>`;
+    const complete=d.filled===d.open, variance=complete?d.actual-d.target:null;
+    if(complete) running+=variance;
+    return `<tr><td style="text-align:left;">${label}</td><td>${targetMoney(d.target)}</td><td>${d.filled?targetMoney(d.actual,2):'—'}<div style="font-size:9px;color:#777;">${d.filled}/${d.open} sites</div></td><td>${complete?(variance>=0?'+':'−')+targetMoney(Math.abs(variance),2):'—'}</td><td>${complete?(running>=0?'+':'−')+targetMoney(Math.abs(running),2):'—'}</td></tr>`;
+  }).join('');
+  const groupTarget=sitePlans.reduce((n,s)=>n+Number(s.monthlyTarget||0),0);
+  const summary=sitePlans.map(s=>{
+    const filled=(s.days||[]).filter(d=>d.open&&d.actual!==''&&d.actual!==null&&d.actual!==undefined);
+    const actual=filled.reduce((n,d)=>n+Number(d.actual||0),0), due=filled.reduce((n,d)=>n+Number(d.target||0),0), variance=actual-due;
+    return `<tr><td style="text-align:left;font-weight:700;">${salesHtml(s.label)}</td><td>${targetMoney(s.monthlyTarget)}</td><td>${targetMoney(actual,2)}</td><td>${filled.length}/${(s.days||[]).filter(d=>d.open).length}</td><td style="color:${variance>=0?'#12824c':'#b3261e'};">${filled.length?(variance>=0?'+':'−')+targetMoney(Math.abs(variance),2):'—'}</td></tr>`;
+  }).join('');
+  return `<div class="att-sheet" id="target-group-output"><div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — GROUP</span></div><div class="att-meta-row"><span>${salesHtml(targetMonthLabel(plan.month))}</span><span class="site-tag">TARGET ${targetMoney(groupTarget)}</span></div><div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Site</th><th>Monthly target</th><th>Actual entered</th><th>Days entered</th><th>Variance to date</th></tr></thead><tbody>${summary}</tbody></table><table class="att-table" style="margin-top:12px;"><thead><tr><th style="text-align:left;">Date</th><th>Group target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+function renderAdminTargets(){
+  const isSuper=state.admin.role==='super', month=state.admin.targetMonth||new Date().toISOString().slice(0,7), plan=targetMonthPlan(month);
+  const workshopSites=targetWorkshopSites();
+  const allowed=workshopSites.some(x=>isSuper||String(x.site.id)===String(state.admin.scopeSite));
+  if(!allowed) return '<h2>Monthly Targets</h2><div class="card">No workshop target sheet is assigned to this account.</div>';
+  let selected=isSuper?(state.admin.targetSite||'all'):String(state.admin.scopeSite);
+  if(selected!=='all'&&!workshopSites.some(x=>String(x.site.id)===String(selected))) selected=isSuper?'all':String(state.admin.scopeSite);
+  const options='<option value="all" '+(selected==='all'?'selected':'')+'>Group</option>'+workshopSites.map(x=>`<option value="${salesHtml(x.site.id)}" ${String(selected)===String(x.site.id)?'selected':''}>${salesHtml(TARGET_SITE_DEFAULTS[x.key].label)}</option>`).join('');
+  const setup=targetSetupPanel(month,plan);
+  if(!plan){
+    return `<h2>Monthly Targets</h2><div class="head-sub">Create the site target sheets from the correct opening days for the selected month.</div><div class="cal-toolbar no-print"><label>Month <input id="target-month" type="month" value="${month}"></label></div>${setup}${isSuper?'':'<div class="card">Upper Management has not issued this month’s target sheet yet.</div>'}`;
+  }
+  const visibleSite=selected==='all'?null:plan.sites?.[selected];
+  const output=selected==='all'?targetGroupSheet(plan):(visibleSite?targetSiteSheet(Object.assign({month},visibleSite),isSuper):'<div class="empty-state">This site has no target sheet for the selected month.</div>');
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;"><div><h2 style="margin-bottom:4px;">Monthly Targets</h2><div style="font-size:12px;color:var(--muted);">Targets reconcile exactly to each site’s monthly figure.</div></div><div class="no-print" style="display:flex;gap:7px;flex-wrap:wrap;"><button type="button" class="add-btn" data-action="target-save">Save figures</button>${selected==='all'?'<button type="button" class="add-btn secondary" data-action="target-group-print">Print group</button><button type="button" class="add-btn secondary" data-action="target-group-download">Download group</button>':`<button type="button" class="add-btn secondary" data-action="target-site-print" data-site="${salesHtml(selected)}">Print site</button><button type="button" class="add-btn secondary" data-action="target-site-download" data-site="${salesHtml(selected)}">Download site</button>`}</div></div>
+  <div class="cal-toolbar no-print" style="margin-top:14px;"><label>Month <input id="target-month" type="month" value="${month}"></label>${isSuper?`<label>View <select id="target-site-filter">${options}</select></label>`:''}<span style="margin-left:auto;font-size:11px;color:var(--muted);">Updated ${plan.updatedAt?fmtTime(plan.updatedAt):'—'}</span></div>${setup}<div id="target-sheet-output">${output}</div>`;
+}
 function bonusMoney(v){
   const n=Number(v||0);
   return Number.isFinite(n) ? '£'+n.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}) : '£0.00';
@@ -2954,7 +3154,7 @@ function renderAdmin(){
   const isSuper = state.admin.role==='super';
   const requestNoticeCount = holidayRequestsNeedingAttention().length;
   const tabs = isSuper ? [
-    ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['sales','Live Sales'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['employees','Employees'],
+    ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['sales','Live Sales'],['targets','Targets'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['employees','Employees'],
     ['contacts','Contacts'],['passwords','Passwords'],['managers','Managers'],['sites','Sites'],['bankholidays','Bank Holidays'],['clocklog','Clock Log'],['settings','Settings']
   ] : [
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['contacts','Contacts'],['clocklog','Clock Log'],['settings','My account']
@@ -2964,6 +3164,7 @@ function renderAdmin(){
   if(isTonyLogin()) tabs.splice(4,0,['analysis','Sales Analysis']);
   if(isTonyLogin()) tabs.splice(5,0,['salesvs','Sales VS']);
   if(!isSuper && !isFillingStationSite(state.admin.scopeSite)) tabs.splice(3,0,['sales','Live Sales']);
+  if(!isSuper && !isFillingStationSite(state.admin.scopeSite) && targetSiteInfo(state.admin.scopeSite)) tabs.splice(4,0,['targets','Targets']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
     return `${topstrip()}
@@ -2998,6 +3199,7 @@ function renderAdmin(){
       (async ()=>{ state.admin._loadingSales=false; await loadSalesData(false); render(); })();
     }
   }
+  else if(state.admin.tab==='targets') body = renderAdminTargets();
   else if(state.admin.tab==='stock'){
     body = renderAdminStock();
     if(state.admin.stockRows===null && !state.admin._loadingStock){
@@ -4776,6 +4978,15 @@ function attachHandlers(){
   const bonusSiteFilter = document.getElementById('bonus-site-filter');
   if(bonusSiteFilter) bonusSiteFilter.addEventListener('change', ()=>{ state.admin.bonusSite = bonusSiteFilter.value || 'all'; render(); });
 
+  const targetMonth = document.getElementById('target-month');
+  if(targetMonth) targetMonth.addEventListener('change', ()=>{
+    state.admin.targetMonth = targetMonth.value || new Date().toISOString().slice(0,7);
+    if(state.admin.role!=='super') state.admin.targetSite=String(state.admin.scopeSite||'');
+    render();
+  });
+  const targetSiteFilter = document.getElementById('target-site-filter');
+  if(targetSiteFilter) targetSiteFilter.addEventListener('change', ()=>{ state.admin.targetSite=targetSiteFilter.value||'all'; render(); });
+
   const reqSiteSel = document.getElementById('req-site-select');
   if(reqSiteSel) reqSiteSel.addEventListener('change', ()=>{ state.admin.reqSite = reqSiteSel.value; render(); });
 
@@ -5013,6 +5224,100 @@ async function onAction(e){
     const val = document.getElementById('kiosk-site-select').value;
     const ok = setKioskSite(val);
     if(ok){ state.view='home'; } else { showToast('Could not save on this device — check browser storage isn\'t blocked.', true); }
+  }
+
+  else if(action==='target-generate'){
+    if(!requireSuper()) return render();
+    const month=state.admin.targetMonth||new Date().toISOString().slice(0,7);
+    const roundTo=Math.max(10,Number((document.getElementById('target-round-to')||{}).value)||10);
+    const latest=await storageGet('targetSheets',{}), oldPlan=latest?.[month], sites={};
+    try{
+      for(const {site,key} of targetWorkshopSites()){
+        const monthlyInput=document.querySelector(`[data-target-monthly="${site.id}"]`);
+        const saturdayInput=document.querySelector(`[data-target-saturday="${site.id}"]`);
+        const monthly=Number(monthlyInput?.value||0), saturday=site.noSaturday?0:Number(saturdayInput?.value||0);
+        if(!Number.isFinite(monthly)||monthly<=0) throw new Error(`${TARGET_SITE_DEFAULTS[key].label}: enter a monthly target.`);
+        if(!Number.isFinite(saturday)||saturday<0) throw new Error(`${TARGET_SITE_DEFAULTS[key].label}: enter a valid Saturday target.`);
+        sites[site.id]=targetBuildSitePlan(month,site,key,monthly,saturday,roundTo,oldPlan?.sites?.[site.id]);
+      }
+    }catch(err){ showToast(err.message||'Could not calculate the target sheets.',true); return; }
+    state.targetSheets=latest&&typeof latest==='object'&&!Array.isArray(latest)?latest:{};
+    state.targetSheets[month]={month,roundTo,sites,updatedAt:Date.now(),updatedBy:String(_session?.email||'')};
+    if(await saveTargetSheets()) showToast('Monthly target sheets calculated and saved.');
+    else showToast('The target sheets could not be saved.',true);
+    render(); return;
+  }
+  else if(action==='target-save'){
+    const month=state.admin.targetMonth||new Date().toISOString().slice(0,7), localPlan=targetMonthPlan(month);
+    if(!localPlan){ showToast('Calculate this month’s target sheets first.',true); return; }
+    const isSuper=state.admin.role==='super', scopeId=String(state.admin.scopeSite||'');
+    if(!isSuper&&!localPlan.sites?.[scopeId]){ showToast('This target sheet is not assigned to your site.',true); return; }
+
+    const actualUpdates=[];
+    document.querySelectorAll('[data-target-actual-site][data-target-actual-date]').forEach(inp=>{
+      const raw=String(inp.value||'').trim();
+      actualUpdates.push({siteId:String(inp.dataset.targetActualSite),date:inp.dataset.targetActualDate,actual:raw===''?'':Math.max(0,Number(raw)||0)});
+    });
+    if(isSuper){
+      document.querySelectorAll('[data-target-day-site][data-target-day-date]').forEach(inp=>{
+        const sitePlan=localPlan.sites?.[inp.dataset.targetDaySite];
+        const day=sitePlan?.days?.find(d=>d.date===inp.dataset.targetDayDate);
+        if(day) day.target=targetRound(Math.max(0,Number(inp.value)||0),localPlan.roundTo||10);
+      });
+      for(const sitePlan of Object.values(localPlan.sites||{})){
+        const dailyTotal=(sitePlan.days||[]).reduce((n,d)=>n+(Number(d.target)||0),0);
+        if(Math.abs(dailyTotal-Number(sitePlan.monthlyTarget||0))>0.001){
+          showToast(`${sitePlan.label}: daily targets total ${targetMoney(dailyTotal)}, not ${targetMoney(sitePlan.monthlyTarget)}. Adjust the days before saving.`,true);
+          return;
+        }
+      }
+    }
+    const latest=await storageGet('targetSheets',{}), remotePlan=latest?.[month];
+    if(!remotePlan){ showToast('This month’s target sheet is no longer available. Refresh and try again.',true); return; }
+    if(isSuper){
+      const entered=new Set(actualUpdates.map(x=>x.siteId+'|'+x.date));
+      Object.entries(remotePlan.sites||{}).forEach(([siteId,remoteSite])=>{
+        (remoteSite.days||[]).forEach(remoteDay=>{
+          if(entered.has(String(siteId)+'|'+remoteDay.date)) return;
+          const localDay=localPlan.sites?.[siteId]?.days?.find(d=>d.date===remoteDay.date);
+          if(localDay) localDay.actual=remoteDay.actual;
+        });
+      });
+      latest[month]=localPlan;
+    }
+    const savePlan=latest[month];
+    actualUpdates.forEach(update=>{
+      if(!isSuper&&update.siteId!==scopeId) return;
+      const day=savePlan.sites?.[update.siteId]?.days?.find(d=>d.date===update.date);
+      if(day&&day.open) day.actual=update.actual;
+    });
+    savePlan.updatedAt=Date.now(); savePlan.updatedBy=String(_session?.email||'');
+    state.targetSheets=latest;
+    if(await saveTargetSheets()) showToast('Target figures saved.');
+    else showToast('The target figures could not be saved.',true);
+    render(); return;
+  }
+  else if(action==='target-group-print'){
+    if(state.admin.role!=='super'){ showToast('Group targets are for Upper Management.',true); return; }
+    const month=state.admin.targetMonth||new Date().toISOString().slice(0,7);
+    printSelectedReport('#target-group-output','Monthly Group Target '+month,'portrait'); return;
+  }
+  else if(action==='target-group-download'){
+    if(state.admin.role!=='super'){ showToast('Group targets are for Upper Management.',true); return; }
+    const month=state.admin.targetMonth||new Date().toISOString().slice(0,7);
+    downloadSelectedReport('#target-group-output','Monthly Group Target '+month,`monthly-target-group-${month}.html`,'portrait'); return;
+  }
+  else if(action==='target-site-print'){
+    const siteId=String(e.currentTarget.dataset.site||''), site=targetSiteInfo(siteId);
+    if(!site||(state.admin.role!=='super'&&siteId!==String(state.admin.scopeSite||''))){ showToast('That site target sheet is not available.',true); return; }
+    const month=state.admin.targetMonth||new Date().toISOString().slice(0,7);
+    printSelectedReport('#target-site-'+siteId,site.label+' Monthly Target '+month,'portrait'); return;
+  }
+  else if(action==='target-site-download'){
+    const siteId=String(e.currentTarget.dataset.site||''), site=targetSiteInfo(siteId);
+    if(!site||(state.admin.role!=='super'&&siteId!==String(state.admin.scopeSite||''))){ showToast('That site target sheet is not available.',true); return; }
+    const month=state.admin.targetMonth||new Date().toISOString().slice(0,7);
+    downloadSelectedReport('#target-site-'+siteId,site.label+' Monthly Target '+month,`monthly-target-${site.key}-${month}.html`,'portrait'); return;
   }
 
   else if(action==='save-bonus'){

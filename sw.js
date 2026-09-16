@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v6';
+const CACHE='neas-shift-board-shell-v7';
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png'];
 self.addEventListener('install',event=>{
   self.skipWaiting();

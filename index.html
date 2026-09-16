@@ -276,6 +276,7 @@
   .att-table td.att-name{text-align:left;font-weight:700;white-space:nowrap;}
   .att-table td.att-empty-row td{height:24px;}
   .att-hol{font-style:italic;color:#555;}
+  .att-pending-hol{display:inline-block;margin-left:3px;color:#b36b00;font-weight:700;font-style:normal;}
   .abs-select{width:100%;border:1px solid #ccc;background:#fff;color:#000;font-family:inherit;font-size:11px;padding:2px;border-radius:2px;}
   .hrs-input{width:100%;border:1px solid #bbb;background:#fff;color:#000;font-family:inherit;font-size:12px;text-align:center;padding:3px;border-radius:2px;}
   .hrs-input::placeholder{color:#bbb;}
@@ -944,6 +945,7 @@ function timesheetRowsForWeek(weekIso){
         const dateStr = iso(d);
         const dow = d.getDay();
         const isHol = holDates.has(dateStr) && !isVisitor;
+        const pendingHol = !isHol && !isVisitor ? pendingHolidayFor(emp.id,dateStr) : null;
         const holAmt = isHol ? (holDates.get(dateStr)||1) : 0;
         const dayShifts = empData.shifts.filter(s=>s.date===dateStr).sort((a,b)=>a.inTs-b.inTs);
         let computed = 0;
@@ -956,7 +958,8 @@ function timesheetRowsForWeek(weekIso){
         if(!sevenDay && i===5) satHours += hours; else weekTotal += hours;
         const abs = absenceFor(emp.id, dateStr);
         if(isHol) { anyActivity = true; return isHourly(emp) ? formatTimesheetHours(holAmt)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
-        if(hours>0){ anyActivity = true; return formatTimesheetHours(hours) + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
+        if(hours>0){ anyActivity = true; return formatTimesheetHours(hours) + (pendingHol ? ' ⏳' : '') + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
+        if(pendingHol){ anyActivity = true; return '⏳ Pending'; }
         if(abs){ anyActivity = true; return abs.type; }
         return '';
       });
@@ -3698,6 +3701,7 @@ function renderAdminTimesheets(){
       const dayCells = days.map((d,i)=>{
         const dateStr = iso(d);
         const isHol = holDates.has(dateStr) && !isVisitor; // holiday only marked on home sheet
+        const pendingHol = !isHol && !isVisitor ? pendingHolidayFor(emp.id,dateStr) : null;
         const holAmt = isHol ? (holDates.get(dateStr)||1) : 0;
         const dayShifts = empData.shifts
           .filter(s=>s.date===dateStr)
@@ -3758,9 +3762,10 @@ function renderAdminTimesheets(){
           content = hrsBox + absBox;
         }
         else content = '';
+        const pendingMark = pendingHol ? `<span class="att-pending-hol" title="Holiday requested — awaiting approval">⏳</span>` : '';
         const awayNote = awayAt.length ? 'Worked at ' + [...new Set(awayAt.map(siteName))].join(', ') + ' this day. ' : '';
         const awayMark = awayAt.length ? `<span title="Worked at ${[...new Set(awayAt.map(siteName))].join(', ')}" style="color:#6b4fc9;font-size:9px;vertical-align:super;">△</span>` : '';
-        return `<td title="${(dow===0 && !sevenDay && dayHours>0) ? 'Closed — but a clock event exists this day, worth checking. ' : ''}${awayNote}${hasAutoClosed ? 'Never clocked out — automatically closed at the applicable site cut-off. Correct it here if wrong. ' : ''}${dayShifts.some(s=>s.managerEntered) ? 'Time entered or corrected by a manager. ' : ''}${dayShifts.map(s=>timeOnly(s.inTs)+'–'+timeOnly(s.outTs)+(s.autoClosed?' (auto)':'')).join(', ')}">${content}${awayMark}</td>`;
+        return `<td title="${pendingHol ? 'Holiday requested — awaiting approval. ' : ''}${(dow===0 && !sevenDay && dayHours>0) ? 'Closed — but a clock event exists this day, worth checking. ' : ''}${awayNote}${hasAutoClosed ? 'Never clocked out — automatically closed at the applicable site cut-off. Correct it here if wrong. ' : ''}${dayShifts.some(s=>s.managerEntered) ? 'Time entered or corrected by a manager. ' : ''}${dayShifts.map(s=>timeOnly(s.inTs)+'–'+timeOnly(s.outTs)+(s.autoClosed?' (auto)':'')).join(', ')}">${content}${pendingMark}${awayMark}</td>`;
       }).join('');
 
       const overtimeVal = empExtras.overtime !== undefined && empExtras.overtime !== '' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : '');
@@ -3808,7 +3813,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. Paid hours are rounded to the closest 15 minutes and shown to two decimal places (for example 7.50, 7.75 or 8.00). The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Paid hours are rounded to the closest 15 minutes and shown to two decimal places (for example 7.50, 7.75 or 8.00). The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>

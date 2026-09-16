@@ -786,7 +786,7 @@ const state = {
   bonusSheets: {},
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false, _loadingStock:false, _loadingAnalysis:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false, _loadingStock:false, _loadingAnalysis:false },
 };
 
 function isTonyLogin(){
@@ -2414,7 +2414,7 @@ async function loadSalesAnalysis(force){
   state.admin.analysisError=null;
   try{
     const headers=await authHeaders();
-    const url=SUPABASE_URL + '/rest/v1/site_sales_analysis_monthly?select=*&order=month_start.desc,site_name.asc&limit=500';
+    const url=SUPABASE_URL + '/rest/v1/site_sales_analysis_monthly?select=*&order=month_start.desc,site_name.asc&limit=2000';
     const res=await fetch(url,{headers});
     if(!res.ok) throw new Error('Sales analysis '+res.status);
     const rows=await res.json();
@@ -2439,8 +2439,8 @@ function downloadSalesAnalysisCsv(){
   if(!isTonyLogin()) return;
   const rows=salesAnalysisVisibleRows();
   if(!rows.length){ showToast('No sales analysis figures to download.',true); return; }
-  const headers=['Month','As of','Site','A/C New & Old','Diagnostics','BFC','Coolant','Pollen','Cons','Tracking','NET Sales','Margin %','NET Upsell Value'];
-  const body=rows.map(r=>[r.month_start,r.as_of,r.site_name,r.ac,r.diag,r.bfc,r.coolant,r.pollen,r.cons,r.tracking,r.total_net,r.margin_pct,r.upsell_value].map(salesCsvCell).join(','));
+  const headers=['Month','As of','Site','A/C New & Old','Diagnostics','BFC','Coolant','Pollen','Box Oil','Cons','Tracking','NET Sales','Margin %','NET Upsell Value'];
+  const body=rows.map(r=>[r.month_start,r.as_of,r.site_name,r.ac,r.diag,r.bfc,r.coolant,r.pollen,r.box_oil,r.cons,r.tracking,r.total_net,r.margin_pct,r.upsell_value].map(salesCsvCell).join(','));
   const csv='\uFEFF'+[headers.map(salesCsvCell).join(','),...body].join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob), a=document.createElement('a');
@@ -2461,17 +2461,19 @@ function renderAdminSalesAnalysis(){
   const rows=monthRows.filter(r=>site==='all'||String(r.site_key)===site);
   const monthOptions=months.map(m=>`<option value="${salesHtml(m)}" ${m===month?'selected':''}>${salesHtml(salesAnalysisMonthLabel(m))}</option>`).join('');
   const siteOptions='<option value="all" '+(site==='all'?'selected':'')+'>All sites</option>'+monthRows.map(r=>`<option value="${salesHtml(r.site_key)}" ${site===String(r.site_key)?'selected':''}>${salesHtml(r.site_name)}</option>`).join('');
-  const total=k=>rows.reduce((n,r)=>n+salesNum(r[k]),0);
+  const values=k=>rows.map(r=>r[k]).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number).filter(Number.isFinite);
+  const total=k=>values(k).reduce((n,v)=>n+v,0);
+  const has=k=>values(k).length>0;
   const totalSales=total('total_net'), upsell=total('upsell_value');
   const weightedMargin=totalSales ? rows.reduce((n,r)=>n+(salesNum(r.total_net)*salesNum(r.margin_pct)),0)/totalSales : null;
   const latestAsOf=rows.map(r=>String(r.as_of||'')).sort().pop()||'';
   const isCurrent=rows.some(r=>r.source==='nightly');
   const metrics=[
-    ['A/C New & Old','ac','count'],['Diagnostics','diag','count'],['BFC','bfc','count'],['Coolant','coolant','count'],['Pollen','pollen','count'],['Cons','cons','count'],['Tracking','tracking','count'],
+    ['A/C New & Old','ac','count'],['Diagnostics','diag','count'],['BFC','bfc','count'],['Coolant','coolant','count'],['Pollen','pollen','count'],['Box Oil','box_oil','count'],['Cons','cons','count'],['Tracking','tracking','count'],
     ['NET Sales','total_net','money'],['Margin','margin_pct','percent'],['NET Upsell Value','upsell_value','money']
-  ];
-  const value=(r,key,type)=>type==='money'?salesMoney(r[key]):type==='percent'?salesPct(r[key]):salesNum(r[key]);
-  const groupValue=(key,type)=>type==='percent'?salesPct(weightedMargin):type==='money'?salesMoney(total(key)):salesNum(total(key));
+  ].filter(([,key])=>has(key));
+  const value=(r,key,type)=>r[key]===null||r[key]===undefined||r[key]===''?'—':type==='money'?salesMoney(r[key]):type==='percent'?salesPct(r[key]):salesNum(r[key]);
+  const groupValue=(key,type)=>!has(key)?'—':type==='percent'?salesPct(weightedMargin):type==='money'?salesMoney(total(key)):salesNum(total(key));
   const tableRows=metrics.map(([label,key,type])=>`<tr><td style="position:sticky;left:0;background:var(--panel);font-weight:700;white-space:nowrap;">${salesHtml(label)}</td>${rows.map(r=>`<td class="mono" style="text-align:right;white-space:nowrap;">${value(r,key,type)}</td>`).join('')}${site==='all'?`<td class="mono" style="text-align:right;font-weight:800;background:var(--panel-2);white-space:nowrap;">${groupValue(key,type)}</td>`:''}</tr>`).join('');
   const title=salesAnalysisMonthLabel(month);
   return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
@@ -2491,7 +2493,116 @@ function renderAdminSalesAnalysis(){
     </div>
     <div class="card" style="padding:0;overflow:auto;max-width:100%;"><table style="min-width:${Math.max(620,230+(rows.length+(site==='all'?1:0))*145)}px;margin:0;"><thead><tr><th style="position:sticky;left:0;background:var(--panel-2);z-index:2;">Measure</th>${rows.map(r=>`<th style="text-align:right;">${salesHtml(r.site_name)}</th>`).join('')}${site==='all'?'<th style="text-align:right;">NEAS Group</th>':''}</tr></thead><tbody>${tableRows}</tbody></table></div>
   </div>
-  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Private to Tony. Historical January–August 2026 figures came from the supplied workbook; September onward refreshes with the nightly sales run.</div>`;
+  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Private to Tony. Historical 2021–2026 figures came from the supplied workbook; the current month refreshes with the nightly sales run. A dash means that measure was not recorded in that year’s workbook layout.</div>`;
+}
+
+/* ---------- TONY-ONLY SALES VS COMPARISON ---------- */
+function analysisSumNullable(rows,key){
+  const values=(rows||[]).map(r=>r?.[key]).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number).filter(Number.isFinite);
+  return values.length?values.reduce((n,v)=>n+v,0):null;
+}
+function analysisAggregate(rows){
+  const grouped={};
+  (rows||[]).forEach(r=>{
+    const key=String(r.site_key||'');
+    if(!key) return;
+    (grouped[key]||(grouped[key]=[])).push(r);
+  });
+  return Object.entries(grouped).map(([site_key,list])=>{
+    const totalNet=analysisSumNullable(list,'total_net');
+    const weighted=list.filter(r=>r.margin_pct!==null&&r.margin_pct!==undefined&&Number(r.total_net)>0);
+    const weight=weighted.reduce((n,r)=>n+Number(r.total_net),0);
+    return {
+      site_key, site_name:list[0]?.site_name||site_key,
+      ac:analysisSumNullable(list,'ac'), diag:analysisSumNullable(list,'diag'), bfc:analysisSumNullable(list,'bfc'),
+      coolant:analysisSumNullable(list,'coolant'), pollen:analysisSumNullable(list,'pollen'), box_oil:analysisSumNullable(list,'box_oil'),
+      cons:analysisSumNullable(list,'cons'), tracking:analysisSumNullable(list,'tracking'),
+      total_net:totalNet, upsell_value:analysisSumNullable(list,'upsell_value'),
+      margin_pct:weight?weighted.reduce((n,r)=>n+(Number(r.total_net)*Number(r.margin_pct)),0)/weight:null,
+      as_of:list.map(r=>String(r.as_of||'')).sort().pop()||''
+    };
+  }).sort((a,b)=>String(a.site_name).localeCompare(String(b.site_name)));
+}
+function salesVsData(){
+  const all=state.admin.analysisRows||[];
+  const mode=state.admin.vsMode==='year'?'year':'month';
+  const periods=[...new Set(all.map(r=>mode==='year'?String(r.month_start).slice(0,4):String(r.month_start).slice(0,7)))].sort().reverse();
+  if(!periods.includes(state.admin.vsA)) state.admin.vsA=periods[0]||'';
+  if(!periods.includes(state.admin.vsB) || state.admin.vsB===state.admin.vsA){
+    const prior=mode==='year'
+      ? String(Number(state.admin.vsA)-1)
+      : String(Number(state.admin.vsA.slice(0,4))-1)+'-'+state.admin.vsA.slice(5,7);
+    state.admin.vsB=periods.includes(prior)?prior:(periods.find(p=>p!==state.admin.vsA)||'');
+  }
+  const match=(r,p)=>mode==='year'?String(r.month_start).slice(0,4)===p:String(r.month_start).slice(0,7)===p;
+  const a=analysisAggregate(all.filter(r=>match(r,state.admin.vsA)));
+  const b=analysisAggregate(all.filter(r=>match(r,state.admin.vsB)));
+  const mapA=Object.fromEntries(a.map(r=>[r.site_key,r])), mapB=Object.fromEntries(b.map(r=>[r.site_key,r]));
+  const keys=[...new Set([...a,...b].map(r=>r.site_key))].sort((x,y)=>String(mapA[x]?.site_name||mapB[x]?.site_name).localeCompare(String(mapA[y]?.site_name||mapB[y]?.site_name)));
+  const site=state.admin.vsSite||'all';
+  const visible=keys.filter(k=>site==='all'||k===site).map(k=>({site_key:k,site_name:mapA[k]?.site_name||mapB[k]?.site_name||k,a:mapA[k]||null,b:mapB[k]||null}));
+  return {all,mode,periods,a,b,mapA,mapB,keys,site,visible};
+}
+function salesVsLabel(period,mode){ return mode==='year'?period:salesAnalysisMonthLabel(period); }
+function salesVsNumber(v,type){
+  if(v===null||v===undefined||v===''||!Number.isFinite(Number(v))) return '—';
+  return type==='money'?salesMoney(v):type==='percent'?salesPct(v):salesNum(v);
+}
+function salesVsDifference(a,b,type){
+  if(a===null||a===undefined||b===null||b===undefined||!Number.isFinite(Number(a))||!Number.isFinite(Number(b))) return '—';
+  const d=Number(a)-Number(b), sign=d>0?'+':d<0?'−':'';
+  const shown=type==='money'?salesMoney(Math.abs(d)):type==='percent'?Math.abs(d).toFixed(2)+' pts':salesNum(Math.abs(d));
+  return sign+shown;
+}
+function salesVsSummary(rows,key){ return analysisSumNullable((rows||[]).map(x=>x?.[key]?x:{[key]:x?.[key]}),key); }
+function salesVsWeightedMargin(rows){
+  const valid=(rows||[]).filter(r=>r&&r.margin_pct!==null&&r.total_net!==null&&Number(r.total_net)>0);
+  const total=valid.reduce((n,r)=>n+Number(r.total_net),0);
+  return total?valid.reduce((n,r)=>n+(Number(r.total_net)*Number(r.margin_pct)),0)/total:null;
+}
+function downloadSalesVsCsv(){
+  if(!isTonyLogin()) return;
+  const d=salesVsData();
+  if(!d.visible.length){ showToast('No comparison figures to download.',true); return; }
+  const aLabel=salesVsLabel(state.admin.vsA,d.mode), bLabel=salesVsLabel(state.admin.vsB,d.mode);
+  const headers=['Site',`NET Sales ${aLabel}`,`NET Sales ${bLabel}`,'Sales Difference',`Margin ${aLabel}`,`Margin ${bLabel}`,'Margin Difference (pts)',`NET Upsell ${aLabel}`,`NET Upsell ${bLabel}`,'Upsell Difference'];
+  const body=d.visible.map(x=>[x.site_name,x.a?.total_net??'',x.b?.total_net??'',x.a&&x.b?Number(x.a.total_net)-Number(x.b.total_net):'',x.a?.margin_pct??'',x.b?.margin_pct??'',x.a&&x.b?Number(x.a.margin_pct)-Number(x.b.margin_pct):'',x.a?.upsell_value??'',x.b?.upsell_value??'',x.a&&x.b?Number(x.a.upsell_value)-Number(x.b.upsell_value):''].map(salesCsvCell).join(','));
+  const csv='\uFEFF'+[headers.map(salesCsvCell).join(','),...body].join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}), url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=`NEAS-Sales-VS-${state.admin.vsA}-vs-${state.admin.vsB}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000); showToast('Sales VS comparison downloaded.');
+}
+function renderAdminSalesVs(){
+  if(!isTonyLogin()) return '<h2>Sales VS</h2><div class="card">This page is private to Tony.</div>';
+  const all=state.admin.analysisRows;
+  if(all===null||state.admin._loadingAnalysis) return '<h2>Sales VS</h2><div class="card"><div style="color:var(--muted);">Loading comparison figures…</div></div>';
+  if(!all.length) return '<h2>Sales VS</h2><div class="card">No sales history is available to compare.</div>';
+  const d=salesVsData(), aLabel=salesVsLabel(state.admin.vsA,d.mode), bLabel=salesVsLabel(state.admin.vsB,d.mode);
+  const periodOptions=value=>d.periods.map(p=>`<option value="${salesHtml(p)}" ${p===value?'selected':''}>${salesHtml(salesVsLabel(p,d.mode))}</option>`).join('');
+  const siteOptions='<option value="all" '+(d.site==='all'?'selected':'')+'>NEAS Group / all sites</option>'+d.keys.map(k=>`<option value="${salesHtml(k)}" ${d.site===k?'selected':''}>${salesHtml(d.mapA[k]?.site_name||d.mapB[k]?.site_name||k)}</option>`).join('');
+  const aRows=d.visible.map(x=>x.a).filter(Boolean), bRows=d.visible.map(x=>x.b).filter(Boolean);
+  const aSales=analysisSumNullable(aRows,'total_net'), bSales=analysisSumNullable(bRows,'total_net');
+  const aUpsell=analysisSumNullable(aRows,'upsell_value'), bUpsell=analysisSumNullable(bRows,'upsell_value');
+  const aMargin=salesVsWeightedMargin(aRows), bMargin=salesVsWeightedMargin(bRows);
+  const finRows=d.visible.map(x=>`<tr><td style="font-weight:700;white-space:nowrap;">${salesHtml(x.site_name)}</td><td class="mono">${salesVsNumber(x.a?.total_net,'money')}</td><td class="mono">${salesVsNumber(x.b?.total_net,'money')}</td><td class="mono" style="font-weight:800;">${salesVsDifference(x.a?.total_net,x.b?.total_net,'money')}</td><td class="mono">${salesVsNumber(x.a?.margin_pct,'percent')}</td><td class="mono">${salesVsNumber(x.b?.margin_pct,'percent')}</td><td class="mono">${salesVsDifference(x.a?.margin_pct,x.b?.margin_pct,'percent')}</td><td class="mono">${salesVsNumber(x.a?.upsell_value,'money')}</td><td class="mono">${salesVsNumber(x.b?.upsell_value,'money')}</td><td class="mono" style="font-weight:800;">${salesVsDifference(x.a?.upsell_value,x.b?.upsell_value,'money')}</td></tr>`).join('');
+  const routine=[['A/C New & Old','ac'],['Diagnostics','diag'],['BFC','bfc'],['Coolant','coolant'],['Pollen','pollen'],['Box Oil','box_oil'],['Cons','cons'],['Tracking','tracking']].map(([label,key])=>{
+    const av=analysisSumNullable(aRows,key), bv=analysisSumNullable(bRows,key);
+    if(av===null&&bv===null) return '';
+    return `<tr><td style="font-weight:700;">${label}</td><td class="mono">${salesVsNumber(av,'count')}</td><td class="mono">${salesVsNumber(bv,'count')}</td><td class="mono" style="font-weight:800;">${salesVsDifference(av,bv,'count')}</td></tr>`;
+  }).join('');
+  const latestA=aRows.map(r=>r.as_of).sort().pop()||'', latestB=bRows.map(r=>r.as_of).sort().pop()||'';
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;"><div><h2 style="margin-bottom:4px;">Sales VS</h2><div style="font-size:12px;color:var(--muted);">Compare months or full years from 2021 onwards.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-action="print-sales-vs">🖶 Print</button><button type="button" class="add-btn" data-action="download-sales-vs">Download</button></div></div>
+  <div class="card no-print" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-top:16px;">
+    <label style="font-size:11px;color:var(--muted);">Compare by<select id="sales-vs-mode" style="width:100%;margin-top:4px;"><option value="month" ${d.mode==='month'?'selected':''}>Month</option><option value="year" ${d.mode==='year'?'selected':''}>Full year</option></select></label>
+    <label style="font-size:11px;color:var(--muted);">First period<select id="sales-vs-a" style="width:100%;margin-top:4px;">${periodOptions(state.admin.vsA)}</select></label>
+    <label style="font-size:11px;color:var(--muted);">Compare with<select id="sales-vs-b" style="width:100%;margin-top:4px;">${periodOptions(state.admin.vsB)}</select></label>
+    <label style="font-size:11px;color:var(--muted);">View<select id="sales-vs-site" style="width:100%;margin-top:4px;">${siteOptions}</select></label>
+  </div>
+  <div id="sales-vs-output"><div class="card" style="border-left:4px solid var(--red);"><div style="font-weight:800;font-size:18px;">North East Auto Services · ${salesHtml(aLabel)} VS ${salesHtml(bLabel)}</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">First period through ${salesDateLabel(latestA)} · comparison through ${salesDateLabel(latestB)}${d.site==='all'?' · all sites':' · '+salesHtml(d.visible[0]?.site_name||'')}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px;margin-bottom:14px;"><div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">NET sales difference</div><div class="mono" style="font-size:23px;margin-top:5px;">${salesVsDifference(aSales,bSales,'money')}</div></div><div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Margin difference</div><div class="mono" style="font-size:23px;margin-top:5px;">${salesVsDifference(aMargin,bMargin,'percent')}</div></div><div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Upsell difference</div><div class="mono" style="font-size:23px;margin-top:5px;">${salesVsDifference(aUpsell,bUpsell,'money')}</div></div></div>
+    <div class="card" style="padding:0;overflow:auto;"><table style="min-width:1120px;margin:0;"><thead><tr><th>Site</th><th>Sales ${salesHtml(aLabel)}</th><th>Sales ${salesHtml(bLabel)}</th><th>Difference</th><th>Margin ${salesHtml(aLabel)}</th><th>Margin ${salesHtml(bLabel)}</th><th>Difference</th><th>Upsell ${salesHtml(aLabel)}</th><th>Upsell ${salesHtml(bLabel)}</th><th>Difference</th></tr></thead><tbody>${finRows}</tbody></table></div>
+    <div class="card" style="padding:0;overflow:auto;margin-top:14px;"><table style="min-width:650px;margin:0;"><thead><tr><th>Routine item</th><th>${salesHtml(aLabel)}</th><th>${salesHtml(bLabel)}</th><th>Difference</th></tr></thead><tbody>${routine}</tbody></table></div>
+  </div><div style="font-size:11px;color:var(--muted-2);margin-top:10px;">A positive difference means the first selected period is higher. Full-year 2026 remains year-to-date until December is complete.</div>`;
 }
 
 /* ---------- TONY-ONLY STOCK VALUE ---------- */
@@ -2779,6 +2890,7 @@ function renderAdmin(){
   if(canAccessBonusSheet()) tabs.splice(4,0,['bonus','Bonus Sheet']);
   if(isTonyLogin()) tabs.splice(4,0,['stock','Stock Value']);
   if(isTonyLogin()) tabs.splice(4,0,['analysis','Sales Analysis']);
+  if(isTonyLogin()) tabs.splice(5,0,['salesvs','Sales VS']);
   if(!isSuper && !isFillingStationSite(state.admin.scopeSite)) tabs.splice(3,0,['sales','Live Sales']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
@@ -2823,6 +2935,13 @@ function renderAdmin(){
   }
   else if(state.admin.tab==='analysis'){
     body = renderAdminSalesAnalysis();
+    if(state.admin.analysisRows===null && !state.admin._loadingAnalysis){
+      state.admin._loadingAnalysis=true;
+      (async ()=>{ state.admin._loadingAnalysis=false; await loadSalesAnalysis(false); render(); })();
+    }
+  }
+  else if(state.admin.tab==='salesvs'){
+    body = renderAdminSalesVs();
     if(state.admin.analysisRows===null && !state.admin._loadingAnalysis){
       state.admin._loadingAnalysis=true;
       (async ()=>{ state.admin._loadingAnalysis=false; await loadSalesAnalysis(false); render(); })();
@@ -4591,6 +4710,14 @@ function attachHandlers(){
   if(analysisMonth) analysisMonth.addEventListener('change', ()=>{ state.admin.analysisMonth = analysisMonth.value; state.admin.analysisSite='all'; render(); });
   const analysisSite = document.getElementById('analysis-site');
   if(analysisSite) analysisSite.addEventListener('change', ()=>{ state.admin.analysisSite = analysisSite.value || 'all'; render(); });
+  const salesVsMode = document.getElementById('sales-vs-mode');
+  if(salesVsMode) salesVsMode.addEventListener('change', ()=>{ state.admin.vsMode=salesVsMode.value==='year'?'year':'month'; state.admin.vsA=null; state.admin.vsB=null; state.admin.vsSite='all'; render(); });
+  const salesVsA = document.getElementById('sales-vs-a');
+  if(salesVsA) salesVsA.addEventListener('change', ()=>{ state.admin.vsA=salesVsA.value; render(); });
+  const salesVsB = document.getElementById('sales-vs-b');
+  if(salesVsB) salesVsB.addEventListener('change', ()=>{ state.admin.vsB=salesVsB.value; render(); });
+  const salesVsSite = document.getElementById('sales-vs-site');
+  if(salesVsSite) salesVsSite.addEventListener('change', ()=>{ state.admin.vsSite=salesVsSite.value||'all'; render(); });
 
   const bonusMonth = document.getElementById('bonus-month');
   if(bonusMonth) bonusMonth.addEventListener('change', ()=>{ state.admin.bonusMonth = bonusMonth.value || new Date().toISOString().slice(0,7); render(); });
@@ -4915,6 +5042,14 @@ async function onAction(e){
   else if(action==='download-analysis'){
     if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
     downloadSalesAnalysisCsv(); return;
+  }
+  else if(action==='print-sales-vs'){
+    if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
+    printSelectedReport('#sales-vs-output','Sales VS '+(state.admin.vsA||'')+' vs '+(state.admin.vsB||''),'landscape'); return;
+  }
+  else if(action==='download-sales-vs'){
+    if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
+    downloadSalesVsCsv(); return;
   }
   else if(action==='refresh-analysis'){
     if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }

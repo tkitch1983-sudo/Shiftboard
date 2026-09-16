@@ -1405,26 +1405,36 @@ function computeAllShifts(){
     let openShift = null;
     if(pendingIn!==null){
       const openDate = iso(new Date(pendingIn));
-      if(openDate === todayStr && Date.now() < automaticClockOutTime(openDate)){
+      if(openDate === todayStr && Date.now() < automaticClockOutTime(openDate, pendingSite, emp)){
         openShift = { date: openDate, inTs: pendingIn, siteId: pendingSite }; // still on site today
       } else {
-        shifts.push(autoClosedShift(openDate, pendingIn, pendingSite, emp)); // forgot to clock out by 19:00
+        shifts.push(autoClosedShift(openDate, pendingIn, pendingSite, emp)); // forgot to clock out by the applicable cut-off
       }
     }
     map[empId] = { shifts, openShift };
   });
   return map;
 }
-/* The company-wide safety cut-off for a forgotten clock-out. */
-function automaticClockOutTime(dateStr){
+/* Forgotten clock-outs at filling stations use that site's saved closing
+   time for the day. Every other site keeps the company-wide 19:00 cut-off. */
+function automaticClockOutTime(dateStr, siteId, emp){
   const d = fromIso(dateStr);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 19, 0, 0, 0).getTime();
+  const effectiveSiteId = siteId || (emp && emp.siteId) || null;
+  let cutOff = '19:00';
+  if(isFillingStationSite(effectiveSiteId)){
+    const h = siteHours(effectiveSiteId);
+    cutOff = d.getDay()===0 ? h.sundayEnd : (d.getDay()===6 ? h.saturdayEnd : h.weekdayEnd);
+  }
+  const parts = String(cutOff || '19:00').split(':').map(Number);
+  const hour = Number.isFinite(parts[0]) ? parts[0] : 19;
+  const minute = Number.isFinite(parts[1]) ? parts[1] : 0;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, minute, 0, 0).getTime();
 }
-/* Builds a forgotten shift closed at 19:00, marked so the timesheet can flag
+/* Builds a forgotten shift closed at the applicable cut-off, marked so the timesheet can flag
    it as an automatic entry needing a manager's attention. Paid hours are
    still clamped to the employee/site scheduled finish by the timesheet. */
 function autoClosedShift(dateStr, inTs, siteId, emp){
-  let outTs = automaticClockOutTime(dateStr);
+  let outTs = automaticClockOutTime(dateStr, siteId, emp);
   if(outTs < inTs) outTs = inTs;
   return { date: dateStr, inTs, outTs, siteId, autoClosed: true };
 }
@@ -1465,8 +1475,9 @@ function currentStatus(employeeId){
 function isStaleOpenShift(employeeId){
   const last = lastEventFor(employeeId);
   if(!last || last.type!=='in') return false;
+  const emp = employeeById(employeeId);
   const clockDate = iso(new Date(last.timestamp));
-  return clockDate !== iso(new Date()) || Date.now() >= automaticClockOutTime(clockDate);
+  return clockDate !== iso(new Date()) || Date.now() >= automaticClockOutTime(clockDate, last.siteId, emp);
 }
 function isOnSiteNow(employeeId){
   return currentStatus(employeeId)==='in' && !isStaleOpenShift(employeeId);

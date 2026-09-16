@@ -904,6 +904,18 @@ function timesheetEmployeeCompare(siteId,a,b){
   return ak.localeCompare(bk);
 }
 
+/* Payroll is recorded in quarter-hours. Keep every calculated or manually
+   entered timesheet figure on a 0.25-hour boundary and display it with two
+   decimal places (for example 7.50, 7.75 or 8.00). */
+function roundTimesheetHours(value){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round((n + Number.EPSILON) * 4) / 4);
+}
+function formatTimesheetHours(value){
+  return roundTimesheetHours(value).toFixed(2);
+}
+
 /* Computes the same figures the Timesheets tab displays, for one week, so
    they can be exported to CSV before the underlying clock events are cleared.
    Mirrors the on-screen logic: clamping, lunch deduction, holiday marking,
@@ -937,13 +949,14 @@ function timesheetRowsForWeek(weekIso){
         let computed = 0;
         dayShifts.forEach((s,idx)=>{ computed += clampedHoursForShift(s.date, s.inTs, s.outTs, site.id, idx===0, emp); });
         if(dow>=1 && dow<=5 && dayShifts.length===1 && computed>0.5) computed -= 0.5;
+        computed = roundTimesheetHours(computed);
         const hasOverride = !isVisitor && hoursOverride[dateStr]!==undefined && hoursOverride[dateStr]!=='';
-        const hours = hasOverride ? (parseFloat(hoursOverride[dateStr])||0) : computed;
+        const hours = hasOverride ? roundTimesheetHours(parseFloat(hoursOverride[dateStr])||0) : computed;
         if(isHol) holCount += holAmt;
         if(!sevenDay && i===5) satHours += hours; else weekTotal += hours;
         const abs = absenceFor(emp.id, dateStr);
         if(isHol) { anyActivity = true; return isHourly(emp) ? holAmt+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
-        if(hours>0){ anyActivity = true; return hours.toFixed(1) + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
+        if(hours>0){ anyActivity = true; return formatTimesheetHours(hours) + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
         if(abs){ anyActivity = true; return abs.type; }
         return '';
       });
@@ -953,8 +966,8 @@ function timesheetRowsForWeek(weekIso){
         site: site.name,
         name: emp.name + (isVisitor ? ' (visiting)' : ''),
         days: dayVals,
-        total: weekTotal>0 ? weekTotal.toFixed(1) : '',
-        overtime: empExtras.overtime!==undefined ? empExtras.overtime : (satHours>0 ? satHours.toFixed(1) : ''),
+        total: weekTotal>0 ? formatTimesheetHours(weekTotal) : '',
+        overtime: empExtras.overtime!==undefined && empExtras.overtime!=='' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : ''),
         hols: empExtras.hols!==undefined ? empExtras.hols : (holCount>0 ? holCount : ''),
         sick: empExtras.sick!==undefined ? empExtras.sick : '',
         notes: (extras.notes||{})[site.id] || '',
@@ -3714,8 +3727,9 @@ function renderAdminTimesheets(){
           const shortfall = Math.max(0, 0.5 - breakHours);
           computedHours = Math.max(0, computedHours - shortfall);
         }
+        computedHours = roundTimesheetHours(computedHours);
         const hasOverride = !isVisitor && hoursOverride[dateStr]!==undefined && hoursOverride[dateStr]!=='';
-        const dayHours = hasOverride ? (parseFloat(hoursOverride[dateStr])||0) : computedHours;
+        const dayHours = hasOverride ? roundTimesheetHours(parseFloat(hoursOverride[dateStr])||0) : computedHours;
         if(isHol) holCount += holAmt;
         if(!sevenDay && i===5) satHours += dayHours; // Sat = overtime, standard sites only
         else weekTotal += dayHours; // everything else counts (all 7 days for seven-day sites)
@@ -3727,7 +3741,7 @@ function renderAdminTimesheets(){
         else if(dow!==0 || sevenDay){
           // Every working day takes typed hours, whether or not anyone clocked
           // in — otherwise past days could never be filled in by hand.
-          const hrsBox = `<input type="text" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?dayHours.toFixed(1):''}" placeholder="–" ${weekLocked?'disabled':''}>`;
+          const hrsBox = `<input type="text" inputmode="decimal" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?formatTimesheetHours(dayHours):''}" placeholder="–" ${weekLocked?'disabled':''}>`;
           // The absence dropdown sits underneath, but only when no hours are
           // recorded — you can't be both working and absent the same day.
           const abs = absenceFor(emp.id, dateStr);
@@ -3747,15 +3761,15 @@ function renderAdminTimesheets(){
         return `<td title="${(dow===0 && !sevenDay && dayHours>0) ? 'Closed — but a clock event exists this day, worth checking. ' : ''}${awayNote}${hasAutoClosed ? 'Never clocked out — automatically closed at the applicable site cut-off. Correct it here if wrong. ' : ''}${dayShifts.some(s=>s.managerEntered) ? 'Time entered or corrected by a manager. ' : ''}${dayShifts.map(s=>timeOnly(s.inTs)+'–'+timeOnly(s.outTs)+(s.autoClosed?' (auto)':'')).join(', ')}">${content}${awayMark}</td>`;
       }).join('');
 
-      const overtimeVal = empExtras.overtime !== undefined ? empExtras.overtime : (satHours>0 ? satHours.toFixed(1) : '');
+      const overtimeVal = empExtras.overtime !== undefined && empExtras.overtime !== '' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : '');
       const holsVal = empExtras.hols !== undefined ? empExtras.hols : (holCount>0 ? holCount : '');
       const sickVal = empExtras.sick !== undefined ? empExtras.sick : '';
 
       return `<tr>
         <td class="att-name">${emp.name}${isVisitor?` <span style="font-weight:400;font-style:italic;color:#666;">(visiting)</span>`:''}</td>
         ${dayCells}
-        <td><b>${weekTotal>0?weekTotal.toFixed(1):''}</b></td>
-        <td><input type="text" data-ts-field="overtime" data-ts-emp="${emp.id}" value="${overtimeVal}" ${weekLocked?'disabled':''}></td>
+        <td><b>${weekTotal>0?formatTimesheetHours(weekTotal):''}</b></td>
+        <td><input type="text" inputmode="decimal" data-ts-field="overtime" data-ts-emp="${emp.id}" value="${overtimeVal}" ${weekLocked?'disabled':''}></td>
         <td><input type="text" data-ts-field="hols" data-ts-emp="${emp.id}" value="${holsVal}" ${weekLocked?'disabled':''}></td>
         <td><input type="text" data-ts-field="sick" data-ts-emp="${emp.id}" value="${sickVal}" ${weekLocked?'disabled':''}></td>
       </tr>`;
@@ -3790,7 +3804,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Paid hours are rounded to the closest 15 minutes and shown to two decimal places (for example 7.50, 7.75 or 8.00). The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>
@@ -4495,7 +4509,18 @@ function attachHandlers(){
       const extras = getWeekExtras(weekIso);
       const empId = inp.dataset.tsEmp;
       if(!extras.employees[empId]) extras.employees[empId] = {};
-      extras.employees[empId][inp.dataset.tsField] = inp.value.trim();
+      let value = inp.value.trim();
+      if(inp.dataset.tsField==='overtime' && value!==''){
+        const parsed = Number(value);
+        if(!Number.isFinite(parsed) || parsed<0){
+          showToast('Enter overtime as a positive number of hours.', true);
+          inp.focus();
+          return;
+        }
+        value = formatTimesheetHours(parsed);
+        inp.value = value;
+      }
+      extras.employees[empId][inp.dataset.tsField] = value;
       await saveTimesheetExtras();
     });
     inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } });
@@ -4530,11 +4555,14 @@ function attachHandlers(){
       const weekIso = iso(weekStartMonday(state.admin.tsWeek));
       if(!requireTimesheetUnlocked(weekIso)){ return; }
       const raw = inp.value.trim();
-      if(raw && isNaN(parseFloat(raw))){
-        showToast('Enter hours as a number, e.g. 8.5', true);
+      const parsed = raw==='' ? null : Number(raw);
+      if(raw && (!Number.isFinite(parsed) || parsed<0)){
+        showToast('Enter hours as a positive number, e.g. 8.25', true);
         inp.focus();
         return;
       }
+      const storedValue = raw==='' ? '' : formatTimesheetHours(parsed);
+      inp.value = storedValue;
       const extras = getWeekExtras(weekIso);
       if(!extras.employees[inp.dataset.hrsEmp]) extras.employees[inp.dataset.hrsEmp] = {};
       if(!extras.employees[inp.dataset.hrsEmp].hoursOverride) extras.employees[inp.dataset.hrsEmp].hoursOverride = {};
@@ -4543,9 +4571,9 @@ function attachHandlers(){
       // the browser fire 'change' on the cell being removed, and without this
       // guard that saves again, redraws again, and loops forever.
       const previous = extras.employees[inp.dataset.hrsEmp].hoursOverride[inp.dataset.hrsDate];
-      if(previous === raw) return;
+      if(previous === storedValue) return;
 
-      extras.employees[inp.dataset.hrsEmp].hoursOverride[inp.dataset.hrsDate] = raw;
+      extras.employees[inp.dataset.hrsEmp].hoursOverride[inp.dataset.hrsDate] = storedValue;
       const ok = await saveTimesheetExtras();
       if(ok){
         showToast('Hours saved.');

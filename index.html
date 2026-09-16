@@ -667,67 +667,90 @@ async function callRpc(fn, args){
 let _lastKnownBin = null;
 
 async function jsonbinRead(){
-  const res = await fetch(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE + '?select=key,value', {
-    headers: await authHeaders()
+  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/manager_shiftboard_read', {
+    method:'POST',
+    headers: await authHeaders(),
+    body:'{}'
   });
   if(!res.ok){
     let detail = '';
     try{ detail = (await res.json()).message || ''; }catch(_e){}
     throw new Error('read failed ('+res.status+')'+(detail?': '+detail:''));
   }
-  const rows = await res.json();
-  const record = {};
-  (rows||[]).forEach(r=>{ record[r.key] = r.value; });
+  const record = await res.json();
+  if(!record || typeof record!=='object' || Array.isArray(record)) throw new Error('invalid server response');
   _lastKnownBin = record;
   return record;
 }
-async function jsonbinWrite(fullRecord){
-  const rows = Object.keys(fullRecord||{}).map(k=>({ key:k, value: fullRecord[k] }));
-  if(!rows.length) return true;
-  const res = await fetch(SUPABASE_URL + '/rest/v1/' + SUPABASE_TABLE + '?on_conflict=key', {
-    method: 'POST',
-    headers: Object.assign({}, await authHeaders(), { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
-    body: JSON.stringify(rows)
+async function jsonbinWriteKey(key,value){
+  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/manager_shiftboard_write', {
+    method:'POST',
+    headers: await authHeaders(),
+    body:JSON.stringify({p_key:key,p_value:value})
   });
   if(!res.ok){
-    let detail = '';
-    try{ detail = (await res.json()).message || ''; }catch(_e){}
+    let detail=''; try{ detail=(await res.json()).message||''; }catch(_e){}
     throw new Error('write failed ('+res.status+')'+(detail?': '+detail:''));
   }
+  return true;
+}
+async function jsonbinWrite(fullRecord){
+  const keys=Object.keys(fullRecord||{});
+  for(const key of keys) await jsonbinWriteKey(key,fullRecord[key]);
   _lastKnownBin = fullRecord;
   return true;
 }
 
 const LOCAL_RECORD_KEY = 'shiftboard_local_record_v3';
 const LOCAL_PENDING_KEY = 'shiftboard_pending_sync_v3';
+const LOCAL_PENDING_PATCH_KEY = 'shiftboard_pending_keys_v4';
 
 function readLocalRecord(){
   try{
-    const raw = localStorage.getItem(LOCAL_PENDING_KEY) || localStorage.getItem(LOCAL_RECORD_KEY);
+    const raw = localStorage.getItem(LOCAL_RECORD_KEY);
     return raw ? JSON.parse(raw) : null;
   }catch(_e){ return null; }
 }
-function writeLocalRecord(record, pending){
+function readPendingChanges(){
+  try{
+    const raw=localStorage.getItem(LOCAL_PENDING_PATCH_KEY);
+    const parsed=raw?JSON.parse(raw):{};
+    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:{};
+  }catch(_e){ return {}; }
+}
+function writePendingChanges(changes){
+  try{
+    if(changes&&Object.keys(changes).length) localStorage.setItem(LOCAL_PENDING_PATCH_KEY,JSON.stringify(changes));
+    else localStorage.removeItem(LOCAL_PENDING_PATCH_KEY);
+    return true;
+  }catch(_e){ return false; }
+}
+function retireLegacyPendingRecord(){
+  try{
+    const legacy=localStorage.getItem(LOCAL_PENDING_KEY);
+    if(legacy) localStorage.setItem('shiftboard_legacy_pending_backup_v3',legacy);
+    localStorage.removeItem(LOCAL_PENDING_KEY);
+  }catch(_e){}
+}
+function writeLocalRecord(record){
   try{
     localStorage.setItem(LOCAL_RECORD_KEY, JSON.stringify(record));
-    if(pending) localStorage.setItem(LOCAL_PENDING_KEY, JSON.stringify(record));
-    else localStorage.removeItem(LOCAL_PENDING_KEY);
     return true;
   }catch(_e){ return false; }
 }
 async function trySyncPending(){
-  let pending = null;
-  try{
-    const raw = localStorage.getItem(LOCAL_PENDING_KEY);
-    pending = raw ? JSON.parse(raw) : null;
-  }catch(_e){}
-  if(!pending) return true;
-  try{
-    await jsonbinWrite(pending);
-    _lastKnownBin = pending;
-    writeLocalRecord(pending, false);
-    return true;
-  }catch(_e){ return false; }
+  retireLegacyPendingRecord();
+  const pending=readPendingChanges(), keys=Object.keys(pending);
+  if(!keys.length) return true;
+  let allOk=true, record=readLocalRecord()||_lastKnownBin||{};
+  for(const key of keys){
+    try{
+      await jsonbinWriteKey(key,pending[key]);
+      record[key]=pending[key]; delete pending[key]; writePendingChanges(pending);
+    }catch(_e){ allOk=false; }
+  }
+  _lastKnownBin=record; writeLocalRecord(record);
+  return allOk;
 }
 
 async function storageGet(key, fallback){
@@ -736,38 +759,32 @@ async function storageGet(key, fallback){
   await trySyncPending();
   try{
     const record = await jsonbinRead();
-    writeLocalRecord(record, false);
-    if(record[key] === undefined || record[key] === null) return fallback;
-    return record[key];
+    const pending=readPendingChanges();
+    const merged=Object.assign({},record,pending);
+    writeLocalRecord(merged);
+    if(merged[key] === undefined || merged[key] === null) return fallback;
+    return merged[key];
   }catch(e){
     console.error('Shift Board load failed:', e);
-    const local = readLocalRecord();
+    const local = Object.assign({},readLocalRecord()||{},readPendingChanges());
     if(local && local[key] !== undefined && local[key] !== null) return local[key];
     if(_lastKnownBin && _lastKnownBin[key] !== undefined) return _lastKnownBin[key];
     return fallback;
   }
 }
 async function storageSet(key, value){
-  // SAVE LOCALLY FIRST. This means a browser/network/JSONBin problem can no
-  // longer make buttons appear to do nothing. Cloud sync is then attempted.
   let record = readLocalRecord() || _lastKnownBin || {};
-  try{
-    // Merge with the freshest cloud record when it is reachable, while keeping
-    // any locally pending edits authoritative.
-    const remote = await jsonbinRead();
-    const pending = readLocalRecord();
-    record = Object.assign({}, remote || {}, pending || {});
-  }catch(_e){}
   record[key] = value;
   _lastKnownBin = record;
-  const localOk = writeLocalRecord(record, true);
+  const pending=readPendingChanges(); pending[key]=value;
+  const localOk = writeLocalRecord(record) && writePendingChanges(pending);
   if(!localOk){
     showToast('Could not save on this device — browser storage is blocked.', true);
     return false;
   }
   try{
-    await jsonbinWrite(record);
-    writeLocalRecord(record, false);
+    await jsonbinWriteKey(key,value);
+    const remaining=readPendingChanges(); delete remaining[key]; writePendingChanges(remaining);
     return true;
   }catch(e){
     console.error('Shift Board online sync failed:', e);
@@ -5638,7 +5655,7 @@ async function onAction(e){
     const b = document.getElementById('new-pin-2');
     const p1 = a ? a.value.trim() : '', p2 = b ? b.value.trim() : '';
     state.flow.error = '';
-    if(!/^\d{4,6}$/.test(p1)){ state.flow.error='PIN must be 4 to 6 digits.'; return render(); }
+    if(!/^\d{4}$/.test(p1)){ state.flow.error='PIN must be exactly 4 digits.'; return render(); }
     if(p1 !== p2){ state.flow.error='The two PINs do not match.'; return render(); }
     try{
       const res = await callRpc('staff_set_pin', { p_pin: state.flow.verifiedPin, p_new_pin: p1 });

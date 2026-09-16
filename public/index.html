@@ -2003,7 +2003,6 @@ function renderHolidayConfirm(){
 
 /* ---------- ADMIN PIN ---------- */
 function renderAdminPin(){
-  const buildStamp = 'Build 2026-09-15 · clean startup + paper-order timesheets + Tony above Neil + installable full-screen Shift Board + workshop sales rules + filling stations no lateness + date-range sales + print/download';
   return `${topstrip()}
   <div class="flow"><div class="flow-card" style="width:380px;">
     <h2>Manager sign in</h2>
@@ -2018,7 +2017,6 @@ function renderAdminPin(){
     </div>
     <div class="error-msg">${state.admin.error||''}</div>
     <button type="button" class="action-btn" data-action="submit-manager-login">${state.admin.signingIn?'Signing in…':'Sign in'}</button>
-    <div style="margin-top:12px;font-size:11px;color:var(--muted-2);font-family:'IBM Plex Mono',monospace;">${buildStamp}</div>
     <div class="back-link" data-action="go-home">← Back</div>
   </div></div>`;
 }

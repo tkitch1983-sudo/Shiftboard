@@ -955,7 +955,7 @@ function timesheetRowsForWeek(weekIso){
         if(isHol) holCount += holAmt;
         if(!sevenDay && i===5) satHours += hours; else weekTotal += hours;
         const abs = absenceFor(emp.id, dateStr);
-        if(isHol) { anyActivity = true; return isHourly(emp) ? holAmt+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
+        if(isHol) { anyActivity = true; return isHourly(emp) ? formatTimesheetHours(holAmt)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
         if(hours>0){ anyActivity = true; return formatTimesheetHours(hours) + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
         if(abs){ anyActivity = true; return abs.type; }
         return '';
@@ -968,7 +968,9 @@ function timesheetRowsForWeek(weekIso){
         days: dayVals,
         total: weekTotal>0 ? formatTimesheetHours(weekTotal) : '',
         overtime: empExtras.overtime!==undefined && empExtras.overtime!=='' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : ''),
-        hols: empExtras.hols!==undefined ? empExtras.hols : (holCount>0 ? holCount : ''),
+        hols: empExtras.hols!==undefined && empExtras.hols!==''
+          ? (isHourly(emp) ? formatTimesheetHours(empExtras.hols) : empExtras.hols)
+          : (holCount>0 ? (isHourly(emp) ? formatTimesheetHours(holCount) : holCount) : ''),
         sick: empExtras.sick!==undefined ? empExtras.sick : '',
         notes: (extras.notes||{})[site.id] || '',
         locked: lock
@@ -3734,7 +3736,7 @@ function renderAdminTimesheets(){
         if(!sevenDay && i===5) satHours += dayHours; // Sat = overtime, standard sites only
         else weekTotal += dayHours; // everything else counts (all 7 days for seven-day sites)
         let content;
-        if(isHol) content = `<span class="att-hol">${isHourly(emp)?holAmt+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
+        if(isHol) content = `<span class="att-hol">${isHourly(emp)?formatTimesheetHours(holAmt)+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
         else if(dow===0 && !sevenDay && dayHours===0){
           content = `<span style="color:#999;font-style:italic;">Closed</span>`;
         }
@@ -3762,7 +3764,9 @@ function renderAdminTimesheets(){
       }).join('');
 
       const overtimeVal = empExtras.overtime !== undefined && empExtras.overtime !== '' ? formatTimesheetHours(empExtras.overtime) : (satHours>0 ? formatTimesheetHours(satHours) : '');
-      const holsVal = empExtras.hols !== undefined ? empExtras.hols : (holCount>0 ? holCount : '');
+      const holsVal = empExtras.hols !== undefined && empExtras.hols !== ''
+        ? (isHourly(emp) ? formatTimesheetHours(empExtras.hols) : empExtras.hols)
+        : (holCount>0 ? (isHourly(emp) ? formatTimesheetHours(holCount) : holCount) : '');
       const sickVal = empExtras.sick !== undefined ? empExtras.sick : '';
 
       return `<tr>
@@ -4510,10 +4514,12 @@ function attachHandlers(){
       const empId = inp.dataset.tsEmp;
       if(!extras.employees[empId]) extras.employees[empId] = {};
       let value = inp.value.trim();
-      if(inp.dataset.tsField==='overtime' && value!==''){
+      const quarterHourField = inp.dataset.tsField==='overtime' ||
+        (inp.dataset.tsField==='hols' && isHourly(employeeById(empId)));
+      if(quarterHourField && value!==''){
         const parsed = Number(value);
         if(!Number.isFinite(parsed) || parsed<0){
-          showToast('Enter overtime as a positive number of hours.', true);
+          showToast('Enter a positive number of hours.', true);
           inp.focus();
           return;
         }

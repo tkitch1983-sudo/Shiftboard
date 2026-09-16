@@ -783,7 +783,7 @@ const state = {
   bonusSheets: {},
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false, _loadingStock:false },
 };
 
 function isTonyLogin(){
@@ -2385,6 +2385,83 @@ function renderAdminSales(){
   <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Nightly data is read-only in the portal. Autowork credentials are not stored in this page or in the sales tables.</div>`;
 }
 
+/* ---------- TONY-ONLY STOCK VALUE ---------- */
+async function loadStockData(force){
+  if(!isTonyLogin()) return;
+  if(state.admin._loadingStock) return;
+  if(state.admin.stockRows && !force) return;
+  state.admin._loadingStock=true;
+  state.admin.stockError=null;
+  try{
+    const headers=await authHeaders();
+    const url=SUPABASE_URL + '/rest/v1/stock_value_snapshots?select=*&order=snapshot_date.desc,site_name.asc&limit=800';
+    const res=await fetch(url,{headers});
+    if(!res.ok) throw new Error('Stock data '+res.status);
+    const all=await res.json();
+    const latestDate=(all&&all[0]&&all[0].snapshot_date)||null;
+    state.admin.stockHistory=all||[];
+    state.admin.stockRows=(all||[]).filter(x=>x.snapshot_date===latestDate);
+    state.admin.stockLoadedAt=Date.now();
+  }catch(err){
+    console.error('Stock value load failed',err);
+    state.admin.stockRows=[];
+    state.admin.stockHistory=[];
+    state.admin.stockError=err.message||String(err);
+  }
+  state.admin._loadingStock=false;
+}
+function stockDeltaText(value){
+  const n=Number(value||0);
+  if(!Number.isFinite(n) || Math.abs(n)<0.005) return 'No change';
+  return (n>0?'+':'−')+salesMoney(Math.abs(n));
+}
+function renderAdminStock(){
+  if(!isTonyLogin()) return '<h2>Stock Value</h2><div class="card">This page is private to Tony.</div>';
+  const rows=state.admin.stockRows;
+  if(rows===null || state.admin._loadingStock){
+    return '<h2>Stock Value</h2><div class="card"><div style="color:var(--muted);">Loading nightly stock values…</div></div>';
+  }
+  if(!rows.length){
+    return `<h2>Stock Value</h2><div class="card"><div style="color:var(--muted);">${salesHtml(state.admin.stockError||'No stock value has been captured yet. The first figures will appear after the next successful Autowork run.')}</div><button type="button" class="add-btn" data-action="refresh-stock" style="margin-top:12px;">Retry</button></div>`;
+  }
+  const history=state.admin.stockHistory||[];
+  const latestDate=String(rows[0].snapshot_date||'');
+  const total=rows.reduce((sum,r)=>sum+salesNum(r.stock_value),0);
+  const previousBySite={};
+  history.forEach(r=>{
+    if(String(r.snapshot_date)>=latestDate || previousBySite[r.site_key]) return;
+    previousBySite[r.site_key]=r;
+  });
+  const previousTotal=rows.reduce((sum,r)=>sum+salesNum(previousBySite[r.site_key]?.stock_value),0);
+  const comparable=rows.length>0&&rows.every(r=>previousBySite[r.site_key]);
+  const stale=rows.filter(r=>r.import_status!=='ok').length;
+  const selected=state.admin.stockSite||'all';
+  const options='<option value="all" '+(selected==='all'?'selected':'')+'>All sites</option>'+rows.map(r=>`<option value="${salesHtml(r.site_key)}" ${selected===String(r.site_key)?'selected':''}>${salesHtml(r.site_name)}</option>`).join('');
+  const visibleHistory=history.filter(r=>selected==='all'||String(r.site_key)===selected).slice(0,160);
+  const latestRows=rows.map(r=>{
+    const previous=previousBySite[r.site_key];
+    const delta=previous?salesNum(r.stock_value)-salesNum(previous.stock_value):null;
+    const status=r.import_status==='ok'
+      ? '<span style="color:var(--green);">Current</span>'
+      : `<span style="color:var(--red);font-weight:700;">${r.import_status==='stale'?'Previous value':'Not captured'}</span>`;
+    return `<tr><td style="font-weight:700;">${salesHtml(r.site_name)}</td><td class="mono">${salesMoney(r.stock_value)}</td><td class="mono">${previous?stockDeltaText(delta):'—'}</td><td>${status}</td></tr>`;
+  }).join('');
+  const historyRows=visibleHistory.map(r=>`<tr><td>${salesDateLabel(r.snapshot_date)}</td><td>${salesHtml(r.site_name)}</td><td class="mono">${salesMoney(r.stock_value)}</td><td>${r.import_status==='ok'?'<span style="color:var(--green);">Captured</span>':`<span style="color:var(--red);">${salesHtml(r.import_status)}</span>`}</td></tr>`).join('');
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div><h2 style="margin-bottom:4px;">Stock Value</h2><div style="font-size:12px;color:var(--muted);">Nightly Autowork total with Stocked Parts Only unticked · ${salesDateLabel(latestDate)}</div></div>
+    <button type="button" class="add-btn" data-action="refresh-stock">Refresh</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:18px 0;">
+    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Group stock value</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesMoney(total)}</div></div>
+    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Change since previous night</div><div class="mono" style="font-size:25px;margin-top:5px;">${comparable?stockDeltaText(total-previousTotal):'—'}</div></div>
+    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Sites captured</div><div class="mono" style="font-size:25px;margin-top:5px;">${rows.length-stale} / ${rows.length}</div></div>
+  </div>
+  ${stale?`<div class="card" style="border-left:4px solid var(--red);color:var(--red);">${stale} site${stale===1?'':'s'} could not be refreshed. The last valid value is shown where available.</div>`:''}
+  <div class="card" style="padding:0;overflow:auto;"><table style="min-width:620px;margin:0;"><thead><tr><th>Site</th><th>Stock value</th><th>Nightly change</th><th>Status</th></tr></thead><tbody>${latestRows}</tbody></table></div>
+  <div class="card" style="margin-top:14px;"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><b>History</b><div style="font-size:11px;color:var(--muted-2);margin-top:2px;">A nightly audit trail; older figures are never overwritten.</div></div><label style="font-size:11px;color:var(--muted);">Show <select id="stock-site-filter" style="width:auto;margin-left:6px;">${options}</select></label></div><div style="overflow:auto;margin-top:12px;"><table style="min-width:560px;margin:0;"><thead><tr><th>Date</th><th>Site</th><th>Stock value</th><th>Status</th></tr></thead><tbody>${historyRows}</tbody></table></div></div>
+  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Read-only: this page cannot update stock quantities or costs in Autowork.</div>`;
+}
+
 /* ---------- TONY-ONLY MONTHLY BONUS SHEET ---------- */
 const BONUS_SITE_RULES = {
   peterlee:      {label:'Peterlee',      staffStart:90000, staffBase:350, davantiTarget:150, tonyStart:85000, tonyBase:250},
@@ -2580,6 +2657,7 @@ function renderAdmin(){
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['contacts','Contacts'],['clocklog','Clock Log'],['settings','My account']
   ];
   if(canAccessBonusSheet()) tabs.splice(4,0,['bonus','Bonus Sheet']);
+  if(isTonyLogin()) tabs.splice(4,0,['stock','Stock Value']);
   if(!isSuper && !isFillingStationSite(state.admin.scopeSite)) tabs.splice(3,0,['sales','Live Sales']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
@@ -2613,6 +2691,13 @@ function renderAdmin(){
     if(state.admin.salesHistory===null && !state.admin._loadingSales){
       state.admin._loadingSales=true;
       (async ()=>{ state.admin._loadingSales=false; await loadSalesData(false); render(); })();
+    }
+  }
+  else if(state.admin.tab==='stock'){
+    body = renderAdminStock();
+    if(state.admin.stockRows===null && !state.admin._loadingStock){
+      state.admin._loadingStock=true;
+      (async ()=>{ state.admin._loadingStock=false; await loadStockData(false); render(); })();
     }
   }
   else if(state.admin.tab==='requests') body = renderAdminRequests();
@@ -4365,6 +4450,9 @@ function attachHandlers(){
   const salesRangeTo = document.getElementById('sales-range-to');
   if(salesRangeTo) salesRangeTo.addEventListener('change', ()=>{ state.admin.salesRangeTo = salesRangeTo.value; render(); });
 
+  const stockSiteFilter = document.getElementById('stock-site-filter');
+  if(stockSiteFilter) stockSiteFilter.addEventListener('change', ()=>{ state.admin.stockSite = stockSiteFilter.value || 'all'; render(); });
+
   const bonusMonth = document.getElementById('bonus-month');
   if(bonusMonth) bonusMonth.addEventListener('change', ()=>{ state.admin.bonusMonth = bonusMonth.value || new Date().toISOString().slice(0,7); render(); });
   const bonusSiteFilter = document.getElementById('bonus-site-filter');
@@ -4663,6 +4751,11 @@ async function onAction(e){
     if(!canViewWorkshopSales()){ showToast('Workshop managers and Upper Management only.',true); return render(); }
     state.admin.salesRows=null; state.admin.salesHistory=null; state.admin.salesRun=null;
     await loadSalesData(true); render(); return;
+  }
+  else if(action==='refresh-stock'){
+    if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
+    state.admin.stockRows=null; state.admin.stockHistory=null; state.admin.stockError=null;
+    await loadStockData(true); render(); return;
   }
   else if(action==='refresh-managers'){
     if(!requireSuper()) return render();

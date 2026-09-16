@@ -804,7 +804,7 @@ const state = {
   targetSheets: {},
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', _loadingSales:false, _loadingStock:false, _loadingAnalysis:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingAlerts:false, _loadingAudit:false },
 };
 
 function isTonyLogin(){
@@ -896,6 +896,7 @@ async function loadAll(){
     if(emp.noLunchBreak!==true){ emp.noLunchBreak=true; leeHoursChanged=true; }
   });
   if(leeHoursChanged) await saveConfig();
+  if(state.admin.role==='super') await loadOperationalAlerts();
 }
 async function saveConfig(){ return await storageSet('config', state.config); }
 async function saveRequests(){ return await storageSet('holidayRequests', state.requests); }
@@ -2125,12 +2126,12 @@ function renderChangePin(){
     ${forced ? `<div class="conflict-box" style="text-align:left;">This is your first time using the system. Pick a PIN only you know before carrying on — don't share it with anyone.</div>` : ''}
     <div class="field" style="text-align:left;">
       <label>New PIN (4 digits)</label>
-      <input type="password" inputmode="numeric" id="new-pin-1" maxlength="6" autocomplete="off"
+      <input type="password" inputmode="numeric" id="new-pin-1" maxlength="4" autocomplete="off"
         style="text-align:center;font-size:22px;letter-spacing:6px;font-family:'IBM Plex Mono',monospace;">
     </div>
     <div class="field" style="text-align:left;">
       <label>Repeat new PIN</label>
-      <input type="password" inputmode="numeric" id="new-pin-2" maxlength="6" autocomplete="off"
+      <input type="password" inputmode="numeric" id="new-pin-2" maxlength="4" autocomplete="off"
         style="text-align:center;font-size:22px;letter-spacing:6px;font-family:'IBM Plex Mono',monospace;">
     </div>
     <div class="error-msg">${state.flow.error||''}</div>
@@ -3240,6 +3241,41 @@ function renderAdminBonus(){
 }
 
 /* ---------- ADMIN DASHBOARD ---------- */
+async function loadOperationalAlerts(){
+  if(state.admin.role!=='super') { state.admin.operationalAlerts=[]; return; }
+  try{
+    const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/manager_operational_alerts',{
+      method:'POST',headers:await authHeaders(),body:'{}'
+    });
+    if(!res.ok) throw new Error('alert check failed');
+    const rows=await res.json();
+    state.admin.operationalAlerts=Array.isArray(rows)?rows:[];
+  }catch(_e){ state.admin.operationalAlerts=[]; }
+}
+function renderOperationalAlerts(){
+  const alerts=Array.isArray(state.admin.operationalAlerts)?state.admin.operationalAlerts:[];
+  if(!alerts.length) return '';
+  return `<div class="card" style="border-left:4px solid var(--red);padding:12px 14px;">
+    <b>Needs attention</b>
+    ${alerts.map(a=>`<div style="font-size:12px;color:${a.level==='error'?'var(--red)':'var(--amber)'};margin-top:5px;">${salesHtml(a.message||'System update needs attention.')}</div>`).join('')}
+  </div>`;
+}
+async function loadAuditData(){
+  if(state.admin.role!=='super') return;
+  try{
+    const res=await fetch(SUPABASE_URL+'/rest/v1/shift_board_audit?select=created_at,actor_email,actor_role,actor_site_id,action,data_key,details&order=created_at.desc&limit=150',{headers:await authHeaders()});
+    if(!res.ok) throw new Error('audit load failed');
+    state.admin.auditRows=await res.json();
+  }catch(_e){ state.admin.auditRows=[]; }
+}
+function renderAdminAudit(){
+  const rows=Array.isArray(state.admin.auditRows)?state.admin.auditRows:[];
+  return `<h2>Audit History</h2>
+    <div class="head-sub">The latest manager data changes. The log records who changed each section without copying staff details or passwords into the history.</div>
+    <div class="card" style="padding:0;overflow:auto;"><table><thead><tr><th>When</th><th>Manager</th><th>Role / site</th><th>Change</th><th>Section</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td style="white-space:nowrap;">${new Date(r.created_at).toLocaleString('en-GB')}</td><td>${salesHtml(r.actor_email||'—')}</td><td>${salesHtml((r.actor_role||'—')+(r.actor_site_id?' · '+siteName(r.actor_site_id):''))}</td><td>${salesHtml(r.action||'')}</td><td>${salesHtml(r.data_key||'')}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-state">No manager changes recorded yet.</td></tr>'}
+    </tbody></table></div>`;
+}
 function holidayRequestsNeedingAttention(){
   const open = r => r && (r.status==='pending' || r.status==='recommended') && Array.isArray(r.dates) && r.dates.length;
   return (Array.isArray(state.requests)?state.requests:[]).filter(r=>{
@@ -3255,7 +3291,7 @@ function renderAdmin(){
   const requestNoticeCount = holidayRequestsNeedingAttention().length;
   const tabs = isSuper ? [
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['sales','Live Sales'],['targets','Targets'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['employees','Employees'],
-    ['contacts','Contacts'],['passwords','Passwords'],['managers','Managers'],['sites','Sites'],['bankholidays','Bank Holidays'],['clocklog','Clock Log'],['settings','Settings']
+    ['contacts','Contacts'],['passwords','Passwords'],['managers','Managers'],['sites','Sites'],['bankholidays','Bank Holidays'],['clocklog','Clock Log'],['audit','Audit'],['settings','Settings']
   ] : [
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['contacts','Contacts'],['clocklog','Clock Log'],['settings','My account']
   ];
@@ -3375,6 +3411,13 @@ function renderAdmin(){
       })();
     }
   }
+  else if(state.admin.tab==='audit'){
+    body=renderAdminAudit();
+    if(state.admin.auditRows===null&&!state.admin._loadingAudit){
+      state.admin._loadingAudit=true;
+      (async()=>{ await loadAuditData(); state.admin._loadingAudit=false; render(); })();
+    }
+  }
   else if(state.admin.tab==='settings') body = renderAdminSettings();
 
   const whoLabel = isSuper ? (state.admin.managerName ? `${state.admin.managerName} · Upper management` : 'Upper management — all sites') : `${state.admin.managerName} · ${siteName(state.admin.scopeSite)} manager`;
@@ -3390,6 +3433,7 @@ function renderAdmin(){
         <div class="exit-link" data-action="admin-exit">Exit admin →</div>
       </div>
       ${requestNoticeCount && state.admin.tab!=='requests' ? `<div class="card" data-admin-tab="requests" role="button" tabindex="0" style="border-left:4px solid var(--amber);cursor:pointer;display:flex;align-items:center;gap:10px;"><span style="font-size:20px;">🔔</span><div><b>${requestNoticeCount} holiday request${requestNoticeCount===1?'':'s'} waiting</b><div style="font-size:12px;color:var(--muted);margin-top:2px;">Tap to review.</div></div></div>` : ''}
+      ${isSuper?renderOperationalAlerts():''}
       ${body}
     </div>
   </div>

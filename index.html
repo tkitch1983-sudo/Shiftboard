@@ -950,10 +950,7 @@ function timesheetRowsForWeek(weekIso){
         const pendingHol = !isHol && !isVisitor ? pendingHolidayFor(emp.id,dateStr) : null;
         const holAmt = isHol ? (holDates.get(dateStr)||1) : 0;
         const dayShifts = empData.shifts.filter(s=>s.date===dateStr).sort((a,b)=>a.inTs-b.inTs);
-        let computed = 0;
-        dayShifts.forEach((s,idx)=>{ computed += clampedHoursForShift(s.date, s.inTs, s.outTs, site.id, idx===0, emp); });
-        if(dow>=1 && dow<=5 && dayShifts.length===1 && computed>0.5) computed -= 0.5;
-        computed = roundTimesheetHours(computed);
+        const computed = paidHoursForDay(dayShifts,dateStr,site.id,emp);
         const hasOverride = !isVisitor && hoursOverride[dateStr]!==undefined && hoursOverride[dateStr]!=='';
         const hours = hasOverride ? roundTimesheetHours(parseFloat(hoursOverride[dateStr])||0) : computed;
         if(isHol) holCount += holAmt;
@@ -1671,6 +1668,36 @@ function siteClosedSaturday(siteId){
 /* Staff who work through their dinner get no unpaid break deducted. */
 function worksThroughLunch(emp){ return !!(emp && emp.noLunchBreak); }
 
+/* Filling-station shifts are paid without an automatic dinner deduction.
+   Workshop staff can still be exempted individually with noLunchBreak. */
+function hasPaidDinner(emp, siteId){
+  return !!(emp && (emp.noLunchBreak || isFillingStationSite(emp.siteId || siteId)));
+}
+
+/* Calculate one day's paid hours in one place so the screen and downloaded
+   payroll file can never apply different dinner-break rules. */
+function paidHoursForDay(dayShifts, dateStr, siteId, emp){
+  const shifts=(Array.isArray(dayShifts)?dayShifts:[]).slice().sort((a,b)=>a.inTs-b.inTs);
+  let hours=0;
+  shifts.forEach((s,index)=>{
+    hours += clampedHoursForShift(s.date, s.inTs, s.outTs, siteId, index===0, emp);
+  });
+  const dow=fromIso(dateStr).getDay();
+  if(dow>=1 && dow<=5 && hours>0 && !hasPaidDinner(emp,siteId)){
+    const intervals=shifts
+      .map((s,index)=>clampedIntervalForShift(s.date,s.inTs,s.outTs,siteId,index===0,emp))
+      .filter(iv=>iv.end>iv.start)
+      .sort((a,b)=>a.start-b.start);
+    let breakHours=0;
+    for(let i=1;i<intervals.length;i++){
+      const gap=(intervals[i].start-intervals[i-1].end)/3600000;
+      if(gap>0) breakHours+=gap;
+    }
+    hours=Math.max(0,hours-Math.max(0,0.5-breakHours));
+  }
+  return roundTimesheetHours(hours);
+}
+
 function scheduledStartForDow(dow, siteId, emp){
   const h=siteHours(siteId);
   if(dow===0) return isSevenDaySite(siteId) ? h.sundayStart : null;
@@ -1798,7 +1825,9 @@ function availableBalance(emp, asOfDate){
   // they've accrued so far, which is real information admin needs to see.
   return accruedToDate(emp, asOfDate) - holidayApprovedSinceOpening(emp, asOfDate);
 }
-function isHourly(emp){ return emp && emp.holidayUnit==='hours'; }
+/* Petrol-station holidays are always recorded in hours. The site check keeps
+   this true even if an old employee record is missing its holidayUnit flag. */
+function isHourly(emp){ return !!(emp && (emp.holidayUnit==='hours' || isFillingStationSite(emp.siteId))); }
 function unitLabel(emp){ return isHourly(emp) ? 'hrs' : 'days'; }
 function fmtBalance(emp, asOfDate){
   const bal = availableBalance(emp, asOfDate);
@@ -3159,7 +3188,7 @@ function renderVaultEditModal(){
 function isFillingStationSite(siteId){
   const name=(siteName(siteId)||'').trim().toLowerCase();
   // Peterlee Filling Station is currently named ETAC Petrol in the live site list.
-  return name.includes('great ayton') || name.includes('etac petrol') || name.includes('peterlee');
+  return name.includes('great ayton') || name.includes('etac petrol') || name.includes('peterlee filling');
 }
 function canViewWorkshopSales(){
   return state.admin.role==='super' || (state.admin.role==='site' && !isFillingStationSite(state.admin.scopeSite));
@@ -3940,30 +3969,9 @@ function renderAdminTimesheets(){
         const awayAt = dayShifts
           .map(s=>shiftSite(s,emp))
           .filter(sid=>sid && sid!==site.id);
-        let computedHours = 0;
         const hasAutoClosed = dayShifts.some(s=>s.autoClosed);
-        dayShifts.forEach((s,shiftIndex)=>{
-          computedHours += clampedHoursForShift(s.date, s.inTs, s.outTs, site.id, shiftIndex===0, emp);
-        });
         const dow = d.getDay();
-        // A 30-minute unpaid lunch applies to every weekday, however it was
-        // clocked. If someone clocked a break that was shorter than 30 minutes
-        // (or none at all), the shortfall comes off — so a rushed lunch can't
-        // earn more than a normal day.
-        if(dow>=1 && dow<=5 && computedHours>0 && !worksThroughLunch(emp)){
-          const intervals = dayShifts
-            .map((s,i)=>clampedIntervalForShift(s.date, s.inTs, s.outTs, site.id, i===0, emp))
-            .filter(iv=>iv.end > iv.start)
-            .sort((a,b)=>a.start-b.start);
-          let breakHours = 0;
-          for(let i=1;i<intervals.length;i++){
-            const gap = (intervals[i].start - intervals[i-1].end)/3600000;
-            if(gap > 0) breakHours += gap;
-          }
-          const shortfall = Math.max(0, 0.5 - breakHours);
-          computedHours = Math.max(0, computedHours - shortfall);
-        }
-        computedHours = roundTimesheetHours(computedHours);
+        const computedHours = paidHoursForDay(dayShifts,dateStr,site.id,emp);
         const hasOverride = !isVisitor && hoursOverride[dateStr]!==undefined && hoursOverride[dateStr]!=='';
         const dayHours = hasOverride ? roundTimesheetHours(parseFloat(hoursOverride[dateStr])||0) : computedHours;
         if(isHol) holCount += holAmt;
@@ -4043,7 +4051,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. Paid hours are rounded to the closest 15 minutes and shown to two decimal places (for example 7.50, 7.75 or 8.00). The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Paid hours are rounded to the closest 15 minutes and shown to two decimal places (for example 7.50, 7.75 or 8.00). The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break; filling-station shifts do not have a dinner deduction. If workshop staff clock a shorter break, the difference is still deducted. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>
@@ -4178,7 +4186,8 @@ function renderEmployeeModal(){
   if(!emp) return '';
   const currentBalance = isNew ? (emp.openingBalance||0) : availableBalance(emp);
   const rate = emp.monthlyRate!==undefined ? emp.monthlyRate : (state.config.settings.monthlyAccrualRate||1.66);
-  const unit = emp.holidayUnit || 'days';
+  const fillingStation = isFillingStationSite(emp.siteId);
+  const unit = fillingStation ? 'hours' : (emp.holidayUnit || 'days');
   return `<div class="modal-overlay" data-modal-overlay="1">
     <div class="modal">
       <h3>${isNew?'Add employee':'Edit employee'}</h3>
@@ -4202,16 +4211,16 @@ function renderEmployeeModal(){
           <div class="field"><label>Their finish (Mon–Fri)</label><input type="time" id="emp-custom-end" value="${emp.customEnd||''}"></div>
         </div>
         <div class="field" style="display:flex;align-items:center;gap:8px;">
-          <input type="checkbox" id="emp-no-lunch" style="width:auto;" ${emp.noLunchBreak?'checked':''}>
-          <label style="margin:0;">Works through dinner — don't deduct the 30-min unpaid break</label>
+          <input type="checkbox" id="emp-no-lunch" style="width:auto;" ${(emp.noLunchBreak||fillingStation)?'checked':''} ${fillingStation?'disabled':''}>
+          <label style="margin:0;">${fillingStation?'Filling station — no dinner-break deduction':'Works through dinner — don\'t deduct the 30-min unpaid break'}</label>
         </div>
       </div>
       <div class="field"><label>Site</label><select id="emp-site">${state.config.sites.map(s=>`<option value="${s.id}" ${emp.siteId===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
       <div class="field"><label>PIN (4 digits)</label><input type="text" id="emp-pin" value="${emp.pin}" maxlength="4"></div>
-      <div class="field"><label>Holiday tracked in</label><select id="emp-unit">
+      <div class="field"><label>Holiday tracked in</label><select id="emp-unit" ${fillingStation?'disabled':''}>
         <option value="days" ${unit==='days'?'selected':''}>Days (workshop-style)</option>
         <option value="hours" ${unit==='hours'?'selected':''}>Hours (variable shifts — petrol stations)</option>
-      </select></div>
+      </select>${fillingStation?'<div style="font-size:11px;color:var(--muted-2);margin-top:4px;">Filling-station holidays are always recorded in hours.</div>':''}</div>
       <div class="form-row">
         <div class="field"><label id="emp-allowance-label">Annual entitlement (${unit})</label><input type="number" id="emp-allowance" value="${emp.allowanceDays||20}"></div>
         <div class="field"><label id="emp-rate-label">Monthly accrual rate (${unit}/mo)</label><input type="number" step="0.01" id="emp-rate" value="${rate}"></div>
@@ -6028,10 +6037,11 @@ async function onAction(e){
     const nlEl = document.getElementById('emp-no-lunch');
     const customStart = csEl ? csEl.value : '';
     const customEnd = ceEl ? ceEl.value : '';
-    const noLunchBreak = nlEl ? nlEl.checked : false;
     const siteId = document.getElementById('emp-site').value;
+    const fillingStation = isFillingStationSite(siteId);
+    const noLunchBreak = fillingStation || (nlEl ? nlEl.checked : false);
     const pin = document.getElementById('emp-pin').value.trim();
-    const holidayUnit = document.getElementById('emp-unit').value;
+    const holidayUnit = fillingStation ? 'hours' : document.getElementById('emp-unit').value;
     const allowanceDays = parseInt(document.getElementById('emp-allowance').value,10) || 20;
     const monthlyRate = parseFloat(document.getElementById('emp-rate').value) || (state.config.settings.monthlyAccrualRate||1.66);
     const openingBalance = parseFloat(document.getElementById('emp-opening-balance').value) || 0;

@@ -867,6 +867,18 @@ async function loadAll(){
     if(e.active===undefined) e.active = true;
     return e;
   });
+  // Lee Hornsey (occasionally entered historically as L Hornsley) works a
+  // fixed 08:30–17:00 weekday shift and works through dinner. Repair the
+  // saved employee record once so every device uses the same payroll rule.
+  let leeHoursChanged=false;
+  state.config.employees.forEach(emp=>{
+    const key=String(emp.name||'').toLowerCase().replace(/[^a-z]/g,'');
+    if(!['leehornsey','leehornsley','lhornsey','lhornsley'].includes(key)) return;
+    if(emp.customStart!=='08:30'){ emp.customStart='08:30'; leeHoursChanged=true; }
+    if(emp.customEnd!=='17:00'){ emp.customEnd='17:00'; leeHoursChanged=true; }
+    if(emp.noLunchBreak!==true){ emp.noLunchBreak=true; leeHoursChanged=true; }
+  });
+  if(leeHoursChanged) await saveConfig();
 }
 async function saveConfig(){ return await storageSet('config', state.config); }
 async function saveRequests(){ return await storageSet('holidayRequests', state.requests); }
@@ -1538,18 +1550,18 @@ function computeAllShifts(){
   return map;
 }
 /* Forgotten clock-outs at filling stations use that site's saved closing
-   time for the day. Every other site keeps the company-wide 19:00 cut-off. */
+   time for the day. Workshops use the company-wide 18:30 cut-off. */
 function automaticClockOutTime(dateStr, siteId, emp){
   const d = fromIso(dateStr);
   const effectiveSiteId = siteId || (emp && emp.siteId) || null;
-  let cutOff = '19:00';
+  let cutOff = '18:30';
   if(isFillingStationSite(effectiveSiteId)){
     const h = siteHours(effectiveSiteId);
     cutOff = d.getDay()===0 ? h.sundayEnd : (d.getDay()===6 ? h.saturdayEnd : h.weekdayEnd);
   }
-  const parts = String(cutOff || '19:00').split(':').map(Number);
-  const hour = Number.isFinite(parts[0]) ? parts[0] : 19;
-  const minute = Number.isFinite(parts[1]) ? parts[1] : 0;
+  const parts = String(cutOff || '18:30').split(':').map(Number);
+  const hour = Number.isFinite(parts[0]) ? parts[0] : 18;
+  const minute = Number.isFinite(parts[1]) ? parts[1] : 30;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, minute, 0, 0).getTime();
 }
 /* Builds a forgotten shift closed at the applicable cut-off, marked so the timesheet can flag

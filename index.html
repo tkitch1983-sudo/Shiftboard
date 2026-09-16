@@ -786,7 +786,7 @@ const state = {
   bonusSheets: {},
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false, _loadingStock:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', _loadingSales:false, _loadingStock:false, _loadingAnalysis:false },
 };
 
 function isTonyLogin(){
@@ -2405,6 +2405,95 @@ function renderAdminSales(){
   <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Nightly data is read-only in the portal. Autowork credentials are not stored in this page or in the sales tables.</div>`;
 }
 
+/* ---------- TONY-ONLY SITE SALES ANALYSIS ---------- */
+async function loadSalesAnalysis(force){
+  if(!isTonyLogin()) return;
+  if(state.admin._loadingAnalysis) return;
+  if(state.admin.analysisRows && !force) return;
+  state.admin._loadingAnalysis=true;
+  state.admin.analysisError=null;
+  try{
+    const headers=await authHeaders();
+    const url=SUPABASE_URL + '/rest/v1/site_sales_analysis_monthly?select=*&order=month_start.desc,site_name.asc&limit=500';
+    const res=await fetch(url,{headers});
+    if(!res.ok) throw new Error('Sales analysis '+res.status);
+    const rows=await res.json();
+    state.admin.analysisRows=rows||[];
+    if(!state.admin.analysisMonth && rows?.[0]?.month_start) state.admin.analysisMonth=String(rows[0].month_start).slice(0,7);
+  }catch(err){
+    console.error('Sales analysis load failed',err);
+    state.admin.analysisRows=[];
+    state.admin.analysisError=err.message||String(err);
+  }
+  state.admin._loadingAnalysis=false;
+}
+function salesAnalysisMonthLabel(month){
+  return new Date(month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+}
+function salesAnalysisVisibleRows(){
+  const month=state.admin.analysisMonth||'';
+  const site=state.admin.analysisSite||'all';
+  return (state.admin.analysisRows||[]).filter(r=>String(r.month_start).slice(0,7)===month && (site==='all'||String(r.site_key)===site));
+}
+function downloadSalesAnalysisCsv(){
+  if(!isTonyLogin()) return;
+  const rows=salesAnalysisVisibleRows();
+  if(!rows.length){ showToast('No sales analysis figures to download.',true); return; }
+  const headers=['Month','As of','Site','A/C New & Old','Diagnostics','BFC','Coolant','Pollen','Cons','Tracking','NET Sales','Margin %','NET Upsell Value'];
+  const body=rows.map(r=>[r.month_start,r.as_of,r.site_name,r.ac,r.diag,r.bfc,r.coolant,r.pollen,r.cons,r.tracking,r.total_net,r.margin_pct,r.upsell_value].map(salesCsvCell).join(','));
+  const csv='\uFEFF'+[headers.map(salesCsvCell).join(','),...body].join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=`NEAS-Site-Sales-Analysis-${state.admin.analysisMonth||'latest'}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  showToast('Site Sales Analysis downloaded.');
+}
+function renderAdminSalesAnalysis(){
+  if(!isTonyLogin()) return '<h2>Site Sales Analysis</h2><div class="card">This page is private to Tony.</div>';
+  const all=state.admin.analysisRows;
+  if(all===null || state.admin._loadingAnalysis) return '<h2>Site Sales Analysis</h2><div class="card"><div style="color:var(--muted);">Loading the workbook figures…</div></div>';
+  if(!all.length) return `<h2>Site Sales Analysis</h2><div class="card"><div style="color:var(--red);">${salesHtml(state.admin.analysisError||'No analysis figures are available yet.')}</div><button type="button" class="add-btn" data-action="refresh-analysis" style="margin-top:12px;">Retry</button></div>`;
+  const months=[...new Set(all.map(r=>String(r.month_start).slice(0,7)))].sort().reverse();
+  if(!months.includes(state.admin.analysisMonth)) state.admin.analysisMonth=months[0];
+  const month=state.admin.analysisMonth;
+  const monthRows=all.filter(r=>String(r.month_start).slice(0,7)===month);
+  const site=state.admin.analysisSite||'all';
+  const rows=monthRows.filter(r=>site==='all'||String(r.site_key)===site);
+  const monthOptions=months.map(m=>`<option value="${salesHtml(m)}" ${m===month?'selected':''}>${salesHtml(salesAnalysisMonthLabel(m))}</option>`).join('');
+  const siteOptions='<option value="all" '+(site==='all'?'selected':'')+'>All sites</option>'+monthRows.map(r=>`<option value="${salesHtml(r.site_key)}" ${site===String(r.site_key)?'selected':''}>${salesHtml(r.site_name)}</option>`).join('');
+  const total=k=>rows.reduce((n,r)=>n+salesNum(r[k]),0);
+  const totalSales=total('total_net'), upsell=total('upsell_value');
+  const weightedMargin=totalSales ? rows.reduce((n,r)=>n+(salesNum(r.total_net)*salesNum(r.margin_pct)),0)/totalSales : null;
+  const latestAsOf=rows.map(r=>String(r.as_of||'')).sort().pop()||'';
+  const isCurrent=rows.some(r=>r.source==='nightly');
+  const metrics=[
+    ['A/C New & Old','ac','count'],['Diagnostics','diag','count'],['BFC','bfc','count'],['Coolant','coolant','count'],['Pollen','pollen','count'],['Cons','cons','count'],['Tracking','tracking','count'],
+    ['NET Sales','total_net','money'],['Margin','margin_pct','percent'],['NET Upsell Value','upsell_value','money']
+  ];
+  const value=(r,key,type)=>type==='money'?salesMoney(r[key]):type==='percent'?salesPct(r[key]):salesNum(r[key]);
+  const groupValue=(key,type)=>type==='percent'?salesPct(weightedMargin):type==='money'?salesMoney(total(key)):salesNum(total(key));
+  const tableRows=metrics.map(([label,key,type])=>`<tr><td style="position:sticky;left:0;background:var(--panel);font-weight:700;white-space:nowrap;">${salesHtml(label)}</td>${rows.map(r=>`<td class="mono" style="text-align:right;white-space:nowrap;">${value(r,key,type)}</td>`).join('')}${site==='all'?`<td class="mono" style="text-align:right;font-weight:800;background:var(--panel-2);white-space:nowrap;">${groupValue(key,type)}</td>`:''}</tr>`).join('');
+  const title=salesAnalysisMonthLabel(month);
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div><h2 style="margin-bottom:4px;">Site Sales Analysis</h2><div style="font-size:12px;color:var(--muted);">Filled from the original workbook and the nightly Autowork sales update.</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-action="print-analysis">🖶 Print</button><button type="button" class="add-btn" data-action="download-analysis">Download</button><button type="button" class="add-btn" data-action="refresh-analysis">Refresh</button></div>
+  </div>
+  <div class="card no-print" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:16px;">
+    <label style="font-size:11px;color:var(--muted);">Month<select id="analysis-month" style="width:100%;margin-top:4px;">${monthOptions}</select></label>
+    <label style="font-size:11px;color:var(--muted);">View<select id="analysis-site" style="width:100%;margin-top:4px;">${siteOptions}</select></label>
+  </div>
+  <div id="sales-analysis-output">
+    <div class="card" style="border-left:4px solid var(--red);"><div style="font-weight:800;font-size:18px;">North East Auto Services · ${salesHtml(title)}</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">${isCurrent?'Month to date':'Saved month'} · figures through ${salesDateLabel(latestAsOf)}${site==='all'?' · all sites':' · '+salesHtml(rows[0]?.site_name||'')}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:14px;">
+      <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">NET sales</div><div class="mono" style="font-size:24px;margin-top:5px;">${salesMoney(totalSales)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Weighted margin</div><div class="mono" style="font-size:24px;margin-top:5px;">${salesPct(weightedMargin)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">NET upsell value</div><div class="mono" style="font-size:24px;margin-top:5px;">${salesMoney(upsell)}</div></div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto;max-width:100%;"><table style="min-width:${Math.max(620,230+(rows.length+(site==='all'?1:0))*145)}px;margin:0;"><thead><tr><th style="position:sticky;left:0;background:var(--panel-2);z-index:2;">Measure</th>${rows.map(r=>`<th style="text-align:right;">${salesHtml(r.site_name)}</th>`).join('')}${site==='all'?'<th style="text-align:right;">NEAS Group</th>':''}</tr></thead><tbody>${tableRows}</tbody></table></div>
+  </div>
+  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Private to Tony. Historical January–August 2026 figures came from the supplied workbook; September onward refreshes with the nightly sales run.</div>`;
+}
+
 /* ---------- TONY-ONLY STOCK VALUE ---------- */
 async function loadStockData(force){
   if(!isTonyLogin()) return;
@@ -2689,6 +2778,7 @@ function renderAdmin(){
   ];
   if(canAccessBonusSheet()) tabs.splice(4,0,['bonus','Bonus Sheet']);
   if(isTonyLogin()) tabs.splice(4,0,['stock','Stock Value']);
+  if(isTonyLogin()) tabs.splice(4,0,['analysis','Sales Analysis']);
   if(!isSuper && !isFillingStationSite(state.admin.scopeSite)) tabs.splice(3,0,['sales','Live Sales']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
@@ -2729,6 +2819,13 @@ function renderAdmin(){
     if(state.admin.stockRows===null && !state.admin._loadingStock){
       state.admin._loadingStock=true;
       (async ()=>{ state.admin._loadingStock=false; await loadStockData(false); render(); })();
+    }
+  }
+  else if(state.admin.tab==='analysis'){
+    body = renderAdminSalesAnalysis();
+    if(state.admin.analysisRows===null && !state.admin._loadingAnalysis){
+      state.admin._loadingAnalysis=true;
+      (async ()=>{ state.admin._loadingAnalysis=false; await loadSalesAnalysis(false); render(); })();
     }
   }
   else if(state.admin.tab==='requests') body = renderAdminRequests();
@@ -4490,6 +4587,11 @@ function attachHandlers(){
   const stockSiteFilter = document.getElementById('stock-site-filter');
   if(stockSiteFilter) stockSiteFilter.addEventListener('change', ()=>{ state.admin.stockSite = stockSiteFilter.value || 'all'; render(); });
 
+  const analysisMonth = document.getElementById('analysis-month');
+  if(analysisMonth) analysisMonth.addEventListener('change', ()=>{ state.admin.analysisMonth = analysisMonth.value; state.admin.analysisSite='all'; render(); });
+  const analysisSite = document.getElementById('analysis-site');
+  if(analysisSite) analysisSite.addEventListener('change', ()=>{ state.admin.analysisSite = analysisSite.value || 'all'; render(); });
+
   const bonusMonth = document.getElementById('bonus-month');
   if(bonusMonth) bonusMonth.addEventListener('change', ()=>{ state.admin.bonusMonth = bonusMonth.value || new Date().toISOString().slice(0,7); render(); });
   const bonusSiteFilter = document.getElementById('bonus-site-filter');
@@ -4804,6 +4906,20 @@ async function onAction(e){
     if(!canViewWorkshopSales()){ showToast('Workshop managers and Upper Management only.',true); return render(); }
     state.admin.salesRows=null; state.admin.salesHistory=null; state.admin.salesRun=null;
     await loadSalesData(true); render(); return;
+  }
+  else if(action==='print-analysis'){
+    if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
+    const month=state.admin.analysisMonth||'latest';
+    printSelectedReport('#sales-analysis-output','Site Sales Analysis '+month,'landscape'); return;
+  }
+  else if(action==='download-analysis'){
+    if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
+    downloadSalesAnalysisCsv(); return;
+  }
+  else if(action==='refresh-analysis'){
+    if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }
+    state.admin.analysisRows=null; state.admin.analysisError=null;
+    await loadSalesAnalysis(true); render(); return;
   }
   else if(action==='refresh-stock'){
     if(!isTonyLogin()){ showToast('This page is private to Tony.',true); return render(); }

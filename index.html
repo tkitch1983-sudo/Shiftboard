@@ -160,9 +160,11 @@
   }
   .admin-nav .nav-item{
     padding:12px 20px;color:var(--muted);font-size:14px;cursor:pointer;border-left:3px solid transparent;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
   }
   .admin-nav .nav-item:hover{color:var(--text);}
   .admin-nav .nav-item.active{color:var(--text);border-left-color:var(--amber);background:var(--panel-2);}
+  .request-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:12px;background:var(--amber);color:#fff;font-size:11px;font-weight:800;}
   .admin-main{flex:1;padding:26px 30px;overflow-x:auto;}
   .admin-main h2{font-size:22px;margin-bottom:4px;}
   .admin-main .head-sub{color:var(--muted);font-size:13px;margin-bottom:20px;}
@@ -2666,8 +2668,19 @@ function renderAdminBonus(){
 }
 
 /* ---------- ADMIN DASHBOARD ---------- */
+function holidayRequestsNeedingAttention(){
+  const open = r => r && (r.status==='pending' || r.status==='recommended') && Array.isArray(r.dates) && r.dates.length;
+  return (Array.isArray(state.requests)?state.requests:[]).filter(r=>{
+    if(!open(r)) return false;
+    const emp=employeeById(r.employeeId);
+    if(!emp) return false;
+    if(state.admin.role==='super') return true;
+    return state.admin.role==='site' && String(emp.siteId)===String(state.admin.scopeSite);
+  });
+}
 function renderAdmin(){
   const isSuper = state.admin.role==='super';
+  const requestNoticeCount = holidayRequestsNeedingAttention().length;
   const tabs = isSuper ? [
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['sales','Live Sales'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['employees','Employees'],
     ['contacts','Contacts'],['passwords','Passwords'],['managers','Managers'],['sites','Sites'],['bankholidays','Bank Holidays'],['clocklog','Clock Log'],['settings','Settings']
@@ -2779,13 +2792,14 @@ function renderAdmin(){
   return `${topstrip()}
   <div class="admin-shell">
     <div class="admin-nav">
-      ${tabs.map(([id,label])=>`<div class="nav-item ${state.admin.tab===id?'active':''}" data-admin-tab="${id}">${label}</div>`).join('')}
+      ${tabs.map(([id,label])=>`<div class="nav-item ${state.admin.tab===id?'active':''}" data-admin-tab="${id}"><span>${label}</span>${id==='requests'&&requestNoticeCount?`<span class="request-badge" aria-label="${requestNoticeCount} holiday requests waiting">${requestNoticeCount}</span>`:''}</div>`).join('')}
     </div>
     <div class="admin-main">
       <div class="admin-topbar">
         <div style="color:var(--muted);font-size:13px;">${whoLabel}</div>
         <div class="exit-link" data-action="admin-exit">Exit admin →</div>
       </div>
+      ${requestNoticeCount && state.admin.tab!=='requests' ? `<div class="card" data-admin-tab="requests" role="button" tabindex="0" style="border-left:4px solid var(--amber);cursor:pointer;display:flex;align-items:center;gap:10px;"><span style="font-size:20px;">🔔</span><div><b>${requestNoticeCount} holiday request${requestNoticeCount===1?'':'s'} waiting</b><div style="font-size:12px;color:var(--muted);margin-top:2px;">Tap to review.</div></div></div>` : ''}
       ${body}
     </div>
   </div>
@@ -6283,18 +6297,24 @@ async function init(){
   // able to trust it without remembering to reload the page.
   setInterval(async ()=>{
     if(state.view==='home'){ render(); }
-    else if(state.view==='admin' && state.admin.tab==='register' && _session){
+    else if(state.view==='admin' && _session){
       try{
+        const beforeRequests = holidayRequestsNeedingAttention().length;
         const rec = await jsonbinRead();
-        if(rec.clockEvents) state.events = rec.clockEvents;
         if(rec.holidayRequests) state.requests = rec.holidayRequests;
-        if(rec.absences) state.absences = rec.absences;
-        if(rec.config) state.config = rec.config;
+        if(state.admin.tab==='register'){
+          if(rec.clockEvents) state.events = rec.clockEvents;
+          if(rec.absences) state.absences = rec.absences;
+          if(rec.config) state.config = rec.config;
+        }
+        const afterRequests = holidayRequestsNeedingAttention().length;
         state.admin.lastRefresh = Date.now();
+        state.admin.refreshFailed = false;
+        if(afterRequests>beforeRequests) showToast(`🔔 New holiday request received${afterRequests-beforeRequests>1?'s':''}.`);
+        if(state.admin.tab==='register' || state.admin.tab==='requests' || afterRequests!==beforeRequests) render();
       }catch(_e){
         state.admin.refreshFailed = true;
       }
-      render();
     }
   }, 30000);
 

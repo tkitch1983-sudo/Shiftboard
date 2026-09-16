@@ -789,6 +789,11 @@ const state = {
 function isTonyLogin(){
   return state.admin.role==='super' && !!_session && String(_session.email||'').trim().toLowerCase()==='tony@neautoservices.com';
 }
+function canAccessBonusSheet(){
+  if(!_session) return false;
+  const email=String(_session.email||'').trim().toLowerCase();
+  return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
+}
 
 async function loadAll(){
   state.config = await storageGet('config', DEFAULT_CONFIG());
@@ -824,7 +829,7 @@ async function loadAll(){
   state.events = await storageGet('clockEvents', []);
   state.timesheetExtras = await storageGet('timesheetExtras', {});
   state.absences = await storageGet('absences', []);
-  state.bonusSheets = isTonyLogin() ? await storageGet('bonusSheets', {}) : {};
+  state.bonusSheets = canAccessBonusSheet() ? await storageGet('bonusSheets', {}) : {};
   if(!Array.isArray(state.requests)) state.requests = [];
   if(!Array.isArray(state.events)) state.events = [];
   if(!state.timesheetExtras || typeof state.timesheetExtras!=='object' || Array.isArray(state.timesheetExtras)) state.timesheetExtras = {};
@@ -862,7 +867,7 @@ async function saveEvents(){ return await storageSet('clockEvents', state.events
 async function saveTimesheetExtras(){ return await storageSet('timesheetExtras', state.timesheetExtras); }
 async function saveAbsences(){ return await storageSet('absences', state.absences); }
 async function saveBonusSheets(){
-  if(!isTonyLogin()) return false;
+  if(!canAccessBonusSheet()) return false;
   return await storageSet('bonusSheets', state.bonusSheets);
 }
 function getWeekExtras(weekIso){
@@ -2286,7 +2291,7 @@ function printSalesReport(){
   setTimeout(()=>{ try{ w.focus(); w.print(); }catch{} },350);
 }
 async function loadSalesData(force){
-  if(!canViewWorkshopSales()) return;
+  if(!canViewWorkshopSales() && !canAccessBonusSheet()) return;
   if(state.admin._loadingSales) return;
   if(state.admin.salesRows && !force) return;
   state.admin._loadingSales=true;
@@ -2473,7 +2478,7 @@ function bonusInput(empId,field,value,label){
   return `<label style="display:block;font-size:10px;color:var(--muted);">${label}<input type="number" inputmode="decimal" step="0.01" data-bonus-emp="${salesHtml(empId)}" data-bonus-field="${field}" value="${salesHtml(value??'')}" style="width:92px;min-width:82px;margin-top:3px;padding:7px;"></label>`;
 }
 function renderAdminBonus(){
-  if(!isTonyLogin()) return '<h2>Bonus Sheet</h2><div class="card">This page is only available on Tony’s login.</div>';
+  if(!canAccessBonusSheet()) return '<h2>Bonus Sheet</h2><div class="card">This page is private.</div>';
   const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7), draft=bonusMonthData(month);
   const snaps=bonusSnapshotsForMonth(month), weekdays=bonusWeekdays(month);
   const sections=[]; let staffGrand=0, totalSales=0, totalDavanti=0, latest='';
@@ -2493,8 +2498,8 @@ function renderAdminBonus(){
         <td>${bonusInput(emp.id,'damages',edit.damages,'Damages')}</td><td>${bonusInput(emp.id,'owed',edit.owed,'Owed')}</td><td>${bonusInput(emp.id,'extra',edit.extra,'Extra')}</td><td>${bonusInput(emp.id,'baseOverride',edit.baseOverride,'Base override')}</td>
         <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
     }).join('');
-    sections.push(`<div class="card" style="padding:0;overflow:auto;break-inside:avoid;">
-      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span>${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
+    sections.push(`<div class="card" id="bonus-site-${key}" style="padding:0;overflow:auto;break-inside:avoid;">
+      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
       <table style="min-width:1120px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th>Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="12">No active employees matched to this site.</td></tr>'}</tbody></table>
     </div>`);
   });
@@ -2508,8 +2513,8 @@ function renderAdminBonus(){
   <div id="bonus-sheet-output">
     <div class="card" style="border-left:4px solid var(--red);"><div style="font-weight:800;font-size:18px;">${new Date(month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div><div style="color:var(--muted);font-size:12px;margin-top:4px;">${weekdays} working weekdays · sales through ${latest?salesDateLabel(latest):'no snapshot yet'} · Gateshead excluded from Tony’s personal bonus</div></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:14px;">
-      <div class="card" style="margin:0;"><b>Tony</b><div style="font-size:12px;color:var(--muted);margin-top:5px;">Eligible sales ${bonusMoney(tonySales)} · Sales bonus ${bonusMoney(tonySalesBonus)} · Davanti ${bonusMoney(tonyDavanti)}</div><label style="display:block;margin-top:10px;font-size:11px;color:var(--muted);">Manual adjustment<input id="bonus-tony-adjustment" type="number" step="0.01" value="${salesHtml(draft.tonyAdjustment??'')}" style="width:135px;margin-left:8px;"></label><div style="font-size:23px;font-weight:800;margin-top:10px;">${bonusMoney(tonyTotal)}</div></div>
-      <div class="card" style="margin:0;"><b>Neil</b><div style="font-size:12px;color:var(--muted);margin-top:5px;">Group sales ${bonusMoney(totalSales)} · Sales bonus ${bonusMoney(neilSales)} · Davanti ${bonusMoney(neilDavanti)}</div><label style="display:block;margin-top:10px;font-size:11px;color:var(--muted);">Owed / adjustment<input id="bonus-neil-owed" type="number" step="0.01" value="${salesHtml(draft.neilOwed??'')}" style="width:135px;margin-left:8px;"></label><div style="font-size:23px;font-weight:800;margin-top:10px;">${bonusMoney(neilTotal)}</div></div>
+      <div class="card" id="bonus-tony-output" style="margin:0;"><b>Tony</b><span class="no-print" style="float:right;"><button type="button" class="icon-btn" data-action="bonus-person-print" data-person="tony">Print</button> <button type="button" class="icon-btn" data-action="bonus-person-download" data-person="tony">Download</button></span><div style="font-size:12px;color:var(--muted);margin-top:5px;">Eligible sales ${bonusMoney(tonySales)} · Sales bonus ${bonusMoney(tonySalesBonus)} · Davanti ${bonusMoney(tonyDavanti)}</div><label style="display:block;margin-top:10px;font-size:11px;color:var(--muted);">Manual adjustment<input id="bonus-tony-adjustment" type="number" step="0.01" value="${salesHtml(draft.tonyAdjustment??'')}" style="width:135px;margin-left:8px;"></label><div style="font-size:23px;font-weight:800;margin-top:10px;">${bonusMoney(tonyTotal)}</div></div>
+      <div class="card" id="bonus-neil-output" style="margin:0;"><b>Neil</b><span class="no-print" style="float:right;"><button type="button" class="icon-btn" data-action="bonus-person-print" data-person="neil">Print</button> <button type="button" class="icon-btn" data-action="bonus-person-download" data-person="neil">Download</button></span><div style="font-size:12px;color:var(--muted);margin-top:5px;">Group sales ${bonusMoney(totalSales)} · Sales bonus ${bonusMoney(neilSales)} · Davanti ${bonusMoney(neilDavanti)}</div><label style="display:block;margin-top:10px;font-size:11px;color:var(--muted);">Owed / adjustment<input id="bonus-neil-owed" type="number" step="0.01" value="${salesHtml(draft.neilOwed??'')}" style="width:135px;margin-left:8px;"></label><div style="font-size:23px;font-weight:800;margin-top:10px;">${bonusMoney(neilTotal)}</div></div>
       <div class="card" style="margin:0;"><b>Staff total</b><div style="font-size:12px;color:var(--muted);margin-top:5px;">All site employee totals after sickness and adjustments</div><div style="font-size:23px;font-weight:800;margin-top:36px;">${bonusMoney(staffGrand)}</div></div>
     </div>${sections.join('')}
   </div>
@@ -2525,7 +2530,7 @@ function renderAdmin(){
   ] : [
     ['register','Register'],['sickness','Sickness'],['bradford','Bradford'],['requests','Requests'],['calendar','Calendar'],['timesheets','Timesheets'],['contacts','Contacts'],['clocklog','Clock Log'],['settings','My account']
   ];
-  if(isTonyLogin()) tabs.splice(4,0,['bonus','Bonus Sheet']);
+  if(canAccessBonusSheet()) tabs.splice(4,0,['bonus','Bonus Sheet']);
   if(!isSuper && !isFillingStationSite(state.admin.scopeSite)) tabs.splice(3,0,['sales','Live Sales']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
@@ -4538,7 +4543,7 @@ async function onAction(e){
   }
 
   else if(action==='save-bonus'){
-    if(!isTonyLogin()){ showToast('This page is only available on Tony’s login.',true); return render(); }
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
     const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7), draft=bonusMonthData(month);
     document.querySelectorAll('[data-bonus-emp][data-bonus-field]').forEach(inp=>{
       const empId=inp.dataset.bonusEmp, field=inp.dataset.bonusField;
@@ -4557,14 +4562,42 @@ async function onAction(e){
     render(); return;
   }
   else if(action==='bonus-print'){
-    if(!isTonyLogin()){ showToast('This page is only available on Tony’s login.',true); return render(); }
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
     const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
     printSelectedReport('#bonus-sheet-output','Monthly Bonus Sheet '+month,'landscape'); return;
   }
   else if(action==='bonus-download'){
-    if(!isTonyLogin()){ showToast('This page is only available on Tony’s login.',true); return render(); }
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
     const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
     downloadSelectedReport('#bonus-sheet-output','Monthly Bonus Sheet '+month,`bonus-sheet-${month}.html`,'landscape'); return;
+  }
+  else if(action==='bonus-site-print'){
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
+    const key=e.currentTarget.dataset.site, rule=BONUS_SITE_RULES[key];
+    if(!rule){ showToast('That site sheet is not available.',true); return; }
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
+    printSelectedReport('#bonus-site-'+key,rule.label+' Bonus Sheet '+month,'landscape'); return;
+  }
+  else if(action==='bonus-site-download'){
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
+    const key=e.currentTarget.dataset.site, rule=BONUS_SITE_RULES[key];
+    if(!rule){ showToast('That site sheet is not available.',true); return; }
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
+    downloadSelectedReport('#bonus-site-'+key,rule.label+' Bonus Sheet '+month,`bonus-sheet-${key}-${month}.html`,'landscape'); return;
+  }
+  else if(action==='bonus-person-print'){
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
+    const person=e.currentTarget.dataset.person;
+    if(!['tony','neil'].includes(person)) return;
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
+    printSelectedReport('#bonus-'+person+'-output',person[0].toUpperCase()+person.slice(1)+' Bonus '+month,'portrait'); return;
+  }
+  else if(action==='bonus-person-download'){
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
+    const person=e.currentTarget.dataset.person;
+    if(!['tony','neil'].includes(person)) return;
+    const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7);
+    downloadSelectedReport('#bonus-'+person+'-output',person[0].toUpperCase()+person.slice(1)+' Bonus '+month,`bonus-${person}-${month}.html`,'portrait'); return;
   }
 
   else if(action==='print-sales'){

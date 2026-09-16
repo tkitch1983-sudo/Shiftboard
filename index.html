@@ -1248,6 +1248,69 @@ function printSicknessRecord(key){
   setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_e){} },250);
 }
 
+function safeReportFilename(value){
+  return String(value||'form').trim().replace(/[^a-z0-9_-]+/gi,'-').replace(/^-+|-+$/g,'').toLowerCase() || 'form';
+}
+function downloadHtmlDocument(html, filename){
+  const blob=new Blob([html],{type:'text/html;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+function downloadSicknessRecord(key){
+  if(state.admin.role!=='super'){ showToast('Upper Management only.',true); return; }
+  const g=sicknessCaseByKey(key); const emp=g?employeeById(g.employeeId):null;
+  if(!g || !emp){ showToast('Sickness record is not available.',true); return; }
+  downloadHtmlDocument(sicknessPrintHtml(g), `sickness-record-${safeReportFilename(emp.name)}-${g.periodStart}.html`);
+  showToast('One sickness record downloaded.');
+}
+
+/* Print and download only the form chosen by the user. The old whole-page
+   print action could include another printable form that happened to be on
+   the same screen (for example Holiday Sheet plus Holiday Balances). */
+function selectedReportHtml(selector, title, orientation){
+  const source=document.querySelector(selector);
+  if(!source) return null;
+  const clone=source.cloneNode(true);
+  const originals=[...source.querySelectorAll('input,textarea,select')];
+  const copies=[...clone.querySelectorAll('input,textarea,select')];
+  originals.forEach((field,i)=>{
+    const copy=copies[i]; if(!copy) return;
+    const value=field.tagName==='SELECT' ? (field.options[field.selectedIndex]?.text||'') : field.value;
+    const span=document.createElement('span');
+    span.className='report-field-value'; span.textContent=value||'—';
+    copy.replaceWith(span);
+  });
+  const pageSize=orientation==='landscape'?'A4 landscape':'A4 portrait';
+  const css=`
+    @page{size:${pageSize};margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;background:#fff;margin:0;font-size:11px}
+    .att-sheet{background:#fff;color:#000;border:1px solid #000;margin:0 0 10mm;page-break-inside:avoid}
+    .att-sheet:not(:last-child){page-break-after:always}.att-title-row{padding:8px 12px;text-align:center;font-weight:700;font-size:16px;border-bottom:1px solid #000;text-transform:uppercase;display:flex;align-items:center;justify-content:center;gap:12px}
+    .att-logo{height:40px;width:auto}.att-meta-row{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-bottom:1px solid #000;font-weight:700;font-size:12px}
+    .att-table-wrap{overflow:visible}.att-table{width:100%;border-collapse:collapse;font-size:10px}.att-table th,.att-table td{border:1px solid #000;padding:5px 6px;text-align:center;color:#000}
+    .att-table th{background:#f2f2f2;font-weight:700;text-transform:uppercase}.att-table td.att-name{text-align:left;font-weight:700;white-space:nowrap}.att-hol{font-style:italic;color:#444}
+    .att-other-info{border-top:1px solid #000}.att-other-info td{padding:7px}.att-other-info label{font-weight:700;display:block;margin-bottom:4px}.att-footnote{padding:7px 12px;font-size:9px;font-weight:700;border-top:1px solid #000}
+    .report-field-value{display:block;min-height:13px;white-space:pre-wrap}.empty-state{padding:16px;color:#555}.no-print{display:none!important}
+  `;
+  const safeTitle=String(title||'Form').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>${css}</style></head><body>${clone.innerHTML}</body></html>`;
+}
+function printSelectedReport(selector, title, orientation){
+  const html=selectedReportHtml(selector,title,orientation);
+  if(!html){ showToast('The selected form is not available.',true); return; }
+  const w=window.open('about:blank','_blank');
+  if(!w){ showToast('Allow pop-ups to print this form.',true); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_e){} },300);
+}
+function downloadSelectedReport(selector, title, filename, orientation){
+  const html=selectedReportHtml(selector,title,orientation);
+  if(!html){ showToast('The selected form is not available.',true); return; }
+  downloadHtmlDocument(html, filename);
+  showToast('One selected form downloaded.');
+}
+
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
 
@@ -2869,7 +2932,7 @@ function renderAdminSickness(){
       <td>${period}</td>
       <td>${g.dates.length}</td>
       <td>${note}${uploaded}</td>
-      <td>${isSuper?`<button type="button" class="btn-sm" data-action="print-sickness-record" data-id="${g.key}">Print record</button>`:''}<button type="button" class="btn-sm reject" data-action="remove-sickness-record" data-id="${g.key}">Remove sickness</button></td>
+      <td>${isSuper?`<button type="button" class="btn-sm" data-action="print-sickness-record" data-id="${g.key}">Print record</button><button type="button" class="btn-sm" data-action="download-sickness-record" data-id="${g.key}">Download record</button>`:''}<button type="button" class="btn-sm reject" data-action="remove-sickness-record" data-id="${g.key}">Remove sickness</button></td>
     </tr>`;
   }).join('');
 
@@ -3001,8 +3064,9 @@ function renderAdminRequests(){
     <div class="field" style="margin-bottom:0;"><label style="margin-bottom:4px;">To</label><input type="date" id="hol-sheet-to" value="${state.admin.holTo}"></div>
     ${isSuper ? `<div class="field" style="margin-bottom:0;"><label style="margin-bottom:4px;">Site</label><select id="hol-sheet-site">${`<option value="all">All sites</option>` + state.config.sites.map(s=>`<option value="${s.id}" ${state.admin.holSheetSite===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>` : ''}
     <button type="button" data-action="hol-sheet-print" style="margin-left:auto;">🖶 Print</button>
+    <button type="button" data-action="hol-sheet-download">Download</button>
   </div>
-  ${renderHolidaySheet()}
+  <div id="holiday-sheet-output">${renderHolidaySheet()}</div>
 
   <h2 style="font-size:16px;margin-top:28px;">Printable Holiday Balances</h2>
   <div class="head-sub">Everyone's remaining balance projected to a chosen date. Pick "All sites" for one portable page listing all staff together; pick a site for just that one.</div>
@@ -3010,8 +3074,9 @@ function renderAdminRequests(){
     <div class="field" style="margin-bottom:0;"><label style="margin-bottom:4px;">As of</label><input type="date" id="bal-sheet-asof" value="${state.admin.balAsOf}"></div>
     ${isSuper ? `<div class="field" style="margin-bottom:0;"><label style="margin-bottom:4px;">Site</label><select id="bal-sheet-site">${`<option value="all">All sites</option>` + state.config.sites.map(s=>`<option value="${s.id}" ${state.admin.balSheetSite===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>` : ''}
     <button type="button" data-action="bal-sheet-print" style="margin-left:auto;">🖶 Print</button>
+    <button type="button" data-action="bal-sheet-download">Download</button>
   </div>
-  ${renderBalanceSheet()}`;
+  <div id="balance-sheet-output">${renderBalanceSheet()}</div>`;
 }
 
 function renderBalanceSheet(){
@@ -3375,7 +3440,7 @@ function renderAdminTimesheets(){
         else content = '';
         const awayNote = awayAt.length ? 'Worked at ' + [...new Set(awayAt.map(siteName))].join(', ') + ' this day. ' : '';
         const awayMark = awayAt.length ? `<span title="Worked at ${[...new Set(awayAt.map(siteName))].join(', ')}" style="color:#6b4fc9;font-size:9px;vertical-align:super;">△</span>` : '';
-        return `<td title="${(dow===0 && !sevenDay && dayHours>0) ? 'Closed — but a clock event exists this day, worth checking. ' : ''}${awayNote}${hasAutoClosed ? 'Never clocked out — automatically closed at 19:00. Correct it here if wrong. ' : ''}${dayShifts.some(s=>s.managerEntered) ? 'Time entered or corrected by a manager. ' : ''}${dayShifts.map(s=>timeOnly(s.inTs)+'–'+timeOnly(s.outTs)+(s.autoClosed?' (auto)':'')).join(', ')}">${content}${awayMark}</td>`;
+        return `<td title="${(dow===0 && !sevenDay && dayHours>0) ? 'Closed — but a clock event exists this day, worth checking. ' : ''}${awayNote}${hasAutoClosed ? 'Never clocked out — automatically closed at the applicable site cut-off. Correct it here if wrong. ' : ''}${dayShifts.some(s=>s.managerEntered) ? 'Time entered or corrected by a manager. ' : ''}${dayShifts.map(s=>timeOnly(s.inTs)+'–'+timeOnly(s.outTs)+(s.autoClosed?' (auto)':'')).join(', ')}">${content}${awayMark}</td>`;
       }).join('');
 
       const overtimeVal = empExtras.overtime !== undefined ? empExtras.overtime : (satHours>0 ? satHours.toFixed(1) : '');
@@ -3421,7 +3486,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at 19:00 — check and correct it. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. The first clock-in of the day is capped to the scheduled start; if it is late, it rounds UP to the next 15-minute interval (for example 08:31 → 08:45). Clocking in early or out late earns nothing extra. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Every weekday has a 30-min unpaid lunch. If someone clocks a shorter break, the difference is still deducted, so a rushed lunch can't earn more than a normal day. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>
@@ -3434,8 +3499,9 @@ function renderAdminTimesheets(){
     ${isSuper && weekLocked ? `<button type="button" data-action="ts-unlock">🔓 Unlock week</button>` : ''}
     ${isSuper && !weekLocked ? `<button type="button" data-action="ts-lock">🔒 Lock week</button>` : ''}
     <button type="button" data-action="ts-print" style="margin-left:auto;">🖶 Print</button>
+    <button type="button" data-action="ts-download">Download</button>
   </div>
-  ${sheets}`;
+  <div id="timesheet-output">${sheets}</div>`;
 }
 
 function holidayStatusLabel(emp){
@@ -3518,6 +3584,7 @@ function renderAdminContacts(){
   <div class="cal-toolbar">
     ${isSuper ? `<select id="contacts-site-select">${siteOptions}</select>` : ''}
     <button type="button" data-action="contacts-print" style="margin-left:auto;">🖶 Print</button>
+    <button type="button" data-action="contacts-download">Download</button>
   </div>
   <div class="card">
     <table>
@@ -3536,7 +3603,7 @@ function renderAdminContacts(){
     <div id="email-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
   </div>` : ''}
 
-  <div class="att-sheet" style="margin-top:24px;">
+  <div id="contacts-sheet-output"><div class="att-sheet" style="margin-top:24px;">
     <div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="staff contacts"><span>STAFF CONTACTS</span></div>
     <div class="att-meta-row"><span>${effectiveSite==='all' ? 'All sites' : siteName(effectiveSite)}</span><span class="site-tag">${emps.length} people</span></div>
     <div class="att-table-wrap">
@@ -3545,7 +3612,7 @@ function renderAdminContacts(){
       <tbody>${emps.map(e=>`<tr><td class="att-name">${e.name}</td><td style="text-align:left;">${siteName(e.siteId)}</td><td style="text-align:left;">${e.email||'—'}</td><td style="text-align:left;">${e.phone||'—'}</td></tr>`).join('')}</tbody>
     </table>
     </div>
-  </div>`;
+  </div></div>`;
 }
 
 function renderEmployeeModal(){
@@ -4671,6 +4738,9 @@ async function onAction(e){
   else if(action==='print-sickness-record'){
     printSicknessRecord(id); return;
   }
+  else if(action==='download-sickness-record'){
+    downloadSicknessRecord(id); return;
+  }
   else if(action==='view-sick-note'){
     const g=sicknessCaseByKey(id); const emp=g?employeeById(g.employeeId):null;
     if(!g || !employeeInScope(emp) || !g.notePath){ showToast('Sick note is not available.',true); return; }
@@ -4983,10 +5053,37 @@ async function onAction(e){
     else showToast('Timesheet could not be unlocked.',true);
     return;
   }
-  else if(action==='ts-print'){ window.print(); return; }
-  else if(action==='hol-sheet-print'){ window.print(); return; }
-  else if(action==='contacts-print'){ window.print(); return; }
-  else if(action==='bal-sheet-print'){ window.print(); return; }
+  else if(action==='ts-print'){
+    const weekIso=iso(weekStartMonday(state.admin.tsWeek));
+    printSelectedReport('#timesheet-output','Timesheet '+weekIso,'landscape'); return;
+  }
+  else if(action==='ts-download'){
+    const weekIso=iso(weekStartMonday(state.admin.tsWeek));
+    const siteId=state.admin.role==='super'?state.admin.tsSite:state.admin.scopeSite;
+    downloadSelectedReport('#timesheet-output','Timesheet '+weekIso,`timesheet-${safeReportFilename(siteName(siteId))}-${weekIso}.html`,'landscape'); return;
+  }
+  else if(action==='hol-sheet-print'){
+    printSelectedReport('#holiday-sheet-output','Holiday Sheet','portrait'); return;
+  }
+  else if(action==='hol-sheet-download'){
+    const from=state.admin.holFrom||'from'; const to=state.admin.holTo||'to';
+    downloadSelectedReport('#holiday-sheet-output','Holiday Sheet',`holiday-sheet-${from}-to-${to}.html`,'portrait'); return;
+  }
+  else if(action==='contacts-print'){
+    printSelectedReport('#contacts-sheet-output','Staff Contacts','portrait'); return;
+  }
+  else if(action==='contacts-download'){
+    const siteId=state.admin.role==='super'?(state.admin.contactsSite||'all'):state.admin.scopeSite;
+    const siteLabel=siteId==='all'?'all-sites':safeReportFilename(siteName(siteId));
+    downloadSelectedReport('#contacts-sheet-output','Staff Contacts',`staff-contacts-${siteLabel}.html`,'portrait'); return;
+  }
+  else if(action==='bal-sheet-print'){
+    printSelectedReport('#balance-sheet-output','Holiday Balances','portrait'); return;
+  }
+  else if(action==='bal-sheet-download'){
+    const asOf=state.admin.balAsOf||iso(new Date());
+    downloadSelectedReport('#balance-sheet-output','Holiday Balances',`holiday-balances-${asOf}.html`,'portrait'); return;
+  }
 
   else if(action==='migrate-from-jsonbin'){
     if(!requireSuper()) return render();

@@ -1288,6 +1288,14 @@ function selectedReportHtml(selector, title, orientation){
   const source=document.querySelector(selector);
   if(!source) return null;
   const clone=source.cloneNode(true);
+  if(String(source.id||'').startsWith('bonus-')){
+    const brand=document.createElement('div'); brand.className='bonus-print-brand';
+    const img=document.createElement('img'); img.src=LOGO_DATA_URI; img.alt='North East Auto Services';
+    const text=document.createElement('div');
+    const company=document.createElement('b'); company.textContent='NORTH EAST AUTO SERVICES';
+    const report=document.createElement('span'); report.textContent=String(title||'Bonus Sheet');
+    text.append(company,report); brand.append(img,text); clone.insertBefore(brand,clone.firstChild);
+  }
   const originals=[...source.querySelectorAll('input,textarea,select')];
   const copies=[...clone.querySelectorAll('input,textarea,select')];
   originals.forEach((field,i)=>{
@@ -1306,7 +1314,8 @@ function selectedReportHtml(selector, title, orientation){
     .att-table-wrap{overflow:visible}.att-table{width:100%;border-collapse:collapse;font-size:10px}.att-table th,.att-table td{border:1px solid #000;padding:5px 6px;text-align:center;color:#000}
     .att-table th{background:#f2f2f2;font-weight:700;text-transform:uppercase}.att-table td.att-name{text-align:left;font-weight:700;white-space:nowrap}.att-hol{font-style:italic;color:#444}
     .att-other-info{border-top:1px solid #000}.att-other-info td{padding:7px}.att-other-info label{font-weight:700;display:block;margin-bottom:4px}.att-footnote{padding:7px 12px;font-size:9px;font-weight:700;border-top:1px solid #000}
-    .card{border:1px solid #aaa;border-radius:6px;padding:8px;margin:0 0 8px;background:#fff;color:#000}.admin-actions,.no-print{display:none!important}
+    .bonus-print-brand{display:flex;align-items:center;gap:14px;border-bottom:3px solid #ed1c2e;padding:0 0 9px;margin:0 0 12px}.bonus-print-brand img{width:170px;height:auto}.bonus-print-brand b{display:block;font-size:17px}.bonus-print-brand span{display:block;font-size:11px;color:#555;margin-top:3px}
+    .card{border:1px solid #aaa;border-radius:6px;padding:8px;margin:0 0 8px;background:#fff;color:#000}.admin-actions,.no-print,.screen-role-col{display:none!important}
     table:not(.att-table){width:100%;border-collapse:collapse;font-size:8px}table:not(.att-table) th,table:not(.att-table) td{border:1px solid #aaa;padding:4px;text-align:left;color:#000}table:not(.att-table) th{background:#eee;font-weight:700}
     .report-field-value{display:block;min-height:13px;white-space:pre-wrap;color:#000}.empty-state{padding:16px;color:#555}
   `;
@@ -2524,19 +2533,23 @@ function renderAdminBonus(){
     if(rule.groupActive!==false){ totalSales+=sales; totalDavanti+=units; }
     if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
     const site=state.config.sites.find(s=>bonusSiteKey(s.name)===key);
-    const employees=site ? state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false) : [];
+    const employees=site ? state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false).sort((a,b)=>{
+      const rank={reception:0,workshop:1,none:2};
+      const diff=(rank[bonusRole(a)]??1)-(rank[bonusRole(b)]??1);
+      return diff || timesheetEmployeeCompare(site.id,a,b);
+    }) : [];
     const receptionCount=employees.filter(e=>bonusRole(e)==='reception').length;
     const rows=employees.map(emp=>{
       const edit=draft.employees[emp.id]||{}, calc=bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount); staffGrand+=calc.total;
       return `<tr style="${calc.losesBonus?'color:var(--red);font-weight:800;':''}"><td style="font-weight:700;white-space:nowrap;">${salesHtml(emp.name)}${calc.losesBonus?`<div style="font-size:10px;color:var(--red);">Bonus lost — ${calc.sickDays} sick days</div>`:''}</td>
-        <td><select data-bonus-role="${salesHtml(emp.id)}" style="min-width:105px;padding:7px;"><option value="auto" ${!emp.bonusRole||emp.bonusRole==='auto'?'selected':''}>Auto (${calc.role})</option><option value="reception" ${emp.bonusRole==='reception'?'selected':''}>Reception</option><option value="workshop" ${emp.bonusRole==='workshop'?'selected':''}>Workshop</option><option value="none" ${emp.bonusRole==='none'?'selected':''}>Excluded</option></select></td>
+        <td class="screen-role-col"><select data-bonus-role="${salesHtml(emp.id)}" style="min-width:105px;padding:7px;"><option value="auto" ${!emp.bonusRole||emp.bonusRole==='auto'?'selected':''}>Auto (${calc.role})</option><option value="reception" ${emp.bonusRole==='reception'?'selected':''}>Reception</option><option value="workshop" ${emp.bonusRole==='workshop'?'selected':''}>Workshop</option><option value="none" ${emp.bonusRole==='none'?'selected':''}>Excluded</option></select></td>
         <td>${bonusMoney(calc.base)}</td><td>${bonusMoney(calc.davanti)}</td><td>${bonusMoney(calc.addOn)}</td><td>${bonusMoney(calc.managerExtra)}</td><td>${calc.sickDays}</td><td>−${bonusMoney(calc.sickDeduction)}</td>
         <td>${bonusInput(emp.id,'damages',edit.damages,'Damages')}</td><td>${bonusInput(emp.id,'owed',edit.owed,'Owed')}</td><td>${bonusInput(emp.id,'extra',edit.extra,'Manual extra')}</td><td>${bonusInput(emp.id,'baseOverride',edit.baseOverride,'Base override')}</td>
         <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
     }).join('');
     if(bonusSite==='all'||bonusSite===key) sections.push(`<div class="card" id="bonus-site-${key}" style="padding:0;overflow:auto;break-inside:avoid;">
       <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(siteCalc.addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${rule.staffStart==null?`<div style="color:var(--amber);font-size:11px;margin-top:5px;">Site turnover bonus is not set. Add On is active${rule.davantiTarget==null?'; Davanti target still required.':'.'}</div>`:''}${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
-      <table style="min-width:1210px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th>Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Manager extra</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Manual extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="13">No active employees matched to this site.</td></tr>'}</tbody></table>
+      <table style="min-width:1210px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th class="screen-role-col">Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Manager extra</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Manual extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="13">No active employees matched to this site.</td></tr>'}</tbody></table>
     </div>`);
   });
   let tonySales=0, tonySalesBonus=0;

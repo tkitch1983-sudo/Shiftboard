@@ -2958,6 +2958,11 @@ function targetMigrateLegacyPlans(){
   return changed;
 }
 function targetMonthPlan(month){ return state.targetSheets&&state.targetSheets[month] ? state.targetSheets[month] : null; }
+async function targetReloadLatest(){
+  const latest=await storageGet('targetSheets',{});
+  state.targetSheets=latest&&typeof latest==='object'&&!Array.isArray(latest)?latest:{};
+  return state.targetSheets;
+}
 function targetMoney(value,decimals=0){
   const n=Number(value||0);
   return '£'+(Number.isFinite(n)?n:0).toLocaleString('en-GB',{minimumFractionDigits:decimals,maximumFractionDigits:decimals});
@@ -3057,7 +3062,7 @@ function targetGroupSheet(plan){
     const actual=filled.reduce((n,d)=>n+Number(d.actual||0),0), variance=actual-Number(s.monthlyTarget||0);
     return `<tr><td style="text-align:left;font-weight:700;">${salesHtml(s.label)}</td><td>${targetMoney(s.monthlyTarget)}</td><td>${targetMoney(actual,2)}</td><td>${filled.length}/${(s.days||[]).filter(d=>d.open).length}</td><td style="font-weight:700;color:${variance>0?'#12824c':variance<0?'#b3261e':'#555'};">${targetSignedMoney(variance)}</td></tr>`;
   }).join('');
-  return `<div class="att-sheet" id="target-group-output"><div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — GROUP</span></div><div class="att-meta-row"><span>${salesHtml(targetMonthLabel(plan.month))}</span><span class="site-tag">TARGET ${targetMoney(groupTarget)}</span></div><div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Site</th><th>Monthly target</th><th>Actual total</th><th>Days entered</th><th>+ / − Month</th></tr></thead><tbody>${summary}</tbody></table><table class="att-table" style="margin-top:12px;"><thead><tr><th style="text-align:left;">Date</th><th>Group target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  return `<div class="att-sheet" id="target-group-output"><div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — GROUP</span></div><div class="att-meta-row"><span>${salesHtml(targetMonthLabel(plan.month))}</span><span class="site-tag">TARGET ${targetMoney(groupTarget)}</span></div><div style="padding:7px 10px;font-size:10px;color:#555;border-bottom:1px solid #bbb;">Automatically totalled from the figures saved by each site. No separate Group figures are needed.</div><div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Site</th><th>Monthly target</th><th>Actual total</th><th>Days entered</th><th>+ / − Month</th></tr></thead><tbody>${summary}</tbody></table><table class="att-table" style="margin-top:12px;"><thead><tr><th style="text-align:left;">Date</th><th>Group target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 function renderAdminTargets(){
   const isSuper=state.admin.role==='super', month=state.admin.targetMonth||new Date().toISOString().slice(0,7), plan=targetMonthPlan(month);
@@ -5123,13 +5128,18 @@ function attachHandlers(){
   if(bonusSiteFilter) bonusSiteFilter.addEventListener('change', ()=>{ state.admin.bonusSite = bonusSiteFilter.value || 'all'; render(); });
 
   const targetMonth = document.getElementById('target-month');
-  if(targetMonth) targetMonth.addEventListener('change', ()=>{
+  if(targetMonth) targetMonth.addEventListener('change', async ()=>{
     state.admin.targetMonth = targetMonth.value || new Date().toISOString().slice(0,7);
     if(state.admin.role!=='super') state.admin.targetSite=String(state.admin.scopeSite||'');
+    await targetReloadLatest();
     render();
   });
   const targetSiteFilter = document.getElementById('target-site-filter');
-  if(targetSiteFilter) targetSiteFilter.addEventListener('change', ()=>{ state.admin.targetSite=targetSiteFilter.value||'all'; render(); });
+  if(targetSiteFilter) targetSiteFilter.addEventListener('change', async ()=>{
+    state.admin.targetSite=targetSiteFilter.value||'all';
+    await targetReloadLatest();
+    render();
+  });
   app.querySelectorAll('[data-target-monthly],[data-target-saturday]').forEach(input=>{
     input.addEventListener('input',()=>{
       const siteId=input.dataset.targetMonthly||input.dataset.targetSaturday, info=targetSiteInfo(siteId);
@@ -7075,11 +7085,13 @@ async function init(){
           if(rec.absences) state.absences = rec.absences;
           if(rec.config) state.config = rec.config;
         }
+        const viewingGroupTargets=state.admin.tab==='targets'&&state.admin.role==='super'&&(state.admin.targetSite||'all')==='all';
+        if(viewingGroupTargets&&rec.targetSheets) state.targetSheets=rec.targetSheets;
         const afterRequests = holidayRequestsNeedingAttention().length;
         state.admin.lastRefresh = Date.now();
         state.admin.refreshFailed = false;
         if(afterRequests>beforeRequests) showToast(`🔔 New holiday request received${afterRequests-beforeRequests>1?'s':''}.`);
-        if(state.admin.tab==='register' || state.admin.tab==='requests' || afterRequests!==beforeRequests) render();
+        if(state.admin.tab==='register' || state.admin.tab==='requests' || viewingGroupTargets || afterRequests!==beforeRequests) render();
       }catch(_e){
         state.admin.refreshFailed = true;
       }

@@ -5389,6 +5389,16 @@ function attachHandlers(){
         }
       }
     });
+    app.addEventListener('change', (e)=>{
+      const permissionUser=e.target.closest('#permission-user');
+      if(permissionUser&&app.contains(permissionUser)){
+        const email=String(permissionUser.value||'').trim().toLowerCase();
+        if(email&&email!==state.admin.permissionEmail){
+          state.admin.permissionEmail=email;
+          render();
+        }
+      }
+    });
     app.dataset.delegated = '1';
   }
   app.querySelectorAll('[data-admin-tab]').forEach(el=>{
@@ -5452,9 +5462,6 @@ function attachHandlers(){
 
   const motMonth = document.getElementById('mot-month');
   if(motMonth) motMonth.addEventListener('change', ()=>{ state.admin.motMonth=motMonth.value; render(); });
-  const permissionUser = document.getElementById('permission-user');
-  if(permissionUser) permissionUser.addEventListener('change', ()=>{ state.admin.permissionEmail=permissionUser.value; render(); });
-
   const analysisMonth = document.getElementById('analysis-month');
   if(analysisMonth) analysisMonth.addEventListener('change', ()=>{ state.admin.analysisMonth = analysisMonth.value; state.admin.analysisSite='all'; render(); });
   const analysisSite = document.getElementById('analysis-site');

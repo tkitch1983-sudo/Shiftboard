@@ -311,6 +311,7 @@
   .att-other-info label{font-weight:700;font-size:12px;display:block;margin-bottom:4px;}
   .att-other-info textarea{width:100%;border:1px solid #ccc;font-family:inherit;font-size:12px;padding:6px;background:#fff;color:#000;min-height:34px;resize:vertical;}
   .att-footnote{padding:8px 14px;font-size:11px;font-weight:700;border-top:1px solid #000;}
+  .mot-print-source{position:fixed;left:-200vw;top:0;width:1100px;background:#fff;color:#000;}
   @media print{
     body{background:#fff;color:#000;}
     .topstrip,.admin-nav,.admin-topbar,.cal-toolbar{display:none !important;}
@@ -1371,7 +1372,7 @@ function selectedReportHtml(selector, title, orientation){
   const source=document.querySelector(selector);
   if(!source) return null;
   const clone=source.cloneNode(true);
-  if(String(source.id||'').startsWith('bonus-')){
+  if(String(source.id||'').startsWith('bonus-') || String(source.id||'').startsWith('mot-')){
     const brand=document.createElement('div'); brand.className='bonus-print-brand';
     const img=document.createElement('img'); img.src=LOGO_DATA_URI; img.alt='North East Auto Services';
     const text=document.createElement('div');
@@ -1400,6 +1401,7 @@ function selectedReportHtml(selector, title, orientation){
     .bonus-print-brand{display:flex;align-items:center;gap:14px;border-bottom:3px solid #ed1c2e;padding:0 0 9px;margin:0 0 12px}.bonus-print-brand img{width:170px;height:auto}.bonus-print-brand b{display:block;font-size:17px}.bonus-print-brand span{display:block;font-size:11px;color:#555;margin-top:3px}
     .card{border:1px solid #aaa;border-radius:6px;padding:8px;margin:0 0 8px;background:#fff;color:#000}.admin-actions,.no-print,.screen-role-col{display:none!important}
     table:not(.att-table){width:100%;border-collapse:collapse;font-size:8px}table:not(.att-table) th,table:not(.att-table) td{border:1px solid #aaa;padding:4px;text-align:left;color:#000}table:not(.att-table) th{background:#eee;font-weight:700}
+    .mot-print-source thead{display:table-header-group}.mot-print-source tr{break-inside:avoid;page-break-inside:avoid}
     .report-field-value{display:block;min-height:13px;white-space:pre-wrap;color:#000}.empty-state{padding:16px;color:#555}
   `;
   const safeTitle=String(title||'Form').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -3037,14 +3039,16 @@ function renderAdminMot(){
   const filter=state.admin.motFilter||'attention';
   const visible=all.filter(r=>filter==='all'||(filter==='attention'&&attention.includes(r.status))||(filter==='matched'&&r.status==='invoiced')||(filter==='retests'&&r.kind==='retest'));
   const count=s=>all.filter(r=>s.includes(r.status)).length;
-  const rows=visible.map(r=>{ const meta=MOT_STATUS[r.status]||[r.status,'var(--muted)']; return `<tr><td>${salesDateLabel(r.date)}</td><td class="mono" style="font-weight:700;">${salesHtml(r.registration)}</td><td>${salesHtml([r.make,r.model].filter(Boolean).join(' '))}</td><td>${salesHtml(r.kind==='retest'?'Retest':(r.results||[]).join(' / ')||'Normal test')}</td><td><span style="color:${meta[1]};font-weight:700;">${meta[0]}</span></td><td class="mono">${r.amount===null||r.amount===undefined?'—':salesMoney(r.amount)}</td><td>${salesHtml((r.codes||[]).join(', ')||'—')}</td><td style="font-size:12px;color:var(--muted);">${salesHtml(r.note||'')}</td></tr>`; }).join('');
+  const rowHtml=r=>{ const meta=MOT_STATUS[r.status]||[r.status,'var(--muted)']; return `<tr><td>${salesDateLabel(r.date)}</td><td class="mono" style="font-weight:700;">${salesHtml(r.registration)}</td><td>${salesHtml([r.make,r.model].filter(Boolean).join(' '))}</td><td>${salesHtml(r.kind==='retest'?'Retest':(r.results||[]).join(' / ')||'Normal test')}</td><td><span style="color:${meta[1]};font-weight:700;">${meta[0]}</span></td><td class="mono">${r.amount===null||r.amount===undefined?'—':salesMoney(r.amount)}</td><td>${salesHtml((r.codes||[]).join(', ')||'—')}</td><td style="font-size:12px;color:var(--muted);">${salesHtml(r.note||'')}</td></tr>`; };
+  const rows=visible.map(rowHtml).join(''), printRows=all.map(rowHtml).join('');
   const fileCard=(label,file,source)=>`<div class="card" style="margin:0;border-left:4px solid ${file?'var(--green)':'var(--red)'};"><b>${label}</b><div style="font-size:12px;color:var(--muted);margin:5px 0 10px;">${file?`${salesHtml(file.file_name)} · ${file.row_count} rows · ${salesCompletedLabel(file.uploaded_at)}`:'Not uploaded for this month'}</div>${isTonyLogin()?`<input type="file" id="${source==='mot_system'?'mot-system-file':'mot-autowork-file'}" accept=".csv,.tsv,.txt,.ods" style="margin-bottom:8px;"><button type="button" class="add-btn" data-action="mot-upload" data-source="${source}">${file?'Replace file':'Upload file'}</button>`:''}</div>`;
   return `<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;"><div><h2 style="margin-bottom:4px;">MOT Reconciliation</h2><div style="font-size:12px;color:var(--muted);">Matches the MOT testing log to Autowork by registration and date.</div></div><label style="font-size:11px;color:var(--muted);">Month<select id="mot-month" style="width:auto;margin-left:6px;">${months.map(m=>`<option value="${m}" ${m===month?'selected':''}>${salesAnalysisMonthLabel(m)}</option>`).join('')||`<option value="${month}">${salesAnalysisMonthLabel(month)}</option>`}</select></label></div>
   ${state.admin.motError?`<div class="card" style="color:var(--red);">${salesHtml(state.admin.motError)}</div>`:''}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:16px 0;">${fileCard('MOT testing-station log',motFile,'mot_system')}${fileCard('Autowork MOT invoices',awFile,'autowork')}</div>
   ${!motFile||!awFile?'<div class="card" style="border-left:4px solid var(--amber);">Upload both files for the same month to complete the comparison. Existing months remain saved.</div>':`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-bottom:14px;"><div class="card" style="margin:0;"><div style="font-size:11px;color:var(--muted);">Invoiced correctly</div><div class="mono" style="font-size:25px;color:var(--green);">${count(['invoiced'])}</div></div><div class="card" style="margin:0;"><div style="font-size:11px;color:var(--muted);">Needs attention</div><div class="mono" style="font-size:25px;color:var(--red);">${count(attention)}</div></div><div class="card" style="margin:0;"><div style="font-size:11px;color:var(--muted);">Missing invoices</div><div class="mono" style="font-size:25px;">${count(['missing'])}</div></div><div class="card" style="margin:0;"><div style="font-size:11px;color:var(--muted);">Retests</div><div class="mono" style="font-size:25px;">${all.filter(r=>r.kind==='retest').length}</div></div></div>
-  <div class="card no-print" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:13px;">Show</b>${[['attention','Needs attention'],['all','Everything'],['matched','Invoiced'],['retests','Retests']].map(([v,l])=>`<button type="button" class="add-btn" data-action="mot-filter" data-filter="${v}" style="${filter===v?'border-color:var(--amber);':''}">${l}</button>`).join('')}<button type="button" class="add-btn" data-action="mot-download" style="margin-left:auto;">Download CSV</button></div>
-  <div class="card" style="padding:0;overflow:auto;"><table style="min-width:1100px;margin:0;"><thead><tr><th>Date</th><th>Registration</th><th>Vehicle</th><th>MOT result</th><th>Invoice check</th><th>Net value</th><th>Code</th><th>Explanation</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty-state">No rows in this view.</td></tr>'}</tbody></table></div>`}
+  <div class="card no-print" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:13px;">Show</b>${[['attention','Needs attention'],['all','Everything'],['matched','Invoiced'],['retests','Retests']].map(([v,l])=>`<button type="button" class="add-btn" data-action="mot-filter" data-filter="${v}" style="${filter===v?'border-color:var(--amber);':''}">${l}</button>`).join('')}<button type="button" class="add-btn" data-action="mot-print" style="margin-left:auto;">🖶 Print MOT Admin Sheet</button><button type="button" class="add-btn" data-action="mot-download">Download CSV</button></div>
+  <div class="card" style="padding:0;overflow:auto;"><table style="min-width:1100px;margin:0;"><thead><tr><th>Date</th><th>Registration</th><th>Vehicle</th><th>MOT result</th><th>Invoice check</th><th>Net value</th><th>Code</th><th>Explanation</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty-state">No rows in this view.</td></tr>'}</tbody></table></div>
+  <div id="mot-admin-print" class="mot-print-source"><div style="margin-bottom:10px;"><div style="font-size:18px;font-weight:800;">MOT Administration Check · ${salesHtml(salesAnalysisMonthLabel(month))}</div><div style="font-size:10px;color:#555;margin-top:3px;">MOT log: ${salesHtml(motFile.file_name)} · Autowork: ${salesHtml(awFile.file_name)} · Printed ${salesHtml(new Date().toLocaleDateString('en-GB'))}</div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;"><div class="card"><b>Invoiced correctly</b><div style="font-size:18px;">${count(['invoiced'])}</div></div><div class="card"><b>Needs attention</b><div style="font-size:18px;">${count(attention)}</div></div><div class="card"><b>Missing invoices</b><div style="font-size:18px;">${count(['missing'])}</div></div><div class="card"><b>Retests</b><div style="font-size:18px;">${all.filter(r=>r.kind==='retest').length}</div></div></div><table><thead><tr><th>Date</th><th>Registration</th><th>Vehicle</th><th>MOT result</th><th>Invoice check</th><th>Net value</th><th>Code</th><th>Explanation</th></tr></thead><tbody>${printRows}</tbody></table><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:18px;font-size:10px;"><div style="border-top:1px solid #000;padding-top:4px;">Completed by</div><div style="border-top:1px solid #000;padding-top:4px;">Checked by</div><div style="border-top:1px solid #000;padding-top:4px;">Date</div></div></div>`}
   <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Failed and passed normal tests for the same registration on the same day count as one MOT visit. Credits cancel invoice lines. Free retests are shown but are not treated as missing invoices.</div>`;
 }
 function downloadMotCsv(){
@@ -5904,6 +5908,11 @@ async function onAction(e){
   }
   else if(action==='mot-download'){
     downloadMotCsv(); return;
+  }
+  else if(action==='mot-print'){
+    if(!canViewPrivateTab('mot')){ showToast('You do not have permission for this page.',true); return; }
+    const month=state.admin.motMonth||new Date().toISOString().slice(0,7);
+    printSelectedReport('#mot-admin-print','MOT Administration Check '+salesAnalysisMonthLabel(month),'landscape'); return;
   }
   else if(action==='permission-toggle'){
     if(!isTonyLogin()){ showToast('Only Tony can change permissions.',true); return; }

@@ -3048,7 +3048,11 @@ function motReconciliation(){
       continue;
     }
     const nearby=Array.from(charges.values()).filter(c=>c.kind==='normal'&&c.registration===visit.registration&&c.amount>0&&motDaysBetween(c.date,visit.date)<=7).sort((a,b)=>motDaysBetween(a.date,visit.date)-motDaysBetween(b.date,visit.date))[0];
-    if(nearby){ matched.add(nearby.key); rows.push({...visit,status:'date_mismatch',amount:nearby.amount,codes:nearby.codes,note:`Autowork invoice is dated ${salesDateLabel(nearby.date)}`}); }
+    if(nearby){
+      matched.add(nearby.key); const live=Math.max(0,nearby.invoices-nearby.credits);
+      if(live>1) rows.push({...visit,status:'duplicate',amount:nearby.amount,codes:nearby.codes,note:`${live} live MOT invoice lines for this registration; Autowork date ${salesDateLabel(nearby.date)}`});
+      else rows.push({...visit,status:'invoiced',amount:nearby.amount,codes:nearby.codes,note:`Registration matched; Autowork invoice dated ${salesDateLabel(nearby.date)}`});
+    }
     else rows.push({...visit,status:'missing',amount:null,codes:[],note:'No live MOT invoice found for this registration'});
   }
   for(const charge of charges.values()){
@@ -3057,13 +3061,13 @@ function motReconciliation(){
   }
   return rows.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.registration).localeCompare(String(b.registration)));
 }
-const MOT_STATUS={invoiced:['Invoiced','var(--green)'],missing:['Missing invoice','var(--red)'],date_mismatch:['Date mismatch','var(--amber)'],duplicate:['Duplicate invoice','var(--red)'],credited:['Credited / £0','var(--red)'],extra_invoice:['Autowork only','var(--amber)'],retest:['Retest — no fee','var(--muted)'],retest_fee:['Retest fee','var(--green)'],extra_retest:['Retest fee only','var(--amber)']};
+const MOT_STATUS={invoiced:['Invoiced','var(--green)'],missing:['Missing invoice','var(--red)'],duplicate:['Duplicate invoice','var(--red)'],credited:['Credited / £0','var(--red)'],extra_invoice:['Autowork only','var(--amber)'],retest:['Retest — no fee','var(--muted)'],retest_fee:['Retest fee','var(--green)'],extra_retest:['Retest fee only','var(--amber)']};
 function renderAdminMot(){
   if(!canViewPrivateTab('mot')) return '<h2>MOT Logs</h2><div class="card">You do not have permission to view this page.</div>';
   if(state.admin.motImports===null||state.admin._loadingMot) return '<h2>MOT Logs</h2><div class="card">Loading MOT files…</div>';
   const imports=state.admin.motImports||[], months=[...new Set(imports.map(r=>String(r.report_month||'').slice(0,7)))].sort().reverse(), month=state.admin.motMonth||months[0]||new Date().toISOString().slice(0,7);
   const motFile=imports.find(r=>r.source==='mot_system'&&String(r.report_month).slice(0,7)===month), awFile=imports.find(r=>r.source==='autowork'&&String(r.report_month).slice(0,7)===month);
-  const all=motReconciliation(), attention=['missing','date_mismatch','duplicate','credited','extra_invoice'];
+  const all=motReconciliation(), attention=['missing','duplicate','credited','extra_invoice'];
   const filter=state.admin.motFilter||'attention';
   const visible=all.filter(r=>filter==='all'||(filter==='attention'&&attention.includes(r.status))||(filter==='matched'&&r.status==='invoiced')||(filter==='retests'&&r.kind==='retest'));
   const count=s=>all.filter(r=>s.includes(r.status)).length;
@@ -3077,7 +3081,7 @@ function renderAdminMot(){
   <div class="card no-print" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:13px;">Show</b>${[['attention','Needs attention'],['all','Everything'],['matched','Invoiced'],['retests','Retests']].map(([v,l])=>`<button type="button" class="add-btn" data-action="mot-filter" data-filter="${v}" style="${filter===v?'border-color:var(--amber);':''}">${l}</button>`).join('')}<button type="button" class="add-btn" data-action="mot-print" style="margin-left:auto;">🖶 Print MOT Admin Sheet</button><button type="button" class="add-btn" data-action="mot-download">Download CSV</button></div>
   <div class="card" style="padding:0;overflow:auto;"><table style="min-width:1100px;margin:0;"><thead><tr><th>Date</th><th>Registration</th><th>Vehicle</th><th>MOT result</th><th>Invoice check</th><th>Net value</th><th>Code</th><th>Explanation</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty-state">No rows in this view.</td></tr>'}</tbody></table></div>
   <div id="mot-admin-print" class="mot-print-source"><div style="margin-bottom:10px;"><div style="font-size:18px;font-weight:800;">MOT Administration Check · ${salesHtml(salesAnalysisMonthLabel(month))}</div><div style="font-size:10px;color:#555;margin-top:3px;">MOT log: ${salesHtml(motFile.file_name)} · Autowork: ${salesHtml(awFile.file_name)} · Printed ${salesHtml(new Date().toLocaleDateString('en-GB'))}</div></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;"><div class="card"><b>Invoiced correctly</b><div style="font-size:18px;">${count(['invoiced'])}</div></div><div class="card"><b>Needs attention</b><div style="font-size:18px;">${count(attention)}</div></div><div class="card"><b>Missing invoices</b><div style="font-size:18px;">${count(['missing'])}</div></div><div class="card"><b>Retests</b><div style="font-size:18px;">${all.filter(r=>r.kind==='retest').length}</div></div></div><table><thead><tr><th>Date</th><th>Registration</th><th>Vehicle</th><th>MOT result</th><th>Invoice check</th><th>Net value</th><th>Code</th><th>Explanation</th></tr></thead><tbody>${printRows}</tbody></table><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:18px;font-size:10px;"><div style="border-top:1px solid #000;padding-top:4px;">Completed by</div><div style="border-top:1px solid #000;padding-top:4px;">Checked by</div><div style="border-top:1px solid #000;padding-top:4px;">Date</div></div></div>`}
-  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Failed and passed normal tests for the same registration on the same day count as one MOT visit. Credits cancel invoice lines. Free retests are shown but are not treated as missing invoices.</div>`;
+  <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">A matching registration counts as invoiced even when the Autowork date differs. Failed and passed normal tests for the same registration on the same day count as one MOT visit. Credits cancel invoice lines. Free retests are shown but are not treated as missing invoices.</div>`;
 }
 function downloadMotCsv(){
   if(!canViewPrivateTab('mot')) return;

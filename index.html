@@ -1002,9 +1002,9 @@ function roundTimesheetHours(value){
 function roundFillingStationHours(value){
   const n = Number(value);
   if(!Number.isFinite(n)) return 0;
-  // Round the completed station total to the closest quarter-hour. This keeps
-  // matching start/finish minutes fair: e.g. 18:10–22:10 remains 4.00 hours.
-  return Math.max(0, Math.round((n + Number.EPSILON) * 4) / 4);
+  // After the station timestamps have been rounded, payroll uses only fully
+  // completed quarter-hours: 8h55 becomes 8h45 / 8.75 hours.
+  return Math.max(0, Math.floor((n + Number.EPSILON) * 4) / 4);
 }
 function normaliseTimesheetHours(value, emp, siteId){
   const effectiveSiteId = (emp && emp.siteId) || siteId;

@@ -1143,6 +1143,19 @@ async function deletePhotosForWeek(weekIso){
     return res.ok;
   }catch(_e){ return false; }
 }
+/* Clock photos are keyed by clock event, not by employee, so erasing a
+   leaver's photos means deleting every clock_photos row for their own
+   event ids specifically. */
+async function deleteClockPhotosForEvents(eventIds){
+  if(!eventIds || !eventIds.length) return true;
+  try{
+    const res = await fetch(SUPABASE_URL + '/rest/v1/clock_photos?event_id=in.(' + eventIds.map(encodeURIComponent).join(',') + ')', {
+      method:'DELETE',
+      headers: await authHeaders()
+    });
+    return res.ok;
+  }catch(_e){ return false; }
+}
 function requireTimesheetUnlocked(weekIso){
   if(isTimesheetWeekLocked(weekIso)){
     showToast('This timesheet week is locked by Upper Management.', true);
@@ -1912,7 +1925,6 @@ function firstInToday(empId, dateStr){
   return evs.reduce((min,e)=> e.timestamp<min.timestamp?e:min, evs[0]);
 }
 function findPinConflict(pin, excludeType, excludeId){
-  if(pin === state.config.settings.adminPin) return 'the master admin PIN';
   const empConflict = state.config.employees.find(e=> e.pin===pin && !(excludeType==='employee' && e.id===excludeId));
   if(empConflict) return empConflict.name+' (employee)';
   const mgrConflict = (state.config.siteManagers||[]).find(m=> m.pin===pin && !(excludeType==='manager' && m.id===excludeId));
@@ -5285,6 +5297,21 @@ function renderClockPhotoModal(){
   </div></div>`;
 }
 
+/* When a leaver's retention period (set in Settings → Data protection) has
+   passed, their personal data is eligible to be permanently erased — not
+   just hidden by marking them inactive. Nothing erases this automatically;
+   a manager reviews the list in Clock Log and erases each person on purpose. */
+function leaverRetentionDueMs(emp){
+  if(!emp || emp.active!==false || !emp.inactivatedAt) return null;
+  const years = state.config.settings.dpRetentionYears || 6;
+  return emp.inactivatedAt + years*365.25*24*60*60*1000;
+}
+function employeesPastRetention(){
+  return (state.config.employees||[]).filter(e=>{
+    const due = leaverRetentionDueMs(e);
+    return due!==null && Date.now()>=due;
+  });
+}
 function renderAdminClockLog(){
   const isSuper = state.admin.role==='super';
   const siteOptions = `<option value="all">All sites</option>` + state.config.sites.map(s=>`<option value="${s.id}" ${state.admin.clogSite===s.id?'selected':''}>${s.name}</option>`).join('');
@@ -5357,6 +5384,13 @@ function renderAdminClockLog(){
     <div style="font-size:12px;color:var(--muted-2);">Timesheets are worked out from clock events, so export them <b>before</b> clearing — once the events are gone the old timesheets cannot be rebuilt. Open both files and check they look right first; clearing cannot be undone.</div>
     <div id="archive-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
   </div>
+
+  <h2 style="font-size:16px;margin-top:28px;">Data retention — leavers</h2>
+  <div class="head-sub">Marking someone Inactive only hides them in the app — it does not delete their records. Once your Settings retention period (currently ${state.config.settings.dpRetentionYears || 6} years) has passed since they left, they appear here so you can erase their personal data on purpose. This removes their employee record, clock events, clock photos, holiday requests, sickness records (including any attached sick note file), and timesheet overrides. Bonus sheet entries, if any, are not covered — check those separately.</div>
+  ${(()=>{ const due=employeesPastRetention(); if(!due.length) return `<div class="card"><div class="empty-state">Nobody is currently past the retention period.</div></div>`;
+    const rows=due.map(e=>`<tr><td>${e.name}</td><td>${siteName(e.siteId)}</td><td>${fmtDateShort(iso(new Date(e.inactivatedAt)))}</td><td>${fmtDateShort(iso(new Date(leaverRetentionDueMs(e))))}</td><td><button type="button" class="icon-btn" data-action="erase-leaver-data" data-id="${e.id}" style="color:var(--red);">Permanently erase</button></td></tr>`).join('');
+    return `<div class="card"><table><thead><tr><th>Name</th><th>Site</th><th>Left on</th><th>Retention due</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  })()}
 
   <h2 style="font-size:16px;margin-top:28px;">Backup &amp; restore</h2>
   <div class="head-sub">Download a complete copy of everything — staff, PINs, holidays, balances, clock events, timesheets. Keep it somewhere safe. If anything is ever lost or wrongly overwritten, the same file puts it all back.</div>
@@ -5450,12 +5484,6 @@ function renderAdminSettings(){
   <div class="card">
     <div class="field"><label>Max people off company-wide at once</label><input type="number" id="set-cap" value="${state.config.settings.capOff}"></div>
     <button type="button" class="add-btn" data-action="save-cap">Save cap</button>
-  </div>
-  <div class="card">
-    <div class="field"><label>Current admin PIN</label><input type="password" id="set-current-pin"></div>
-    <div class="field"><label>New admin PIN</label><input type="password" id="set-new-pin"></div>
-    <div class="error-msg" id="pin-change-error"></div>
-    <button type="button" class="add-btn" data-action="save-admin-pin">Change PIN</button>
   </div>`;
 }
 
@@ -7050,7 +7078,15 @@ async function onAction(e){
   else if(action==='toggle-employee'){
     if(!requireSuper()) return render();
     const emp = employeeById(id);
-    if(emp){ emp.active = emp.active===false ? true : false; await saveConfig(); showToast('Employee updated.'); }
+    if(emp){
+      const goingInactive = emp.active!==false;
+      emp.active = goingInactive ? false : true;
+      // Track when someone left, so the retention policy in Settings/Privacy
+      // has an actual date to count from rather than just "inactive".
+      if(goingInactive) emp.inactivatedAt = Date.now();
+      else delete emp.inactivatedAt;
+      await saveConfig(); showToast('Employee updated.');
+    }
   }
   else if(action==='delete-employee'){
     if(!requireSuper()) return render();
@@ -7061,6 +7097,34 @@ async function onAction(e){
       const ok = await saveConfig();
       if(ok) showToast('Employee deleted.');
     }
+  }
+  else if(action==='erase-leaver-data'){
+    if(!requireSuper()) return render();
+    const emp = employeeById(id);
+    if(!emp){ showToast('That employee record was not found — they may already be erased.', true); return render(); }
+    const due = leaverRetentionDueMs(emp);
+    if(!due || Date.now() < due){ showToast('This person is not yet past the retention period.', true); return render(); }
+    if(!confirm(`Permanently erase all personal data for ${emp.name}?\n\nThis removes their employee record, clock events, clock photos, holiday requests, sickness records (and any attached sick note file), and timesheet overrides. This cannot be undone.`)) return;
+    const empId = emp.id;
+    const eventIds = state.events.filter(ev=>ev && ev.employeeId===empId).map(ev=>ev.id);
+    const sickPaths = [...new Set((state.absences||[]).filter(a=>a && a.employeeId===empId && a.notePath).map(a=>a.notePath))];
+
+    // Uploaded files first — if either delete fails, the records pointing to
+    // them are still removed below rather than left half-erased.
+    await deleteClockPhotosForEvents(eventIds);
+    for(const path of sickPaths){ await deleteSickNote(path); }
+
+    state.config.employees = state.config.employees.filter(e=>e.id!==empId);
+    state.events = state.events.filter(ev=>!(ev && ev.employeeId===empId));
+    state.absences = state.absences.filter(a=>!(a && a.employeeId===empId));
+    state.requests = (state.requests||[]).filter(r=>!(r && r.employeeId===empId));
+    Object.values(state.timesheetExtras||{}).forEach(week=>{
+      if(week && week.employees && week.employees[empId]) delete week.employees[empId];
+    });
+
+    const results = await Promise.all([saveConfig(), saveEvents(), saveAbsences(), saveRequests(), saveTimesheetExtras()]);
+    if(results.every(Boolean)) showToast(`${emp.name}'s data has been permanently erased.`);
+    else showToast('Some records could not be saved — check the connection and try again.', true);
   }
   else if(action==='save-employee'){
     if(!requireSuper()) return render();
@@ -7502,18 +7566,6 @@ async function onAction(e){
     if(entitlement>0) state.config.settings.defaultAnnualEntitlement = entitlement;
     if(rate>0) state.config.settings.monthlyAccrualRate = rate;
     await saveConfig(); showToast('Accrual settings updated.');
-  }
-  else if(action==='save-admin-pin'){
-    if(!requireSuper()) return render();
-    const cur = document.getElementById('set-current-pin').value;
-    const next = document.getElementById('set-new-pin').value;
-    const errEl = document.getElementById('pin-change-error');
-    if(cur !== state.config.settings.adminPin){ errEl.textContent='Current PIN is incorrect.'; return; }
-    if(!/^\d{4}$/.test(next)){ errEl.textContent='New PIN must be exactly 4 digits.'; return; }
-    const conflict = findPinConflict(next, null, null);
-    if(conflict){ errEl.textContent='That PIN is already used by '+conflict+'.'; return; }
-    state.config.settings.adminPin = next;
-    await saveConfig(); showToast('Admin PIN changed.');
   }
 
   render();

@@ -2441,7 +2441,10 @@ async function loadSalesData(force){
     const headers=await authHeaders();
     const snapUrl=SUPABASE_URL + '/rest/v1/sales_daily_snapshots?select=*&order=snapshot_date.desc,site_name.asc&limit=800';
     const runUrl=SUPABASE_URL + '/rest/v1/sales_import_runs?select=*&order=run_date.desc&limit=1';
-    const [sr,rr]=await Promise.all([fetch(snapUrl,{headers}),fetch(runUrl,{headers})]);
+    const [sr,rr]=await Promise.all([
+      fetch(snapUrl,{headers,cache:'no-store'}),
+      fetch(runUrl,{headers,cache:'no-store'})
+    ]);
     if(!sr.ok) throw new Error('Sales data '+sr.status);
     const all=await sr.json();
     const latestDate=(all&&all[0]&&all[0].snapshot_date)||null;
@@ -2528,7 +2531,7 @@ async function loadSalesAnalysis(force){
   try{
     const headers=await authHeaders();
     const url=SUPABASE_URL + '/rest/v1/site_sales_analysis_monthly?select=*&order=month_start.desc,site_name.asc&limit=2000';
-    const res=await fetch(url,{headers});
+    const res=await fetch(url,{headers,cache:'no-store'});
     if(!res.ok) throw new Error('Sales analysis '+res.status);
     const rows=await res.json();
     state.admin.analysisRows=rows||[];
@@ -2728,7 +2731,7 @@ async function loadStockData(force){
   try{
     const headers=await authHeaders();
     const url=SUPABASE_URL + '/rest/v1/stock_value_snapshots?select=*&order=snapshot_date.desc,site_name.asc&limit=800';
-    const res=await fetch(url,{headers});
+    const res=await fetch(url,{headers,cache:'no-store'});
     if(!res.ok) throw new Error('Stock data '+res.status);
     const all=await res.json();
     const latestDate=(all&&all[0]&&all[0].snapshot_date)||null;
@@ -7094,11 +7097,15 @@ async function init(){
         }
         const viewingGroupTargets=state.admin.tab==='targets'&&state.admin.role==='super'&&(state.admin.targetSite||'all')==='all';
         if(viewingGroupTargets&&rec.targetSheets) state.targetSheets=rec.targetSheets;
+        const viewingLiveSales=state.admin.tab==='sales'&&canViewWorkshopSales();
+        if(viewingLiveSales&&(!state.admin.salesLoadedAt||Date.now()-state.admin.salesLoadedAt>=60000)){
+          await loadSalesData(true);
+        }
         const afterRequests = holidayRequestsNeedingAttention().length;
         state.admin.lastRefresh = Date.now();
         state.admin.refreshFailed = false;
         if(afterRequests>beforeRequests) showToast(`🔔 New holiday request received${afterRequests-beforeRequests>1?'s':''}.`);
-        if(state.admin.tab==='register' || state.admin.tab==='requests' || viewingGroupTargets || afterRequests!==beforeRequests) render();
+        if(state.admin.tab==='register' || state.admin.tab==='requests' || viewingGroupTargets || viewingLiveSales || afterRequests!==beforeRequests) render();
       }catch(_e){
         state.admin.refreshFailed = true;
       }
@@ -7112,6 +7119,8 @@ async function init(){
     if(state.view==='admin' && _session){
       try{
         await loadAll();
+        if(state.admin.tab==='sales'&&canViewWorkshopSales()) await loadSalesData(true);
+        if(state.admin.tab==='stock'&&isTonyLogin()) await loadStockData(true);
         state.admin.lastRefresh = Date.now();
         state.admin.refreshFailed = false;
         render();

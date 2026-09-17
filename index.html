@@ -1867,7 +1867,10 @@ function clampedHoursForShift(dateStr, inTs, outTs, siteId, roundLateStart, emp)
     // clamp the start to the public opening time because station shift patterns
     // can legitimately begin earlier (for example 05:45).
     effectiveIn=roundTimestampToNearestMinutes(inTs,15);
-    clampedOut=Math.min(roundTimestampToNearestMinutes(outTs,5),dayEnd);
+    // A station shift can legitimately finish after the site's configured
+    // public closing time. Use the actual rounded clock-out; the scheduled
+    // finish remains the safety cut-off only when somebody forgets to clock out.
+    clampedOut=roundTimestampToNearestMinutes(outTs,5);
   } else {
     // Workshops credit an early/on-time arrival from the scheduled start.
     // From 08:31 (or one minute after a custom start) the first clock-in is
@@ -1895,7 +1898,7 @@ function clampedIntervalForShift(dateStr, inTs, outTs, siteId, roundLateStart, e
   let clampedOut;
   if(fillingStation){
     effectiveIn=roundTimestampToNearestMinutes(inTs,15);
-    clampedOut=Math.min(roundTimestampToNearestMinutes(outTs,5),dayEnd);
+    clampedOut=roundTimestampToNearestMinutes(outTs,5);
   } else {
     effectiveIn=Math.max(inTs,dayStart);
     if(roundLateStart && inTs>=dayStart+60000) effectiveIn=roundUpToQuarterHour(inTs);
@@ -4804,7 +4807,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour, clock-outs to the closest 5 minutes, then the final daily total rounds down to the last completed quarter-hour. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break. Peterlee petrol/convenience shifts over 4.50 hours also have a 30-min dinner break; other filling-station shifts do not. Any actual clocked break counts toward the 30 minutes. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour and clock-outs to the closest 5 minutes, even when a genuine clock-out is after the configured public closing time; the final daily total then rounds down to the last completed quarter-hour. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break. Peterlee petrol/convenience shifts over 4.50 hours also have a 30-min dinner break; other filling-station shifts do not. Any actual clocked break counts toward the 30 minutes. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>

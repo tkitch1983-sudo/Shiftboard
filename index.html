@@ -806,7 +806,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -2815,6 +2815,31 @@ async function loadStockData(force){
   }
   state.admin._loadingStock=false;
 }
+/* Looks up stock value for a chosen past date, per site: the most recent
+   captured snapshot on or before that date. Queried directly rather than
+   relying on the capped 800-row history cache, so any date can be picked,
+   not just the last ~100 nights. */
+async function loadStockForDate(dateStr){
+  if(!canViewPrivateTab('stock') || !dateStr) return;
+  state.admin._loadingStockAsOf=true;
+  state.admin.stockAsOfError=null;
+  try{
+    const headers=await authHeaders();
+    const url=SUPABASE_URL + '/rest/v1/stock_value_snapshots?select=*&snapshot_date=lte.' + encodeURIComponent(dateStr) + '&order=snapshot_date.desc,site_name.asc&limit=400';
+    const res=await fetch(url,{headers,cache:'no-store'});
+    if(!res.ok) throw new Error('Stock date lookup '+res.status);
+    const rows=await res.json();
+    const bySite={};
+    (rows||[]).forEach(r=>{ if(!bySite[r.site_key]) bySite[r.site_key]=r; });
+    state.admin.stockAsOfRows=Object.values(bySite).sort((a,b)=>String(a.site_name).localeCompare(String(b.site_name)));
+    state.admin.stockAsOfDate=dateStr;
+  }catch(err){
+    console.error('Stock value date lookup failed',err);
+    state.admin.stockAsOfRows=[];
+    state.admin.stockAsOfError=err.message||String(err);
+  }
+  state.admin._loadingStockAsOf=false;
+}
 function stockDeltaText(value){
   const n=Number(value||0);
   if(!Number.isFinite(n) || Math.abs(n)<0.005) return 'No change';
@@ -2864,8 +2889,41 @@ function renderAdminStock(){
   </div>
   ${stale?`<div class="card" style="border-left:4px solid var(--red);color:var(--red);">${stale} site${stale===1?'':'s'} could not be refreshed. The last valid value is shown where available.</div>`:''}
   <div class="card" style="padding:0;overflow:auto;"><table style="min-width:620px;margin:0;"><thead><tr><th>Site</th><th>Stock value</th><th>Nightly change</th><th>Status</th></tr></thead><tbody>${latestRows}</tbody></table></div>
+  ${renderStockAsOf(latestDate)}
   <div class="card" style="margin-top:14px;"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><b>History</b><div style="font-size:11px;color:var(--muted-2);margin-top:2px;">A nightly audit trail; older figures are never overwritten.</div></div><label style="font-size:11px;color:var(--muted);">Show <select id="stock-site-filter" style="width:auto;margin-left:6px;">${options}</select></label></div><div style="overflow:auto;margin-top:12px;"><table style="min-width:560px;margin:0;"><thead><tr><th>Date</th><th>Site</th><th>Stock value</th><th>Status</th></tr></thead><tbody>${historyRows}</tbody></table></div></div>
   <div style="font-size:11px;color:var(--muted-2);margin-top:10px;">Read-only: this page cannot update stock quantities or costs in Autowork.</div>`;
+}
+/* A calendar picker so any past night's stock value can be looked up on
+   demand, independent of the capped history list above. */
+function renderStockAsOf(latestDate){
+  const dateStr = state.admin.stockAsOfDate || latestDate;
+  const rows = state.admin.stockAsOfRows;
+  const selected = state.admin.stockSite||'all';
+  const visible = (rows||[]).filter(r=>selected==='all'||String(r.site_key)===selected);
+  const total = visible.reduce((sum,r)=>sum+salesNum(r.stock_value),0);
+  const asOfRows = visible.map(r=>{
+    const onDate = String(r.snapshot_date)===dateStr;
+    return `<tr><td style="font-weight:700;">${salesHtml(r.site_name)}</td><td class="mono">${salesMoney(r.stock_value)}</td><td>${onDate?'<span style="color:var(--green);">Captured that day</span>':`<span style="color:var(--amber);">Carried from ${salesHtml(salesDateLabel(r.snapshot_date))}</span>`}</td></tr>`;
+  }).join('');
+  const body = (rows===null || state.admin._loadingStockAsOf)
+    ? `<div style="color:var(--muted);padding:10px 0;">Looking up stock for that date…</div>`
+    : (!rows.length
+        ? `<div style="color:var(--muted);padding:10px 0;">${salesHtml(state.admin.stockAsOfError||'No stock value has been captured on or before that date yet.')}</div>`
+        : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:14px 0;">
+             <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Stock value on ${salesHtml(salesDateLabel(dateStr))}</div><div class="mono" style="font-size:23px;margin-top:5px;">${salesMoney(total)}</div></div>
+           </div>
+           <div style="overflow:auto;"><table style="min-width:560px;margin:0;"><thead><tr><th>Site</th><th>Stock value</th><th>Status</th></tr></thead><tbody>${asOfRows}</tbody></table></div>`);
+  return `<div class="card" style="margin-top:14px;" id="stock-asof-output">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div><b>Stock value by date</b><div style="font-size:11px;color:var(--muted-2);margin-top:2px;">Pick a past date to see what stock was worth that night. Shows the most recent capture on or before that date, per site.</div></div>
+      <div class="no-print" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:11px;color:var(--muted);">Date <input id="stock-asof-date" type="date" value="${salesHtml(dateStr)}" max="${salesHtml(latestDate)}" style="margin-left:6px;"></label>
+        <button type="button" class="add-btn" data-action="print-stock-asof">🖶 Print</button>
+        <button type="button" class="add-btn" data-action="download-stock-asof">Download</button>
+      </div>
+    </div>
+    ${body}
+  </div>`;
 }
 
 /* ---------- PRIVATE MOT RECONCILIATION ---------- */
@@ -3681,6 +3739,10 @@ function renderAdmin(){
     if(state.admin.stockRows===null && !state.admin._loadingStock){
       state.admin._loadingStock=true;
       (async ()=>{ state.admin._loadingStock=false; await loadStockData(false); render(); })();
+    }
+    if(state.admin.stockAsOfRows===null && !state.admin._loadingStockAsOf){
+      state.admin._loadingStockAsOf=true;
+      (async ()=>{ state.admin._loadingStockAsOf=false; await loadStockForDate(state.admin.stockAsOfDate || iso(new Date())); render(); })();
     }
   }
   else if(state.admin.tab==='mot'){
@@ -4841,6 +4903,14 @@ function renderAdminEmployees(){
     .map(e=>{
     const bal = availableBalance(e);
     const u = unitLabel(e);
+    const emergencyCell = e.emergencyContactName
+      ? `${salesHtml(e.emergencyContactName)}${e.emergencyContactRelationship?` <span style="color:var(--muted-2);">(${salesHtml(e.emergencyContactRelationship)})</span>`:''}${e.emergencyContactPhone?`<div style="color:var(--muted);font-size:11px;">${salesHtml(e.emergencyContactPhone)}</div>`:''}`
+      : '<span style="color:var(--muted-2);">—</span>';
+    const medicalCell = e.medicalCondition==='yes'
+      ? `<span class="pill pill-rejected" title="${salesHtml(e.medicalNeeds||'')}">Yes</span>${e.medicalNeeds?`<div style="color:var(--muted);font-size:11px;max-width:160px;">${salesHtml(e.medicalNeeds)}</div>`:''}`
+      : (e.medicalCondition==='no'
+        ? '<span class="pill" style="color:var(--muted);border-color:var(--line);">No</span>'
+        : '<span style="color:var(--muted-2);">—</span>');
     return `
     <tr>
       <td>${e.name}</td>
@@ -4850,6 +4920,8 @@ function renderAdminEmployees(){
       <td class="mono">${e.monthlyRate!==undefined ? e.monthlyRate : (state.config.settings.monthlyAccrualRate||1.66)} ${u}</td>
       <td class="mono" style="${bal<0?'color:var(--red);':''}">${bal.toFixed(2)} ${u}</td>
       <td style="font-size:11px;color:var(--muted);">${holidayStatusLabel(e)}</td>
+      <td>${emergencyCell}</td>
+      <td>${medicalCell}</td>
       <td><span class="toggle ${e.active!==false?'on':'off'}" data-action="toggle-employee" data-id="${e.id}">${e.active!==false?'Active':'Inactive'}</span></td>
       <td><button type="button" class="icon-btn" data-action="edit-employee" data-id="${e.id}">Edit</button>${e.active===false?` · <button type="button" class="icon-btn" data-action="delete-employee" data-id="${e.id}">Delete</button>`:''}</td>
     </tr>`;
@@ -4859,8 +4931,8 @@ function renderAdminEmployees(){
   <div class="head-sub">${state.config.employees.length} people across ${state.config.sites.length} sites. Open Edit to record contact, emergency contact and medical information. Set someone Inactive first to reveal a Delete option for them.</div>
   <div class="card">
     <table>
-      <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Entitlement</th><th>Rate/mo</th><th>Balance</th><th>Holiday</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="9" class="empty-state">No employees yet — add your first below.</td></tr>`}</tbody>
+      <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Entitlement</th><th>Rate/mo</th><th>Balance</th><th>Holiday</th><th>Emergency contact</th><th>Medical</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="11" class="empty-state">No employees yet — add your first below.</td></tr>`}</tbody>
     </table>
   </div>
   <button type="button" class="add-btn" data-action="new-employee">+ Add employee</button>
@@ -4958,7 +5030,12 @@ function renderEmployeeModal(){
           <div class="field"><label>Relationship</label><input type="text" id="emp-emergency-relationship" value="${vaultEsc(emp.emergencyContactRelationship||'')}" placeholder="e.g. Partner, parent"></div>
         </div>
         <div class="field"><label>Emergency contact phone</label><input type="tel" id="emp-emergency-phone" value="${vaultEsc(emp.emergencyContactPhone||'')}" placeholder="07700 900000"></div>
-        <div class="field"><label>Medical needs / important information</label><textarea id="emp-medical-needs" rows="3" placeholder="e.g. allergy, medication, condition or support needed in an emergency">${vaultEsc(emp.medicalNeeds||'')}</textarea></div>
+        <div class="field"><label>Medical condition on file?</label><select id="emp-medical-condition">
+          <option value="" ${!emp.medicalCondition?'selected':''}>Not recorded</option>
+          <option value="no" ${emp.medicalCondition==='no'?'selected':''}>No known conditions</option>
+          <option value="yes" ${emp.medicalCondition==='yes'?'selected':''}>Yes — see notes</option>
+        </select></div>
+        <div class="field"><label>Medical notes (optional details)</label><textarea id="emp-medical-needs" rows="3" placeholder="e.g. allergy, medication, condition or support needed in an emergency">${vaultEsc(emp.medicalNeeds||'')}</textarea></div>
         <div style="font-size:11px;color:var(--muted-2);line-height:1.45;">Only record information needed for workplace safety or an emergency. This section is kept on the Upper Management employee record.</div>
       </div>
       <div style="border-top:1px solid var(--line-soft);margin:14px 0 10px;padding-top:12px;">
@@ -5488,6 +5565,15 @@ function attachHandlers(){
 
   const stockSiteFilter = document.getElementById('stock-site-filter');
   if(stockSiteFilter) stockSiteFilter.addEventListener('change', ()=>{ state.admin.stockSite = stockSiteFilter.value || 'all'; render(); });
+  const stockAsOfDateInput = document.getElementById('stock-asof-date');
+  if(stockAsOfDateInput) stockAsOfDateInput.addEventListener('change', async ()=>{
+    const val = stockAsOfDateInput.value;
+    if(!val) return;
+    state.admin.stockAsOfRows = null;
+    render();
+    await loadStockForDate(val);
+    render();
+  });
 
   const motMonth = document.getElementById('mot-month');
   if(motMonth) motMonth.addEventListener('change', ()=>{ state.admin.motMonth=motMonth.value; render(); });
@@ -5709,6 +5795,8 @@ function signOutManager(){
   state.admin.analysisRows=null;
   state.admin.stockRows=null;
   state.admin.stockHistory=null;
+  state.admin.stockAsOfRows=null;
+  state.admin.stockAsOfDate=null;
   state.admin.authed = false;
   state.admin.role = null;
   state.admin.scopeSite = null;
@@ -5975,6 +6063,16 @@ async function onAction(e){
     if(!canViewPrivateTab('stock')){ showToast('You do not have permission for this page.',true); return render(); }
     state.admin.stockRows=null; state.admin.stockHistory=null; state.admin.stockError=null;
     await loadStockData(true); render(); return;
+  }
+  else if(action==='print-stock-asof'){
+    if(!canViewPrivateTab('stock')){ showToast('You do not have permission for this page.',true); return render(); }
+    const dateStr=state.admin.stockAsOfDate||'latest';
+    printSelectedReport('#stock-asof-output','Stock Value '+dateStr,'portrait'); return;
+  }
+  else if(action==='download-stock-asof'){
+    if(!canViewPrivateTab('stock')){ showToast('You do not have permission for this page.',true); return render(); }
+    const dateStr=state.admin.stockAsOfDate||'latest';
+    downloadSelectedReport('#stock-asof-output','Stock Value '+dateStr,`stock-value-${dateStr}.html`,'portrait'); return;
   }
   else if(action==='mot-upload'){
     await motUpload(e.currentTarget.dataset.source); return;
@@ -6971,6 +7069,7 @@ async function onAction(e){
     const emergencyContactName = document.getElementById('emp-emergency-name')?.value.trim() || '';
     const emergencyContactRelationship = document.getElementById('emp-emergency-relationship')?.value.trim() || '';
     const emergencyContactPhone = document.getElementById('emp-emergency-phone')?.value.trim() || '';
+    const medicalCondition = document.getElementById('emp-medical-condition')?.value || '';
     const medicalNeeds = document.getElementById('emp-medical-needs')?.value.trim() || '';
     const csEl = document.getElementById('emp-custom-start');
     const ceEl = document.getElementById('emp-custom-end');
@@ -6994,9 +7093,9 @@ async function onAction(e){
     const openingBalanceDate = iso(new Date());
     if(id){
       const emp = employeeById(id);
-      Object.assign(emp, {name, email, phone, emergencyContactName, emergencyContactRelationship, emergencyContactPhone, medicalNeeds, siteId, pin, holidayUnit, allowanceDays, monthlyRate, openingBalance, openingBalanceDate, customStart, customEnd, noLunchBreak});
+      Object.assign(emp, {name, email, phone, emergencyContactName, emergencyContactRelationship, emergencyContactPhone, medicalCondition, medicalNeeds, siteId, pin, holidayUnit, allowanceDays, monthlyRate, openingBalance, openingBalanceDate, customStart, customEnd, noLunchBreak});
     } else {
-      state.config.employees.push({id:uid(), name, email, phone, emergencyContactName, emergencyContactRelationship, emergencyContactPhone, medicalNeeds, siteId, pin, holidayUnit, allowanceDays, monthlyRate, openingBalance, openingBalanceDate, customStart, customEnd, noLunchBreak, active:true});
+      state.config.employees.push({id:uid(), name, email, phone, emergencyContactName, emergencyContactRelationship, emergencyContactPhone, medicalCondition, medicalNeeds, siteId, pin, holidayUnit, allowanceDays, monthlyRate, openingBalance, openingBalanceDate, customStart, customEnd, noLunchBreak, active:true});
     }
     const ok = await saveConfig();
     if(ok){ state.admin.editingEmployee=null; showToast('Employee saved.'); }

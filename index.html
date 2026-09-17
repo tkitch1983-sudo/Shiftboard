@@ -1695,6 +1695,14 @@ function staleOpenShiftDate(employeeId){
 function dateEntryDate(d){ return typeof d==='string' ? d : d.date; }
 function dateEntryAmount(d){ return typeof d==='string' ? 1 : (d.amount || 1); }
 function requestDayCount(r){ return (Array.isArray(r&&r.dates)?r.dates:[]).reduce((sum,d)=>sum+(d?dateEntryAmount(d):0), 0); }
+function holidayCoverEmployeeId(r){
+  if(!r) return '';
+  return String(r.coverEmployeeId||((Array.isArray(r.dates)&&r.dates[0]&&typeof r.dates[0]==='object')?r.dates[0].coverEmployeeId:'')||'');
+}
+function holidayCoverName(r){
+  const emp=employeeById(holidayCoverEmployeeId(r));
+  return emp?emp.name:String(r&&r.coverEmployeeName||'');
+}
 function requestAmountForDate(r, dateStr){
   const entry = r.dates.find(d=>dateEntryDate(d)===dateStr);
   return entry ? dateEntryAmount(entry) : 1;
@@ -1764,10 +1772,12 @@ function siteClosedSaturday(siteId){
 /* Staff who work through their dinner get no unpaid break deducted. */
 function worksThroughLunch(emp){ return !!(emp && emp.noLunchBreak); }
 
-/* Filling-station shifts are paid without an automatic dinner deduction.
-   Workshop staff can still be exempted individually with noLunchBreak. */
+/* Great Ayton filling-station shifts are paid without an automatic dinner
+   deduction. Peterlee petrol/convenience has its own over-4.5-hour rule. */
 function hasPaidDinner(emp, siteId){
-  return !!(emp && (emp.noLunchBreak || isFillingStationSite(emp.siteId || siteId)));
+  const effectiveSiteId=(emp&&emp.siteId)||siteId;
+  if(isPeterleeFillingStationSite(effectiveSiteId)) return false;
+  return !!(emp && (emp.noLunchBreak || isFillingStationSite(effectiveSiteId)));
 }
 
 /* Calculate one day's paid hours in one place so the screen and downloaded
@@ -1779,7 +1789,9 @@ function paidHoursForDay(dayShifts, dateStr, siteId, emp){
     hours += clampedHoursForShift(s.date, s.inTs, s.outTs, siteId, index===0, emp);
   });
   const dow=fromIso(dateStr).getDay();
-  if(dow>=1 && dow<=5 && hours>0 && !hasPaidDinner(emp,siteId)){
+  const peterleeDinner=isPeterleeFillingStationSite((emp&&emp.siteId)||siteId)&&hours>4.5;
+  const workshopDinner=dow>=1&&dow<=5&&hours>0&&!hasPaidDinner(emp,siteId)&&!isFillingStationSite((emp&&emp.siteId)||siteId);
+  if(peterleeDinner||workshopDinner){
     const intervals=shifts
       .map((s,index)=>clampedIntervalForShift(s.date,s.inTs,s.outTs,siteId,index===0,emp))
       .filter(iv=>iv.end>iv.start)
@@ -2204,6 +2216,9 @@ function renderClockConfirm(){
 function renderHoliday(){
   const emp = state.flow.employee;
   const hourly = isHourly(emp);
+  const fillingStation = isFillingStationSite(emp.siteId);
+  const coverStaff = fillingStation ? state.config.employees.filter(e=>e.active!==false&&e.siteId===emp.siteId&&e.id!==emp.id).sort((a,b)=>a.name.localeCompare(b.name)) : [];
+  const selectedCoverId = String(state.flow.holCoverEmployeeId||'');
   const remaining = Infinity; // balances live server-side now; managers see them
   const start = state.flow.holStart || '';
   const end = state.flow.holEnd || '';
@@ -2224,7 +2239,7 @@ function renderHoliday(){
     <div style="text-align:left;margin:14px 0 8px;font-size:13px;font-weight:600;">Hours of holiday needed</div>
     ${workingDays.map(d=>`<div class="field" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
       <label style="margin:0;">${fmtDate(d)}</label>
-      <div style="display:flex;align-items:center;gap:7px;"><input type="number" step="0.5" min="0.5" max="24" data-hol-hours-date="${d}" value="${parseFloat(byDate[d])||8}" style="width:90px;"><span>hrs</span></div>
+      <div style="display:flex;align-items:center;gap:7px;"><input type="number" step="0.5" min="0.5" max="24" data-hol-hours-date="${d}" value="${Number(parseFloat(byDate[d])||8).toFixed(2)}" style="width:90px;"><span>hrs</span></div>
     </div>`).join('')}` : '';
   } else {
     totalRequested = workingDays.length;
@@ -2254,6 +2269,7 @@ function renderHoliday(){
     <div class="field"><label>Start date</label><input type="date" id="hol-start" value="${start}"></div>
     <div class="field"><label>End date</label><input type="date" id="hol-end" value="${end}"></div>
     ${extraControls}
+    ${fillingStation?`<div class="field"><label>Who will cover your shift?</label><select id="hol-cover-employee" required><option value="">Choose cover person</option>${coverStaff.map(e=>`<option value="${salesHtml(e.id)}" ${String(e.id)===selectedCoverId?'selected':''}>${salesHtml(e.name)}</option>`).join('')}</select>${coverStaff.length?'':'<div class="excl" style="color:var(--red);margin-top:6px;">No other active staff are available at this station. Ask your manager to update the employee list.</div>'}</div>`:''}
     <div class="req-summary">
       <b>${hourly?Number(totalRequested).toFixed(2):totalRequested} ${hourly?'hour':'day'}${totalRequested===1?'':'s'} of holiday</b>
       ${workingDays.length ? workingDays.map(fmtDateShort).join(' · ') : 'Pick a start and end date.'}
@@ -2261,7 +2277,7 @@ function renderHoliday(){
       ${totalRequested > remaining ? `<div class="excl" style="color:var(--red);">This takes your balance to ${(remaining-totalRequested).toFixed(2)} ${unitLabel(emp)} — negative. That's fine, but it needs admin approval.</div>` : ''}
     </div>
     <div class="error-msg">${state.flow.error||''}</div>
-    <button type="button" class="action-btn" data-action="submit-holiday" ${workingDays.length? '' : 'disabled'}>Submit Request</button>
+    <button type="button" class="action-btn" data-action="submit-holiday" ${workingDays.length&&(!fillingStation||coverStaff.length)? '' : 'disabled'}>Submit Request</button>
     <div class="back-link" data-action="go-home">← Cancel</div>
   </div></div>`;
 }
@@ -2272,7 +2288,7 @@ function renderHolidayConfirm(){
   <div class="flow"><div class="flow-card">
     <div class="big-check">✓</div>
     <h2>Request Sent</h2>
-    <div class="sub">${formatHolidayAmount(emp,requestDayCount(req))} ${isHourly(emp)?'hour':'day'}${requestDayCount(req)===1?'':'s'} · ${fmtDateShort(dateEntryDate(req.dates[0]))} – ${fmtDateShort(dateEntryDate(req.dates[req.dates.length-1]))}</div>
+    <div class="sub">${formatHolidayAmount(emp,requestDayCount(req))} ${isHourly(emp)?'hour':'day'}${requestDayCount(req)===1?'':'s'} · ${fmtDateShort(dateEntryDate(req.dates[0]))} – ${fmtDateShort(dateEntryDate(req.dates[req.dates.length-1]))}${req.coverEmployeeName?`<br>Cover: ${salesHtml(req.coverEmployeeName)}`:''}</div>
     <div style="color:var(--muted);font-size:13px;margin-top:10px;">Waiting for admin approval.</div>
     <button type="button" class="action-btn secondary" data-action="go-home">Done</button>
   </div></div>`;
@@ -3918,7 +3934,11 @@ function renderVaultEditModal(){
 function isFillingStationSite(siteId){
   const name=(siteName(siteId)||'').trim().toLowerCase();
   // Peterlee Filling Station is currently named ETAC Petrol in the live site list.
-  return name.includes('great ayton') || name.includes('etac petrol') || name.includes('peterlee filling');
+  return name.includes('great ayton') || name.includes('etac petrol') || name.includes('peterlee filling') || name.includes('peterlee convenience');
+}
+function isPeterleeFillingStationSite(siteId){
+  const name=(siteName(siteId)||'').trim().toLowerCase();
+  return name.includes('etac petrol') || name.includes('peterlee filling') || name.includes('peterlee convenience');
 }
 function canViewWorkshopSales(){
   return state.admin.role==='super' || (state.admin.role==='site' && !isFillingStationSite(state.admin.scopeSite));
@@ -4308,6 +4328,7 @@ function renderAdminRequests(){
       <td>${emp.name}<br><span style="color:var(--muted-2);font-size:11px;">${siteName(emp.siteId)}</span></td>
       <td>${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))}</td>
       <td>${formatHolidayAmount(emp,requestDayCount({r:r, dates:safeDates}))} ${unitLabel(emp)}</td>
+      <td>${salesHtml(holidayCoverName(r)||'—')}</td>
       <td>${statusPill}</td>
       <td>${actions}</td>
     </tr>`;
@@ -4321,6 +4342,7 @@ function renderAdminRequests(){
       <td>${emp.name}</td>
       <td>${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))}</td>
       <td>${formatHolidayAmount(emp,requestDayCount({r:r, dates:safeDates}))} ${unitLabel(emp)}</td>
+      <td>${salesHtml(holidayCoverName(r)||'—')}</td>
       <td><span class="pill ${r.status==='approved'?'pill-approved':'pill-rejected'}">${r.status}</span></td>
       <td>${r.status==='rejected' ? `<button type="button" class="icon-btn" data-action="delete-request" data-id="${r.id}">Delete</button>` : ''}</td>
     </tr>`;
@@ -4356,15 +4378,15 @@ function renderAdminRequests(){
   </div>` : ''}
   <div class="card">
     <table>
-      <thead><tr><th>Employee</th><th>Dates</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rowsPending || `<tr><td colspan="5" class="empty-state">No pending requests.</td></tr>`}</tbody>
+      <thead><tr><th>Employee</th><th>Dates</th><th>Amount</th><th>Cover</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rowsPending || `<tr><td colspan="6" class="empty-state">No pending requests.</td></tr>`}</tbody>
     </table>
   </div>
   <h2 style="font-size:16px;margin-top:26px;">Recently decided</h2>
   <div class="card">
     <table>
-      <thead><tr><th>Employee</th><th>Dates</th><th>Amount</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rowsDecided || `<tr><td colspan="5" class="empty-state">Nothing decided yet.</td></tr>`}</tbody>
+      <thead><tr><th>Employee</th><th>Dates</th><th>Amount</th><th>Cover</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rowsDecided || `<tr><td colspan="6" class="empty-state">Nothing decided yet.</td></tr>`}</tbody>
     </table>
   </div>
 
@@ -4505,6 +4527,7 @@ function renderApproveModal(){
     <div class="modal">
       <h3>Approve holiday — ${emp?emp.name:''}</h3>
       <div style="font-size:13px;color:var(--muted);">${fmtDateShort(dateEntryDate(safeDates[0]))} – ${fmtDateShort(dateEntryDate(safeDates[safeDates.length-1]))} · ${emp?formatHolidayAmount(emp,holidayAmount):holidayAmount} ${unit}</div>
+      ${holidayCoverName(r)?`<div style="font-size:13px;color:var(--text);margin-top:6px;"><b>Shift cover:</b> ${salesHtml(holidayCoverName(r))}</div>`:''}
       ${r.status==='recommended'
         ? `<div style="font-size:13px;color:var(--green);margin-top:6px;">Recommended by ${r.recommendedBy||'the site manager'}.</div>`
         : `<div class="conflict-box">The site manager hasn't reviewed this yet. You can still authorise it, but it hasn't been through them.</div>`}
@@ -4781,7 +4804,7 @@ function renderAdminTimesheets(){
 
   return `
   <h2>Timesheets</h2>
-  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour, clock-outs to the closest 5 minutes, then the final daily total rounds down to the last completed quarter-hour. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break; filling-station shifts do not have a dinner deduction. If workshop staff clock a shorter break, the difference is still deducted. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
+  <div class="head-sub">Matches your attendance sheet. Workshop first clock-ins from 08:31 round forward to the next quarter-hour, and clock-outs after the scheduled finish (normally 17:30) fall back to that finish. Filling-station clock-ins round to the closest quarter-hour, clock-outs to the closest 5 minutes, then the final daily total rounds down to the last completed quarter-hour. All calculated hours show two decimal places. Everyone appears on their own site's sheet, including days spent at another site — those are marked △. Workshop weekdays have a 30-min unpaid dinner break. Peterlee petrol/convenience shifts over 4.50 hours also have a 30-min dinner break; other filling-station shifts do not. Any actual clocked break counts toward the 30 minutes. Completed weeks lock automatically at 12:00 on the following Monday. ${weekLocked?'<b>This week is LOCKED and cannot be edited.</b>':''}<br><span style="display:inline-block;background:#ffd875;border:1px solid #c98a00;padding:0 5px;border-radius:2px;color:#000;">Amber</span> = manually corrected. <span style="display:inline-block;background:#e8e0ff;border:1px dashed #6b4fc9;padding:0 5px;border-radius:2px;color:#000;">Purple</span> = never clocked out and was automatically closed at the applicable site cut-off — check and correct it. <span class="att-pending-hol">⏳</span> = holiday requested and awaiting approval. Hover any cell for the actual times.</div>
   ${weekLocked ? `<div class="card" style="border-color:var(--amber);">
     <b>🔒 Timesheet locked</b>
     <div style="color:var(--muted);font-size:13px;margin-top:4px;">${lockInfo && lockInfo.lockedAt ? `Locked ${fmtTime(lockInfo.lockedAt)}${lockInfo.lockedBy?' by '+vaultEsc(lockInfo.lockedBy):''}.` : 'Locked by Upper Management.'}</div>
@@ -4917,6 +4940,7 @@ function renderEmployeeModal(){
   const currentBalance = isNew ? (emp.openingBalance||0) : availableBalance(emp);
   const rate = emp.monthlyRate!==undefined ? emp.monthlyRate : (state.config.settings.monthlyAccrualRate||1.66);
   const fillingStation = isFillingStationSite(emp.siteId);
+  const peterleeFillingStation = isPeterleeFillingStationSite(emp.siteId);
   const unit = fillingStation ? 'hours' : (emp.holidayUnit || 'days');
   return `<div class="modal-overlay" data-modal-overlay="1">
     <div class="modal">
@@ -4941,8 +4965,8 @@ function renderEmployeeModal(){
           <div class="field"><label>Their finish (Mon–Fri)</label><input type="time" id="emp-custom-end" value="${emp.customEnd||''}"></div>
         </div>
         <div class="field" style="display:flex;align-items:center;gap:8px;">
-          <input type="checkbox" id="emp-no-lunch" style="width:auto;" ${(emp.noLunchBreak||fillingStation)?'checked':''} ${fillingStation?'disabled':''}>
-          <label style="margin:0;">${fillingStation?'Filling station — no dinner-break deduction':'Works through dinner — don\'t deduct the 30-min unpaid break'}</label>
+          <input type="checkbox" id="emp-no-lunch" style="width:auto;" ${(emp.noLunchBreak||(fillingStation&&!peterleeFillingStation))?'checked':''} ${fillingStation?'disabled':''}>
+          <label style="margin:0;">${peterleeFillingStation?'Peterlee petrol/convenience — deduct 30 minutes when a shift exceeds 4.50 hours':fillingStation?'Filling station — no dinner-break deduction':'Works through dinner — don\'t deduct the 30-min unpaid break'}</label>
         </div>
       </div>
       <div class="field"><label>Site</label><select id="emp-site">${state.config.sites.map(s=>`<option value="${s.id}" ${emp.siteId===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>
@@ -5432,6 +5456,8 @@ function attachHandlers(){
   if(hhs) hhs.addEventListener('change', ()=>{ state.flow.holHalfStart = hhs.checked; render(); });
   const hhe = document.getElementById('hol-half-end');
   if(hhe) hhe.addEventListener('change', ()=>{ state.flow.holHalfEnd = hhe.checked; render(); });
+  const holCoverEmployee = document.getElementById('hol-cover-employee');
+  if(holCoverEmployee) holCoverEmployee.addEventListener('change', ()=>{ state.flow.holCoverEmployeeId=holCoverEmployee.value; render(); });
   app.querySelectorAll('[data-hol-hours-date]').forEach(input=>{
     input.addEventListener('change', ()=>{
       if(!state.flow.holHoursByDate) state.flow.holHoursByDate={};
@@ -6150,6 +6176,12 @@ async function onAction(e){
     const emp = state.flow.employee;
     const workingDays = computeWorkingDays(state.flow.holStart, state.flow.holEnd, emp.siteId);
     if(!workingDays.length) return;
+    let coverEmployee=null;
+    if(isFillingStationSite(emp.siteId)){
+      const coverId=String(state.flow.holCoverEmployeeId||'');
+      coverEmployee=state.config.employees.find(e=>e.active!==false&&String(e.id)===coverId&&e.siteId===emp.siteId&&e.id!==emp.id)||null;
+      if(!coverEmployee){ showToast('Choose who will cover the shift.',true); return; }
+    }
     let dates;
     if(isHourly(emp)){
       const byDate = state.flow.holHoursByDate || {};
@@ -6167,10 +6199,11 @@ async function onAction(e){
         return {date:d, amount};
       });
     }
+    if(coverEmployee) dates=dates.map(d=>Object.assign({},d,{coverEmployeeId:String(coverEmployee.id)}));
     try{
       const res = await callRpc('staff_request_holiday', { p_pin: state.flow.verifiedPin, p_dates: dates });
       if(!res || !res.ok){ showToast('Could not send the request.', true); return render(); }
-      state.flow.lastRequest = { employeeId: emp.id, dates, status:'pending' };
+      state.flow.lastRequest = { employeeId: emp.id, dates, status:'pending', coverEmployeeId:coverEmployee?String(coverEmployee.id):null, coverEmployeeName:coverEmployee?coverEmployee.name:null };
       state.view='holiday-confirm';
     }catch(err){
       showToast('Could not send — ' + (err.message||'check the connection'), true);

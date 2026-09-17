@@ -4903,14 +4903,6 @@ function renderAdminEmployees(){
     .map(e=>{
     const bal = availableBalance(e);
     const u = unitLabel(e);
-    const emergencyCell = e.emergencyContactName
-      ? `${salesHtml(e.emergencyContactName)}${e.emergencyContactRelationship?` <span style="color:var(--muted-2);">(${salesHtml(e.emergencyContactRelationship)})</span>`:''}${e.emergencyContactPhone?`<div style="color:var(--muted);font-size:11px;">${salesHtml(e.emergencyContactPhone)}</div>`:''}`
-      : '<span style="color:var(--muted-2);">—</span>';
-    const medicalCell = e.medicalCondition==='yes'
-      ? `<span class="pill pill-rejected" title="${salesHtml(e.medicalNeeds||'')}">Yes</span>${e.medicalNeeds?`<div style="color:var(--muted);font-size:11px;max-width:160px;">${salesHtml(e.medicalNeeds)}</div>`:''}`
-      : (e.medicalCondition==='no'
-        ? '<span class="pill" style="color:var(--muted);border-color:var(--line);">No</span>'
-        : '<span style="color:var(--muted-2);">—</span>');
     return `
     <tr>
       <td>${e.name}</td>
@@ -4920,8 +4912,6 @@ function renderAdminEmployees(){
       <td class="mono">${e.monthlyRate!==undefined ? e.monthlyRate : (state.config.settings.monthlyAccrualRate||1.66)} ${u}</td>
       <td class="mono" style="${bal<0?'color:var(--red);':''}">${bal.toFixed(2)} ${u}</td>
       <td style="font-size:11px;color:var(--muted);">${holidayStatusLabel(e)}</td>
-      <td>${emergencyCell}</td>
-      <td>${medicalCell}</td>
       <td><span class="toggle ${e.active!==false?'on':'off'}" data-action="toggle-employee" data-id="${e.id}">${e.active!==false?'Active':'Inactive'}</span></td>
       <td><button type="button" class="icon-btn" data-action="edit-employee" data-id="${e.id}">Edit</button>${e.active===false?` · <button type="button" class="icon-btn" data-action="delete-employee" data-id="${e.id}">Delete</button>`:''}</td>
     </tr>`;
@@ -4931,8 +4921,8 @@ function renderAdminEmployees(){
   <div class="head-sub">${state.config.employees.length} people across ${state.config.sites.length} sites. Open Edit to record contact, emergency contact and medical information. Set someone Inactive first to reveal a Delete option for them.</div>
   <div class="card">
     <table>
-      <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Entitlement</th><th>Rate/mo</th><th>Balance</th><th>Holiday</th><th>Emergency contact</th><th>Medical</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="11" class="empty-state">No employees yet — add your first below.</td></tr>`}</tbody>
+      <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Entitlement</th><th>Rate/mo</th><th>Balance</th><th>Holiday</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="9" class="empty-state">No employees yet — add your first below.</td></tr>`}</tbody>
     </table>
   </div>
   <button type="button" class="add-btn" data-action="new-employee">+ Add employee</button>
@@ -4962,18 +4952,30 @@ function renderAdminContacts(){
     .filter(e=>e.active!==false && (effectiveSite==='all' || e.siteId===effectiveSite))
     .sort((a,b)=> siteName(a.siteId).localeCompare(siteName(b.siteId)) || a.name.localeCompare(b.name));
 
-  const rows = emps.map(e=>`
+  const rows = emps.map(e=>{
+    const emergencyCell = e.emergencyContactName
+      ? `${salesHtml(e.emergencyContactName)}${e.emergencyContactRelationship?` <span style="color:var(--muted-2);">(${salesHtml(e.emergencyContactRelationship)})</span>`:''}${e.emergencyContactPhone?`<div style="color:var(--muted);font-size:11px;">${salesHtml(e.emergencyContactPhone)}</div>`:''}`
+      : '<span style="color:var(--muted-2);">—</span>';
+    const medicalCell = e.medicalCondition==='yes'
+      ? `<span class="pill pill-rejected" title="${salesHtml(e.medicalNeeds||'')}">Yes</span>${e.medicalNeeds?`<div style="color:var(--muted);font-size:11px;max-width:160px;">${salesHtml(e.medicalNeeds)}</div>`:''}`
+      : (e.medicalCondition==='no'
+        ? '<span class="pill" style="color:var(--muted);border-color:var(--line);">No</span>'
+        : '<span style="color:var(--muted-2);">—</span>');
+    return `
     <tr>
       <td>${e.name}</td>
       <td>${siteName(e.siteId)}</td>
       <td><input type="email" id="contact-email-${e.id}" value="${e.email||''}" placeholder="name@example.com" style="width:100%;min-width:190px;padding:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:var(--radius);"></td>
       <td><input type="tel" id="contact-phone-${e.id}" value="${e.phone||''}" placeholder="07700 900000" style="width:100%;min-width:140px;padding:8px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:var(--radius);"></td>
+      <td>${emergencyCell}</td>
+      <td>${medicalCell}</td>
       <td style="white-space:nowrap;"><button type="button" class="btn-sm approve" data-action="save-contact-email" data-id="${e.id}">Save</button> <button type="button" class="icon-btn" data-action="edit-employee" data-id="${e.id}">Full edit</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   return `
   <h2>Contacts</h2>
-  <div class="head-sub">${emps.length} people${effectiveSite==='all'?' across all sites':' at '+siteName(effectiveSite)}, in site order. Type an email or phone number and press Save on that row.</div>
+  <div class="head-sub">${emps.length} people${effectiveSite==='all'?' across all sites':' at '+siteName(effectiveSite)}, in site order. Type an email or phone number and press Save on that row. Emergency contact and medical details are edited via Full edit.</div>
   <div class="cal-toolbar">
     ${isSuper ? `<select id="contacts-site-select">${siteOptions}</select>` : ''}
     <button type="button" data-action="contacts-print" style="margin-left:auto;">🖶 Print</button>
@@ -4981,8 +4983,8 @@ function renderAdminContacts(){
   </div>
   <div class="card">
     <table>
-      <thead><tr><th>Name</th><th>Site</th><th>Email</th><th>Phone</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="5" class="empty-state">No active employees here.</td></tr>`}</tbody>
+      <thead><tr><th>Name</th><th>Site</th><th>Email</th><th>Phone</th><th>Emergency contact</th><th>Medical</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" class="empty-state">No active employees here.</td></tr>`}</tbody>
     </table>
   </div>
   <button type="button" class="add-btn" data-action="new-employee">+ Add employee</button>
@@ -5001,8 +5003,8 @@ function renderAdminContacts(){
     <div class="att-meta-row"><span>${effectiveSite==='all' ? 'All sites' : siteName(effectiveSite)}</span><span class="site-tag">${emps.length} people</span></div>
     <div class="att-table-wrap">
     <table class="att-table">
-      <thead><tr><th style="text-align:left;">Name</th><th style="text-align:left;">Site</th><th style="text-align:left;">Email</th><th style="text-align:left;">Phone</th></tr></thead>
-      <tbody>${emps.map(e=>`<tr><td class="att-name">${e.name}</td><td style="text-align:left;">${siteName(e.siteId)}</td><td style="text-align:left;">${e.email||'—'}</td><td style="text-align:left;">${e.phone||'—'}</td></tr>`).join('')}</tbody>
+      <thead><tr><th style="text-align:left;">Name</th><th style="text-align:left;">Site</th><th style="text-align:left;">Email</th><th style="text-align:left;">Phone</th><th style="text-align:left;">Emergency contact</th><th style="text-align:left;">Medical</th></tr></thead>
+      <tbody>${emps.map(e=>`<tr><td class="att-name">${e.name}</td><td style="text-align:left;">${siteName(e.siteId)}</td><td style="text-align:left;">${e.email||'—'}</td><td style="text-align:left;">${e.phone||'—'}</td><td style="text-align:left;">${e.emergencyContactName?`${e.emergencyContactName}${e.emergencyContactRelationship?' ('+e.emergencyContactRelationship+')':''}${e.emergencyContactPhone?' — '+e.emergencyContactPhone:''}`:'—'}</td><td style="text-align:left;">${e.medicalCondition==='yes'?('Yes'+(e.medicalNeeds?' — '+e.medicalNeeds:'')):(e.medicalCondition==='no'?'No':'—')}</td></tr>`).join('')}</tbody>
     </table>
     </div>
   </div></div>`;

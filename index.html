@@ -2269,6 +2269,12 @@ function salesDateLabel(v){
   const d=new Date(String(v)+'T12:00:00');
   return Number.isNaN(d.getTime())?String(v):d.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
 }
+function salesCompletedLabel(v){
+  if(!v) return '';
+  const d=new Date(v);
+  if(Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-GB',{timeZone:'Europe/London',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+}
 function salesCsvCell(v){
   if(v===null || v===undefined) return '';
   const s=String(v);
@@ -2416,11 +2422,11 @@ function printSalesReport(){
   const all=[...rows,salesGroupRow(rows)];
   const table=all.map((r,i)=>`<tr${i===all.length-1?' class="group"':''}><td>${salesHtml(r.site_name)}</td><td>${salesNum(r.davanti)}</td><td>${salesNum(r.tracking)}</td><td>${salesNum(r.bfc)}</td><td>${salesNum(r.coolant)}</td><td>${salesNum(r.pollen)}</td><td>${salesNum(r.ac)}</td><td>${salesNum(r.diag)}</td><td>${salesNum(r.cons)}</td><td>${salesNum(r.full_service)}</td><td>${salesNum(r.interim)}</td><td>${salesNum(r.oil)}</td><td>${salesMoney(r.itms_value)}</td><td>${salesMoney(r.add_on_value)}</td><td>${salesPct(r.margin_current)}</td><td>${r.comparison_available?salesPct(r.margin_prior):'N/A'}</td><td>${salesMoney(r.total_current)}</td><td>${r.comparison_available?salesMoney(r.total_prior):'N/A'}</td></tr>`).join('');
   const run=state.admin.salesRun||{};
-  const completed=run.completed_at?new Date(run.completed_at).toLocaleString('en-GB'):'';
+  const completed=salesCompletedLabel(run.completed_at);
   const g=salesGroupRow(rows);
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>NEAS Live Sales ${salesHtml(snap)}</title><style>
     @page{size:A4 landscape;margin:9mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:9px}h1{font-size:20px;margin:0 0 3px}.sub{font-size:10px;color:#555;margin-bottom:10px}.summary{display:flex;gap:8px;margin:8px 0 10px}.summary div{border:1px solid #bbb;border-radius:6px;padding:6px 8px;min-width:125px}.summary b{display:block;font-size:15px;margin-top:2px}table{border-collapse:collapse;width:100%;font-size:7.5px}th,td{border:1px solid #bbb;padding:4px 3px;text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}.group{font-weight:700;background:#eee}.foot{margin-top:8px;color:#666;font-size:8px}.no-print{margin-top:12px}.no-print button{font-size:14px;padding:8px 14px}@media print{.no-print{display:none}}
-  </style></head><body><h1>NEAS Live Sales</h1><div class="sub">Month to date · ${salesDateLabel(rows[0].period_start)} to ${salesDateLabel(rows[0].period_end)} · Snapshot ${salesDateLabel(snap)}${completed?' · completed '+salesHtml(completed):''}</div><div class="summary"><div>Group sales MTD<b>${salesMoney(g.total_current)}</b></div><div>Group margin<b>${salesPct(g.margin_current)}</b></div><div>Add-on value<b>${salesMoney(g.add_on_value)}</b></div><div>Davanti<b>${salesNum(g.davanti)}</b></div></div><table><thead><tr><th>Site</th><th>Davanti</th><th>Tracking</th><th>BFC</th><th>Coolant</th><th>Pollen</th><th>AC</th><th>Diag</th><th>Cons</th><th>Full</th><th>Int</th><th>Oil</th><th>ITMS</th><th>Add On</th><th>Margin ${year}</th><th>Margin ${year-1}</th><th>Total ${year}</th><th>Total ${year-1}</th></tr></thead><tbody>${table}</tbody></table><div class="foot">Live Sales report generated ${salesHtml(new Date().toLocaleString('en-GB'))}.</div><div class="no-print"><button onclick="window.print()">Print</button></div></body></html>`;
+  </style></head><body><h1>NEAS Live Sales</h1><div class="sub">Sales through ${salesDateLabel(snap)}${completed?' · Nightly run completed '+salesHtml(completed):''} · Month to date from ${salesDateLabel(rows[0].period_start)}</div><div class="summary"><div>Group sales MTD<b>${salesMoney(g.total_current)}</b></div><div>Group margin<b>${salesPct(g.margin_current)}</b></div><div>Add-on value<b>${salesMoney(g.add_on_value)}</b></div><div>Davanti<b>${salesNum(g.davanti)}</b></div></div><table><thead><tr><th>Site</th><th>Davanti</th><th>Tracking</th><th>BFC</th><th>Coolant</th><th>Pollen</th><th>AC</th><th>Diag</th><th>Cons</th><th>Full</th><th>Int</th><th>Oil</th><th>ITMS</th><th>Add On</th><th>Margin ${year}</th><th>Margin ${year-1}</th><th>Total ${year}</th><th>Total ${year-1}</th></tr></thead><tbody>${table}</tbody></table><div class="foot">Live Sales report generated ${salesHtml(new Date().toLocaleString('en-GB'))}.</div><div class="no-print"><button onclick="window.print()">Print</button></div></body></html>`;
   const w=window.open('about:blank','_blank');
   if(!w){ showToast('Pop-ups are blocked. Allow pop-ups to print Live Sales.',true); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -2469,7 +2475,7 @@ function renderAdminSales(){
   const snap=rows[0].snapshot_date;
   const run=state.admin.salesRun||{};
   const runBad=run.status==='failed'||run.status==='partial'||rows.some(r=>r.import_status!=='ok');
-  const statusText=run.status==='success'?'All 8 sites imported':run.status==='partial'?'Import partly completed':run.status==='failed'?'Import failed':'Latest snapshot';
+  const statusText=run.status==='success'?'Nightly run successful — all 8 sites imported':run.status==='partial'?'Import partly completed':run.status==='failed'?'Import failed':'Latest snapshot';
   const statusColor=runBad?'var(--red)':'var(--green)';
   const tableRows=rows.map(r=>`<tr>
     <td style="position:sticky;left:0;background:var(--panel);font-weight:600;white-space:nowrap;">${salesHtml(r.site_name)}</td>
@@ -2500,7 +2506,7 @@ function renderAdminSales(){
   ${renderSalesDateRange(rows)}
   <div class="card" style="padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
     <span style="width:9px;height:9px;border-radius:50%;background:${statusColor};display:inline-block;"></span>
-    <b>${salesHtml(statusText)}</b><span style="color:var(--muted);font-size:12px;">Snapshot ${salesDateLabel(snap)}${run.completed_at?' · completed '+new Date(run.completed_at).toLocaleString('en-GB'):''}</span>
+    <b>${salesHtml(statusText)}</b><span style="color:var(--muted);font-size:12px;">Sales through ${salesDateLabel(snap)}${run.completed_at?' · Nightly run completed '+salesHtml(salesCompletedLabel(run.completed_at)):''}</span>
     ${runBad&&run.message?`<span style="color:var(--red);font-size:12px;">${salesHtml(run.message)}</span>`:''}
   </div>
   <div class="card" style="padding:0;overflow:auto;max-width:100%;">
@@ -2753,6 +2759,7 @@ function renderAdminStock(){
   }
   const history=state.admin.stockHistory||[];
   const latestDate=String(rows[0].snapshot_date||'');
+  const latestCompleted=rows.map(r=>String(r.updated_at||'')).filter(Boolean).sort().pop()||'';
   const total=rows.reduce((sum,r)=>sum+salesNum(r.stock_value),0);
   const previousBySite={};
   history.forEach(r=>{
@@ -2775,7 +2782,7 @@ function renderAdminStock(){
   }).join('');
   const historyRows=visibleHistory.map(r=>`<tr><td>${salesDateLabel(r.snapshot_date)}</td><td>${salesHtml(r.site_name)}</td><td class="mono">${salesMoney(r.stock_value)}</td><td>${r.import_status==='ok'?'<span style="color:var(--green);">Captured</span>':`<span style="color:var(--red);">${salesHtml(r.import_status)}</span>`}</td></tr>`).join('');
   return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-    <div><h2 style="margin-bottom:4px;">Stock Value</h2><div style="font-size:12px;color:var(--muted);">Nightly Autowork total with Stocked Parts Only unticked · ${salesDateLabel(latestDate)}</div></div>
+    <div><h2 style="margin-bottom:4px;">Stock Value</h2><div style="font-size:12px;color:var(--muted);">Stock captured for ${salesDateLabel(latestDate)}${latestCompleted?' · Nightly run completed '+salesHtml(salesCompletedLabel(latestCompleted)):''} · Stocked Parts Only unticked</div></div>
     <button type="button" class="add-btn" data-action="refresh-stock">Refresh</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:18px 0;">

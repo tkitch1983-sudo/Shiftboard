@@ -3642,9 +3642,14 @@ function bonusProjectSnapshot(snap, month){
   const dayOfMonth=Number(snapDate.slice(8,10))||daysInMonth;
   if(dayOfMonth>=daysInMonth) return snap;
   const factor=daysInMonth/dayOfMonth;
-  const scaledKeys=['total_current','davanti','tracking','pollen','bfc','diag','coolant','ac','cons','full_service','interim','oil','itms_value','add_on_count','add_on_value'];
+  // Counts of things sold (Davanti units, tracking jobs etc.) are always
+  // whole numbers — round these after scaling rather than leaving a long
+  // decimal tail. Money figures round to the nearest penny.
+  const wholeUnitKeys=['davanti','tracking','pollen','bfc','diag','coolant','ac','cons','full_service','interim','oil','add_on_count'];
+  const moneyKeys=['total_current','itms_value','add_on_value'];
   const projected={...snap};
-  scaledKeys.forEach(k=>{ if(projected[k]!=null && Number.isFinite(Number(projected[k]))) projected[k]=Number(projected[k])*factor; });
+  wholeUnitKeys.forEach(k=>{ if(projected[k]!=null && Number.isFinite(Number(projected[k]))) projected[k]=Math.round(Number(projected[k])*factor); });
+  moneyKeys.forEach(k=>{ if(projected[k]!=null && Number.isFinite(Number(projected[k]))) projected[k]=Math.round(Number(projected[k])*factor*100)/100; });
   projected.projected=true;
   projected.projectedFromDay=dayOfMonth;
   projected.projectedDaysInMonth=daysInMonth;

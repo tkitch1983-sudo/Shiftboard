@@ -806,7 +806,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -3593,6 +3593,27 @@ function bonusSnapshotsForMonth(month){
   sorted.forEach(r=>{ const key=bonusSiteKey(r.site_name||r.site_key); if(key&&!found[key]) found[key]=r; });
   return found;
 }
+/* A simple straight-line projection: scale each cumulative month-to-date
+   figure up by (days in month / days of data so far). Only meaningful part
+   way through the current month — a completed month has nothing to project,
+   and a future month has no data to project from. */
+function bonusProjectSnapshot(snap, month){
+  if(!snap) return snap;
+  const snapDate=String(snap.snapshot_date||'');
+  if(!snapDate.startsWith(month+'-')) return snap;
+  const [y,m]=month.split('-').map(Number);
+  const daysInMonth=new Date(y,m,0).getDate();
+  const dayOfMonth=Number(snapDate.slice(8,10))||daysInMonth;
+  if(dayOfMonth>=daysInMonth) return snap;
+  const factor=daysInMonth/dayOfMonth;
+  const scaledKeys=['total_current','davanti','tracking','pollen','bfc','diag','coolant','ac','cons','full_service','interim','oil','itms_value','add_on_count','add_on_value'];
+  const projected={...snap};
+  scaledKeys.forEach(k=>{ if(projected[k]!=null && Number.isFinite(Number(projected[k]))) projected[k]=Number(projected[k])*factor; });
+  projected.projected=true;
+  projected.projectedFromDay=dayOfMonth;
+  projected.projectedDaysInMonth=daysInMonth;
+  return projected;
+}
 function bonusEmployeeCalc(emp,siteCalc,month,draft,receptionCount){
   const role=bonusRole(emp), edit=draft.employees[emp.id]||{};
   const baseOverride=String(edit.baseOverride??'').trim();
@@ -3614,7 +3635,10 @@ function bonusInput(empId,field,value,label){
 function renderAdminBonus(){
   if(!canAccessBonusSheet()) return '<h2>Bonus Sheet</h2><div class="card">This page is private.</div>';
   const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7), draft=bonusMonthData(month), bonusSite=state.admin.bonusSite||'all';
-  const snaps=bonusSnapshotsForMonth(month), weekdays=bonusWeekdays(month);
+  const isCurrentMonth = month===new Date().toISOString().slice(0,7);
+  const predicting = isCurrentMonth && !!state.admin.bonusPredictMode;
+  let snaps=bonusSnapshotsForMonth(month), weekdays=bonusWeekdays(month);
+  if(predicting) Object.keys(snaps).forEach(k=>{ snaps[k]=bonusProjectSnapshot(snaps[k],month); });
   const sections=[]; let staffGrand=0, totalSales=0, totalDavanti=0, latest='';
   Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{
     const snap=snaps[key];
@@ -3638,7 +3662,7 @@ function renderAdminBonus(){
         <td style="font-weight:800;white-space:nowrap;">${bonusMoney(calc.total)}</td></tr>`;
     }).join('');
     if(bonusSite==='all'||bonusSite===key) sections.push(`<div class="card" id="bonus-site-${key}" style="padding:0;overflow:auto;break-inside:avoid;">
-      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(siteCalc.addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${rule.staffStart==null?`<div style="color:var(--amber);font-size:11px;margin-top:5px;">Site turnover bonus is not set. Add On is active${rule.davantiTarget==null?'; Davanti target still required.':'.'}</div>`:''}${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
+      <div style="padding:13px 14px;border-bottom:1px solid var(--border);"><b>${rule.label}</b><span style="color:var(--muted);font-size:12px;margin-left:9px;">Sales ${bonusMoney(sales)}${snap&&snap.projected?' <span style="color:var(--amber);">(projected)</span>':''} · Staff bonus ${bonusMoney(siteCalc.staffBonus)} · Davanti ${units} (${bonusMoney(siteCalc.davantiBonus)} each) · Add-on pot ${bonusMoney(siteCalc.addOnBonus)} split between ${receptionCount} receptionist${receptionCount===1?'':'s'}</span><span class="no-print" style="float:right;display:inline-flex;gap:6px;"><button type="button" class="icon-btn" data-action="bonus-site-print" data-site="${key}">Print</button><button type="button" class="icon-btn" data-action="bonus-site-download" data-site="${key}">Download</button></span>${rule.staffStart==null?`<div style="color:var(--amber);font-size:11px;margin-top:5px;">Site turnover bonus is not set. Add On is active${rule.davantiTarget==null?'; Davanti target still required.':'.'}</div>`:''}${snap?'':`<div style="color:var(--red);font-size:11px;margin-top:5px;">No sales snapshot found for this month.</div>`}</div>
       <table style="min-width:1210px;margin:0;font-size:11px;"><thead><tr><th>Employee</th><th class="screen-role-col">Role</th><th>Base</th><th>Davanti</th><th>Add-on share</th><th>Manager extra</th><th>Sick days</th><th>Sick deduction</th><th>Damages</th><th>Owed</th><th>Manual extra</th><th>Override</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="13">No active employees matched to this site.</td></tr>'}</tbody></table>
     </div>`);
   });
@@ -3648,7 +3672,8 @@ function renderAdminBonus(){
   const tonyAdjustment=bonusAmount(draft.tonyAdjustment), tonyTotal=tonySalesBonus+tonyDavanti+tonyAdjustment;
   const neilSales=bonusNeilTurnover(totalSales), neilDavanti=bonusNeilDavanti(totalDavanti), neilOwed=bonusAmount(draft.neilOwed), neilTotal=neilSales+neilDavanti+neilOwed;
   return `<h2>Monthly Bonus Sheet</h2>
-  <div class="admin-actions" style="flex-wrap:wrap;"><label style="font-size:12px;color:var(--muted);">Month<input id="bonus-month" type="month" value="${salesHtml(month)}" style="margin-left:8px;width:auto;"></label><label style="font-size:12px;color:var(--muted);">View<select id="bonus-site-filter" style="margin-left:8px;width:auto;"><option value="all" ${bonusSite==='all'?'selected':''}>All sites</option>${Object.entries(BONUS_SITE_RULES).map(([key,rule])=>`<option value="${key}" ${bonusSite===key?'selected':''}>${rule.label}</option>`).join('')}</select></label><button type="button" class="add-btn" data-action="save-bonus">Save Bonus Sheet</button><button type="button" class="add-btn secondary" data-action="bonus-print">Print</button><button type="button" class="add-btn secondary" data-action="bonus-download">Download</button></div>
+  <div class="admin-actions" style="flex-wrap:wrap;"><label style="font-size:12px;color:var(--muted);">Month<input id="bonus-month" type="month" value="${salesHtml(month)}" style="margin-left:8px;width:auto;"></label><label style="font-size:12px;color:var(--muted);">View<select id="bonus-site-filter" style="margin-left:8px;width:auto;"><option value="all" ${bonusSite==='all'?'selected':''}>All sites</option>${Object.entries(BONUS_SITE_RULES).map(([key,rule])=>`<option value="${key}" ${bonusSite===key?'selected':''}>${rule.label}</option>`).join('')}</select></label>${isCurrentMonth?`<span class="toggle ${predicting?'on':'off'}" data-action="toggle-bonus-predict" title="Estimate the full month by scaling up what's sold so far">${predicting?'Predicting month-end':'Predict month-end'}</span>`:''}<button type="button" class="add-btn" data-action="save-bonus">Save Bonus Sheet</button><button type="button" class="add-btn secondary" data-action="bonus-print">Print</button><button type="button" class="add-btn secondary" data-action="bonus-download">Download</button></div>
+  ${predicting?`<div class="card" style="border-left:4px solid var(--amber);margin-bottom:14px;"><b>Projected estimate</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Scaled up from the latest snapshot to a full month. This is a straight-line guess based on the pace so far — actual month-end figures will differ, sometimes by a lot early in the month.</div></div>`:''}
   <div id="bonus-sheet-output">
     <div class="card" style="border-left:4px solid var(--red);"><div style="font-weight:800;font-size:18px;">${new Date(month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div><div style="color:var(--muted);font-size:12px;margin-top:4px;">${weekdays} working weekdays · sales through ${latest?salesDateLabel(latest):'no snapshot yet'} · Gateshead excluded from Tony’s personal bonus</div></div>
     ${bonusSite==='all'?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:14px;">
@@ -4480,9 +4505,10 @@ function renderAdminRequests(){
   <div id="holiday-sheet-output">${renderHolidaySheet()}</div>
 
   <h2 style="font-size:16px;margin-top:28px;">Printable Holiday Balances</h2>
-  <div class="head-sub">Everyone's remaining balance projected to a chosen date. Pick "All sites" for one portable page listing all staff together; pick a site for just that one.</div>
+  <div class="head-sub">Everyone's remaining balance projected to a chosen date — this already accounts for accrual still to come and any holiday already booked for the rest of the year, so it answers "what will they have left by then". Pick "All sites" for one portable page listing all staff together; pick a site for just that one.</div>
   <div class="cal-toolbar">
     <div class="field" style="margin-bottom:0;"><label style="margin-bottom:4px;">As of</label><input type="date" id="bal-sheet-asof" value="${state.admin.balAsOf}"></div>
+    <button type="button" data-action="bal-sheet-year-end">Year end</button>
     ${isSuper ? `<div class="field" style="margin-bottom:0;"><label style="margin-bottom:4px;">Site</label><select id="bal-sheet-site">${`<option value="all">All sites</option>` + state.config.sites.map(s=>`<option value="${s.id}" ${state.admin.balSheetSite===s.id?'selected':''}>${s.name}</option>`).join('')}</select></div>` : ''}
     <button type="button" data-action="bal-sheet-print" style="margin-left:auto;">🖶 Print</button>
     <button type="button" data-action="bal-sheet-download">Download</button>
@@ -6025,6 +6051,11 @@ async function onAction(e){
     downloadSelectedReport('#target-site-'+siteId,site.label+' Monthly Target '+month,`monthly-target-${site.key}-${month}.html`,'portrait'); return;
   }
 
+  else if(action==='toggle-bonus-predict'){
+    if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
+    state.admin.bonusPredictMode = !state.admin.bonusPredictMode;
+    render(); return;
+  }
   else if(action==='save-bonus'){
     if(!canAccessBonusSheet()){ showToast('This page is private.',true); return render(); }
     const month=state.admin.bonusMonth||new Date().toISOString().slice(0,7), draft=bonusMonthData(month);
@@ -6867,6 +6898,10 @@ async function onAction(e){
     const siteId=state.admin.role==='super'?(state.admin.contactsSite||'all'):state.admin.scopeSite;
     const siteLabel=siteId==='all'?'all-sites':safeReportFilename(siteName(siteId));
     downloadSelectedReport('#contacts-sheet-output','Staff Contacts',`staff-contacts-${siteLabel}.html`,'portrait'); return;
+  }
+  else if(action==='bal-sheet-year-end'){
+    state.admin.balAsOf = iso(new Date(new Date().getFullYear(), 11, 31));
+    render(); return;
   }
   else if(action==='bal-sheet-print'){
     printSelectedReport('#balance-sheet-output','Holiday Balances','portrait'); return;

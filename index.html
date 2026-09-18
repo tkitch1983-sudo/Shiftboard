@@ -806,7 +806,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -3873,6 +3873,7 @@ function renderAdmin(){
   </div>
   ${state.admin.pendingApprove ? renderApproveModal() : ''}
   ${state.admin.calendarAddDate ? renderCalendarAddHolidayModal() : ''}
+  ${state.admin.calendarDayDetail ? renderCalendarDayDetailModal() : ''}
   ${state.admin.vaultEditingId ? renderVaultEditModal() : ''}
   ${state.admin.viewingClockPhoto ? renderClockPhotoModal() : ''}
   ${state.admin.editingEmployee !== null ? renderEmployeeModal() : ''}
@@ -4674,6 +4675,33 @@ function renderCalendarAddHolidayModal(){
     </div>
   </div>`;
 }
+function renderCalendarDayDetailModal(){
+  const dateStr=state.admin.calendarDayDetail;
+  if(!dateStr) return '';
+  const isSuper = state.admin.role==='super';
+  const effectiveSite = isSuper ? (state.admin.calSite||'all') : state.admin.scopeSite;
+  const covering = approvedEmployeeEntriesForDate(dateStr);
+  const filtered = effectiveSite==='all' ? covering : covering.filter(x=>{
+    const e = employeeById(x.employeeId); return e && e.siteId===effectiveSite;
+  });
+  const rows = filtered.map(x=>{
+    const e = employeeById(x.employeeId);
+    if(!e) return '';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);">
+      <div><b>${e.name}</b><div style="color:var(--muted-2);font-size:12px;">${siteName(e.siteId)}${x.amount===0.5?' · Half day':''}</div></div>
+      ${isSuper ? `<button type="button" class="icon-btn" data-action="calendar-remove-holiday" data-emp="${e.id}" data-date="${dateStr}" style="color:var(--red);">Remove</button>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="modal-overlay" data-modal-overlay>
+    <div class="modal">
+      <h3>Off on ${fmtDate(dateStr)}</h3>
+      ${rows || `<div class="empty-state">Nobody off this day.</div>`}
+      <div class="modal-actions">
+        <button type="button" class="action-btn secondary" data-action="close-modal">Close</button>
+      </div>
+    </div>
+  </div>`;
+}
 
 function renderAdminCalendar(){
   const m = state.admin.calMonth;
@@ -4716,9 +4744,9 @@ function renderAdminCalendar(){
     }).join('');
     return `<div class="${classes.join(' ')}">
       ${isSuper ? `<button type="button" class="cal-add-btn" data-action="calendar-add-holiday" data-date="${dateStr}" title="Add holiday on ${fmtDate(dateStr)}">+</button>` : ''}
-      <div class="cal-date">${d.getDate()}</div>
+      <div class="cal-date" ${count>0?`data-action="calendar-day-detail" data-date="${dateStr}" style="cursor:pointer;"`:''}>${d.getDate()}</div>
       ${chips ? `<div class="cal-chips">${chips}</div>` : ''}
-      ${count>0 ? `<div class="cal-count ${count>=state.config.settings.capOff?'full':''}">${count}/${state.config.settings.capOff}</div>` : ''}
+      ${count>0 ? `<div class="cal-count ${count>=state.config.settings.capOff?'full':''}" data-action="calendar-day-detail" data-date="${dateStr}" style="cursor:pointer;">${count}/${state.config.settings.capOff}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -5551,6 +5579,7 @@ function attachHandlers(){
         state.admin.editingSiteManager=null;
         state.admin.editingAdmin=null;
         state.admin.calendarAddDate=null;
+        state.admin.calendarDayDetail=null;
         state.admin.viewingClockPhoto=null;
         render();
       }
@@ -6413,7 +6442,7 @@ async function onAction(e){
       showToast('Request deleted.');
     }
   }
-  else if(action==='close-modal'){ state.admin.pendingApprove=null; state.admin.editingEmployee=null; state.admin.editingSiteManager=null; state.admin.editingAdmin=null; state.admin.calendarAddDate=null; state.admin.vaultEditingId=null; state.admin.viewingClockPhoto=null; }
+  else if(action==='close-modal'){ state.admin.pendingApprove=null; state.admin.editingEmployee=null; state.admin.editingSiteManager=null; state.admin.editingAdmin=null; state.admin.calendarAddDate=null; state.admin.calendarDayDetail=null; state.admin.vaultEditingId=null; state.admin.viewingClockPhoto=null; }
   else if(action==='view-clock-photo'){
     if(!state.admin.authed) return;
     if(!state.admin.clockPhotos || !state.admin.clockPhotos[id]){ showToast('Photo is no longer available.', true); return render(); }
@@ -6724,6 +6753,12 @@ async function onAction(e){
     const dateStr=e.currentTarget.dataset.date;
     if(!validIsoDate(dateStr)){ showToast('Invalid calendar date.', true); return; }
     state.admin.calendarAddDate=dateStr;
+    render(); return;
+  }
+  else if(action==='calendar-day-detail'){
+    const dateStr=e.currentTarget.dataset.date;
+    if(!validIsoDate(dateStr)){ showToast('Invalid calendar date.', true); return; }
+    state.admin.calendarDayDetail=dateStr;
     render(); return;
   }
   else if(action==='calendar-confirm-add-holiday'){

@@ -814,7 +814,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -2561,9 +2561,13 @@ function renderAdminSales(){
     const msg=state.admin.salesRun?.message||'No sales snapshot is available yet.';
     return `<h2>Live Sales</h2><div class="card"><div style="color:var(--red);">${salesHtml(msg)}</div><button type="button" class="add-btn" data-action="refresh-sales" style="margin-top:12px;">Retry</button></div>`;
   }
-  const sum=k=>rows.reduce((a,r)=>a+salesNum(r[k]),0);
-  const avg=k=>{ const vals=rows.map(r=>r[k]).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number).filter(Number.isFinite); return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null; };
-  const currentTotal=sum('total_current'), priorTotal=rows.reduce((a,r)=>a+(r.comparison_available?salesNum(r.total_prior):0),0);
+  const snapMonth=String(rows[0].snapshot_date||'').slice(0,7);
+  const isCurrentMonth=snapMonth===new Date().toISOString().slice(0,7);
+  const predicting=isCurrentMonth && !!state.admin.salesPredictMode;
+  const dataRows=predicting ? rows.map(r=>bonusProjectSnapshot(r,snapMonth)) : rows;
+  const sum=k=>dataRows.reduce((a,r)=>a+salesNum(r[k]),0);
+  const avg=k=>{ const vals=dataRows.map(r=>r[k]).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number).filter(Number.isFinite); return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null; };
+  const currentTotal=sum('total_current'), priorTotal=dataRows.reduce((a,r)=>a+(r.comparison_available?salesNum(r.total_prior):0),0);
   const groupMargin=avg('margin_current'), priorMargin=avg('margin_prior');
   const addOn=sum('add_on_value'), davanti=sum('davanti');
   const snap=rows[0].snapshot_date;
@@ -2571,7 +2575,7 @@ function renderAdminSales(){
   const runBad=run.status==='failed'||run.status==='partial'||rows.some(r=>r.import_status!=='ok');
   const statusText=run.status==='success'?'Nightly run successful — all 8 sites imported':run.status==='partial'?'Import partly completed':run.status==='failed'?'Import failed':'Latest snapshot';
   const statusColor=runBad?'var(--red)':'var(--green)';
-  const tableRows=rows.map(r=>`<tr>
+  const tableRows=dataRows.map(r=>`<tr>
     <td style="position:sticky;left:0;background:var(--panel);font-weight:600;white-space:nowrap;">${salesHtml(r.site_name)}</td>
     <td>${salesNum(r.davanti)}</td><td>${salesNum(r.tracking)}</td><td>${salesNum(r.bfc)}</td><td>${salesNum(r.coolant)}</td><td>${salesNum(r.pollen)}</td><td>${salesNum(r.ac)}</td><td>${salesNum(r.diag)}</td>
     <td>${salesNum(r.cons)}</td><td>${salesNum(r.full_service)}</td><td>${salesNum(r.interim)}</td><td>${salesNum(r.oil)}</td>
@@ -2586,16 +2590,18 @@ function renderAdminSales(){
   return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
     <div><h2 style="margin-bottom:4px;">Live Sales</h2><div style="font-size:12px;color:var(--muted);">Month to date · ${salesDateLabel(rows[0].period_start)} to ${salesDateLabel(rows[0].period_end)}</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+      ${isCurrentMonth?`<span class="toggle ${predicting?'on':'off'}" data-action="toggle-sales-predict" title="Estimate the full month by scaling up what's sold so far">${predicting?'Predicting month-end':'Predict month-end'}</span>`:''}
       <button type="button" class="add-btn" data-action="print-sales">🖶 Print</button>
       <button type="button" class="add-btn" data-action="download-sales">Download</button>
       <button type="button" class="add-btn" data-action="refresh-sales">Refresh</button>
     </div>
   </div>
+  ${predicting?`<div class="card" style="border-left:4px solid var(--amber);margin:14px 0 0;"><b>Projected estimate</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Every figure below is scaled up from ${salesDateLabel(snap)} to a full month, as a straight-line guess based on the pace so far. Actual month-end figures will differ, sometimes by a lot early in the month.</div></div>`:''}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:18px 0;">
-    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Group sales MTD</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesMoney(currentTotal)}</div></div>
+    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Group sales ${predicting?'(projected)':'MTD'}</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesMoney(currentTotal)}</div></div>
     <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Group margin</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesPct(groupMargin)}</div></div>
-    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Add-on value</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesMoney(addOn)}</div></div>
-    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Davanti</div><div class="mono" style="font-size:25px;margin-top:5px;">${davanti}</div></div>
+    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Add-on value ${predicting?'(projected)':''}</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesMoney(addOn)}</div></div>
+    <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Davanti ${predicting?'(projected)':''}</div><div class="mono" style="font-size:25px;margin-top:5px;">${davanti}</div></div>
   </div>
   ${renderSalesDateRange(rows)}
   <div class="card" style="padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -6181,6 +6187,11 @@ async function onAction(e){
     if(!canViewWorkshopSales()){ showToast('Workshop managers and Upper Management only.',true); return render(); }
     state.admin.salesRows=null; state.admin.salesHistory=null; state.admin.salesRun=null;
     await loadSalesData(true); render(); return;
+  }
+  else if(action==='toggle-sales-predict'){
+    if(!canViewWorkshopSales()){ showToast('Workshop managers and Upper Management only.',true); return render(); }
+    state.admin.salesPredictMode = !state.admin.salesPredictMode;
+    render(); return;
   }
   else if(action==='print-analysis'){
     if(!canViewPrivateTab('analysis')){ showToast('You do not have permission for this page.',true); return render(); }

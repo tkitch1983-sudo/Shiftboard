@@ -164,6 +164,9 @@
   }
   .admin-nav .nav-item:hover{color:var(--text);}
   .admin-nav .nav-item.active{color:var(--text);border-left-color:var(--amber);background:var(--panel-2);}
+  .admin-nav-group{padding:14px 20px 6px;color:var(--muted-2);font-size:10px;text-transform:uppercase;letter-spacing:.06em;}
+  .admin-nav-group.first{padding-top:0;}
+  .admin-nav-group:not(.first){border-top:1px solid var(--line-soft);margin-top:6px;}
   .request-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:12px;background:var(--amber);color:#fff;font-size:11px;font-weight:800;}
   .admin-main{flex:1;padding:26px 30px;overflow-x:auto;}
   .admin-main h2{font-size:22px;margin-bottom:4px;}
@@ -325,6 +328,11 @@
     .admin-nav{width:100%;display:flex;overflow-x:auto;padding:8px;border-right:none;border-bottom:1px solid var(--line);}
     .admin-nav .nav-item{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;padding:12px 16px;}
     .admin-nav .nav-item.active{border-left:none;border-bottom-color:var(--amber);}
+    /* The nav becomes a horizontal scrolling strip on phones, so a full
+       group header would look broken. Show it as a slim divider label
+       sitting inline instead. */
+    .admin-nav-group{padding:0 10px;border-top:none !important;margin-top:0 !important;display:flex;align-items:center;font-size:9px;white-space:nowrap;border-left:1px solid var(--line-soft);flex-shrink:0;}
+    .admin-nav-group.first{border-left:none;padding-left:4px;}
     .admin-main{padding:16px;}
   }
   @media (max-width:480px){
@@ -810,10 +818,12 @@ const state = {
 };
 
 const ADMIN_TAB_OPTIONS=[
-  ['register','Register','Operations'],['sickness','Sickness','Operations'],['bradford','Bradford','Operations'],['sales','Live Sales','Operations'],['targets','Targets','Operations'],
-  ['requests','Requests','Operations'],['calendar','Calendar','Operations'],['timesheets','Timesheets','Operations'],['employees','Employees','Operations'],['contacts','Contacts','Operations'],['clocklog','Clock Log','Operations'],
-  ['bonus','Bonus Sheet','Private reports'],['mot','MOT Logs','Private reports'],['stock','Stock Value','Private reports'],['analysis','Sales Analysis','Private reports'],['salesvs','Sales VS','Private reports'],
-  ['passwords','Passwords','Administration'],['managers','Managers','Administration'],['sites','Sites','Administration'],['bankholidays','Bank Holidays','Administration'],['audit','Audit','Administration'],['settings','Settings / My account','Administration']
+  ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
+  ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['bankholidays','Bank Holidays','Holiday'],
+  ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
+  ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
+  ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
+  ['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
 const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','settings']);
@@ -3734,8 +3744,8 @@ function holidayRequestsNeedingAttention(){
 function renderAdmin(){
   const isSuper = state.admin.role==='super';
   const requestNoticeCount = holidayRequestsNeedingAttention().length;
-  const tabs=ADMIN_TAB_OPTIONS.filter(([id])=>canAccessAdminTab(id)).map(([id,label])=>[id,label]);
-  if(isTonyLogin()) tabs.push(['access','Access Permissions']);
+  const tabs=ADMIN_TAB_OPTIONS.filter(([id])=>canAccessAdminTab(id));
+  if(isTonyLogin()) tabs.push(['access','Access Permissions','System']);
   // Until the starting password is changed, the only tab available is their account.
   if(state.admin.forcePasswordChange){
     return `${topstrip()}
@@ -3884,7 +3894,11 @@ function renderAdmin(){
   return `${topstrip()}
   <div class="admin-shell">
     <div class="admin-nav">
-      ${tabs.map(([id,label])=>`<div class="nav-item ${state.admin.tab===id?'active':''}" data-admin-tab="${id}"><span>${label}</span>${id==='requests'&&requestNoticeCount?`<span class="request-badge" aria-label="${requestNoticeCount} holiday requests waiting">${requestNoticeCount}</span>`:''}</div>`).join('')}
+      ${(()=>{ let lastGroup=null, first=true; return tabs.map(([id,label,group])=>{
+        const header = group!==lastGroup ? `<div class="admin-nav-group${first?' first':''}">${group}</div>` : '';
+        lastGroup=group; first=false;
+        return header + `<div class="nav-item ${state.admin.tab===id?'active':''}" data-admin-tab="${id}"><span>${label}</span>${id==='requests'&&requestNoticeCount?`<span class="request-badge" aria-label="${requestNoticeCount} holiday requests waiting">${requestNoticeCount}</span>`:''}</div>`;
+      }).join(''); })()}
     </div>
     <div class="admin-main">
       <div class="admin-topbar">

@@ -814,7 +814,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -2591,11 +2591,13 @@ function renderAdminSales(){
     <div><h2 style="margin-bottom:4px;">Live Sales</h2><div style="font-size:12px;color:var(--muted);">Month to date · ${salesDateLabel(rows[0].period_start)} to ${salesDateLabel(rows[0].period_end)}</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
       ${isCurrentMonth?`<span class="toggle ${predicting?'on':'off'}" data-action="toggle-sales-predict" title="Estimate the full month by scaling up what's sold so far">${predicting?'Predicting month-end':'Predict month-end'}</span>`:''}
+      ${state.admin.role==='super'?`<button type="button" class="add-btn" data-action="trigger-sales-import" ${state.admin._triggeringSalesImport?'disabled':''}>${state.admin._triggeringSalesImport?'Starting…':'Run import now'}</button>`:''}
       <button type="button" class="add-btn" data-action="print-sales">🖶 Print</button>
       <button type="button" class="add-btn" data-action="download-sales">Download</button>
       <button type="button" class="add-btn" data-action="refresh-sales">Refresh</button>
     </div>
   </div>
+  ${state.admin.salesTriggerMessage?`<div style="font-size:12px;color:${state.admin.salesTriggerMessage.ok?'var(--green)':'var(--red)'};margin-top:8px;">${salesHtml(state.admin.salesTriggerMessage.text)}</div>`:''}
   ${predicting?`<div class="card" style="border-left:4px solid var(--amber);margin:14px 0 0;"><b>Projected estimate</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Every figure below is scaled up from ${salesDateLabel(snap)} to a full month, as a straight-line guess based on the pace so far. Actual month-end figures will differ, sometimes by a lot early in the month.</div></div>`:''}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:18px 0;">
     <div class="card" style="margin:0;"><div style="font-size:11px;text-transform:uppercase;color:var(--muted);">Group sales ${predicting?'(projected)':'MTD'}</div><div class="mono" style="font-size:25px;margin-top:5px;">${salesMoney(currentTotal)}</div></div>
@@ -6187,6 +6189,25 @@ async function onAction(e){
   else if(action==='download-sales'){
     if(!canViewWorkshopSales()){ showToast('Workshop managers and Upper Management only.',true); return render(); }
     downloadSalesCsv(); return;
+  }
+  else if(action==='trigger-sales-import'){
+    if(!requireSuper()) return render();
+    if(state.admin._triggeringSalesImport) return;
+    state.admin._triggeringSalesImport=true;
+    state.admin.salesTriggerMessage=null;
+    render();
+    try{
+      const res=await fetch(SUPABASE_URL+'/functions/v1/trigger-sales-import',{
+        method:'POST', headers: await authHeaders()
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.error||('request failed ('+res.status+')'));
+      state.admin.salesTriggerMessage={ok:true,text:'Import started — it usually takes under a minute. Tap Refresh shortly to see the results.'};
+    }catch(err){
+      state.admin.salesTriggerMessage={ok:false,text:'Could not start the import — '+(err.message||'unknown error')};
+    }
+    state.admin._triggeringSalesImport=false;
+    render(); return;
   }
   else if(action==='refresh-sales'){
     if(!canViewWorkshopSales()){ showToast('Workshop managers and Upper Management only.',true); return render(); }

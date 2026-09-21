@@ -2277,14 +2277,14 @@ function renderHoliday(){
 
   let totalRequested;
   let extraControls = '';
-  if(hourly){
+  if(hourly || fillingStation){
     const byDate = state.flow.holHoursByDate || {};
     totalRequested = workingDays.reduce((sum,d)=>sum+(parseFloat(byDate[d])||8),0);
     extraControls = workingDays.length ? `
     <div style="text-align:left;margin:14px 0 8px;font-size:13px;font-weight:600;">Hours of holiday needed</div>
     ${workingDays.map(d=>`<div class="field" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
       <label style="margin:0;">${fmtDate(d)}</label>
-      <div style="display:flex;align-items:center;gap:7px;"><input type="number" step="0.5" min="0.5" max="24" data-hol-hours-date="${d}" value="${Number(parseFloat(byDate[d])||8).toFixed(2)}" style="width:90px;"><span>hrs</span></div>
+      <div style="display:flex;align-items:center;gap:7px;"><input type="number" step="${fillingStation?0.25:0.5}" min="${fillingStation?0.25:0.5}" max="24" data-hol-hours-date="${d}" value="${Number(parseFloat(byDate[d])||8).toFixed(2)}" style="width:90px;"><span>hrs</span></div>
     </div>`).join('')}` : '';
   } else {
     totalRequested = workingDays.length;
@@ -2316,7 +2316,7 @@ function renderHoliday(){
     ${extraControls}
     ${fillingStation?`<div class="field"><label>Who will cover your shift?</label><select id="hol-cover-employee" required><option value="">Choose cover person</option>${coverStaff.map(e=>`<option value="${salesHtml(e.id)}" ${String(e.id)===selectedCoverId?'selected':''}>${salesHtml(e.name)}</option>`).join('')}</select>${coverStaff.length?'':'<div class="excl" style="color:var(--red);margin-top:6px;">No other active staff are available at this station. Ask your manager to update the employee list.</div>'}</div>`:''}
     <div class="req-summary">
-      <b>${hourly?Number(totalRequested).toFixed(2):totalRequested} ${hourly?'hour':'day'}${totalRequested===1?'':'s'} of holiday</b>
+      <b>${(hourly||fillingStation)?Number(totalRequested).toFixed(2):totalRequested} ${(hourly||fillingStation)?'hour':'day'}${totalRequested===1?'':'s'} of holiday</b>
       ${workingDays.length ? workingDays.map(fmtDateShort).join(' · ') : 'Pick a start and end date.'}
       ${excludedCount ? `<div class="excl">Sundays, Saturdays and bank holidays in this range aren't counted.</div>` : ''}
       ${totalRequested > remaining ? `<div class="excl" style="color:var(--red);">This takes your balance to ${(remaining-totalRequested).toFixed(2)} ${unitLabel(emp)} — negative. That's fine, but it needs admin approval.</div>` : ''}
@@ -5805,7 +5805,10 @@ function attachHandlers(){
   app.querySelectorAll('[data-hol-hours-date]').forEach(input=>{
     input.addEventListener('change', ()=>{
       if(!state.flow.holHoursByDate) state.flow.holHoursByDate={};
-      const value=Math.max(0.5,Math.min(24,parseFloat(input.value)||8));
+      const filling=state.flow.employee&&isFillingStationSite(state.flow.employee.siteId);
+      const minHoliday=filling?0.25:0.5;
+      const raw=Math.max(minHoliday,Math.min(24,parseFloat(input.value)||8));
+      const value=filling?Math.round(raw*4)/4:Math.round(raw*2)/2;
       state.flow.holHoursByDate[input.dataset.holHoursDate]=value;
       render();
     });
@@ -6603,9 +6606,10 @@ async function onAction(e){
       if(!coverEmployee){ showToast('Choose who will cover the shift.',true); return; }
     }
     let dates;
-    if(isHourly(emp)){
+    if(isHourly(emp) || isFillingStationSite(emp.siteId)){
       const byDate = state.flow.holHoursByDate || {};
-      dates = workingDays.map(d=>({date:d, amount:Math.max(0.5,Math.min(24,parseFloat(byDate[d])||8))}));
+      const minHoliday=isFillingStationSite(emp.siteId)?0.25:0.5;
+      dates = workingDays.map(d=>({date:d, amount:Math.max(minHoliday,Math.min(24,Math.round((parseFloat(byDate[d])||8)*4)/4))}));
     } else {
       dates = workingDays.map((d,i)=>{
         let amount = 1;

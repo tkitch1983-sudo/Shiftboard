@@ -553,7 +553,8 @@ function decodeToken(token){
       role: meta.role || null,
       siteId: meta.siteId || null,
       email: payload.email || '',
-      mustChangePassword: !!meta.mustChangePassword
+      mustChangePassword: !!meta.mustChangePassword,
+      managementLevel: meta.managementLevel || null
     };
   }catch(e){ return { role:null, siteId:null, email:'' }; }
 }
@@ -581,6 +582,7 @@ async function signInManager(email, password){
     email: info.email || email,
     name: (data.user && data.user.user_metadata && data.user.user_metadata.name) || '',
     mustChangePassword: info.mustChangePassword,
+    managementLevel: info.managementLevel,
     lastActive: Date.now()
   });
   return _session;
@@ -602,7 +604,7 @@ async function refreshSession(){
       access_token: data.access_token,
       refresh_token: data.refresh_token || _session.refresh_token,
       expires_at: Date.now() + ((data.expires_in||3600)*1000),
-      role: info.role, siteId: info.siteId
+      role: info.role, siteId: info.siteId, managementLevel: info.managementLevel
     }));
     return true;
   }catch(e){ return false; }
@@ -832,6 +834,7 @@ function defaultTabAccessFor(role,siteId,email,tab){
   email=String(email||'').trim().toLowerCase();
   if(email==='tony@neautoservices.com') return true;
   if(tab==='settings') return true;
+  if(tab==='payrates') return email==='jack@neautoservices.com';
   if(tab==='bonus') return email==='jack@neautoservices.com';
   if(['mot','stock','analysis','salesvs'].includes(tab)) return false;
   if(role==='super') return true;
@@ -844,6 +847,10 @@ function defaultTabAccessFor(role,siteId,email,tab){
 
 function isTonyLogin(){
   return state.admin.role==='super' && !!_session && String(_session.email||'').trim().toLowerCase()==='tony@neautoservices.com';
+}
+function isSeniorManagementLogin(){
+  const email=String(_session?.email||'').trim().toLowerCase();
+  return _session?.managementLevel==='senior' || ['tony@neautoservices.com','jack@neautoservices.com','john@neautoservices.com','zara@neautoservices.com'].includes(email);
 }
 function isPayRateLogin(){
   const email=String(_session?.email||'').trim().toLowerCase();
@@ -1068,7 +1075,7 @@ function timesheetRowsForWeek(weekIso){
         if(isHol) holCount += holAmt;
         if(!sevenDay && i===5) satHours += hours; else weekTotal += hours;
         const abs = absenceFor(emp.id, dateStr);
-        if(isHol) { anyActivity = true; return isHourly(emp) ? formatTimesheetHours(holAmt,emp,site.id)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); }
+        if(isHol) { anyActivity = true; const holText=isHourly(emp) ? formatTimesheetHours(holAmt,emp,site.id)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); return hours>0 ? formatTimesheetHours(hours,emp,site.id)+' worked + '+holText : holText; }
         if(hours>0){ anyActivity = true; return formatTimesheetHours(hours,emp,site.id) + (pendingHol ? ' ⏳' : '') + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
         if(pendingHol){ anyActivity = true; return '⏳ Pending'; }
         if(abs){ anyActivity = true; return abs.type; }
@@ -3219,8 +3226,9 @@ function renderAdminAccess(){
   const grouped=[...new Set(ADMIN_TAB_OPTIONS.map(([, ,group])=>group))].map(group=>{
     const controls=ADMIN_TAB_OPTIONS.filter(([, ,g])=>g===group).map(([key,label])=>{
       const row=setting(key), on=row?row.allowed!==false:defaultTabAccessFor(chosen.role,chosen.siteId,chosen.email,key);
-      const disabled=key==='settings'||(chosen.role==='site'&&SITE_UNAVAILABLE_TABS.has(key));
-      const note=key==='settings'?'Required':(disabled?'Upper management only':(row?'Set by Tony':'Role default'));
+      const payRateLocked=key==='payrates';
+      const disabled=key==='settings'||payRateLocked||(chosen.role==='site'&&SITE_UNAVAILABLE_TABS.has(key));
+      const note=key==='settings'?'Required':(payRateLocked?'Tony & Jack only':(disabled?'Upper management only':(row?'Set by Tony':'Role default')));
       return `<div class="card" style="margin:0;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;${disabled?'opacity:.58;':''}"><div><b>${salesHtml(label)}</b><div style="font-size:10px;color:var(--muted-2);margin-top:2px;">${note}</div></div><button type="button" class="toggle ${on?'on':'off'}" data-action="permission-toggle" data-email="${salesHtml(state.admin.permissionEmail)}" data-tab-key="${key}" data-granted="${on?'1':'0'}" ${disabled?'disabled':''}>${on?'Allowed':'Not allowed'}</button></div>`;
     }).join('');
     return `<div style="margin-top:18px;"><h3 style="margin:0 0 8px;">${salesHtml(group)}</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">${controls}</div></div>`;
@@ -4013,7 +4021,7 @@ function renderAdmin(){
   }
   else if(state.admin.tab==='settings') body = renderAdminSettings();
 
-  const whoLabel = isSuper ? (state.admin.managerName ? `${state.admin.managerName} · Upper management` : 'Upper management — all sites') : `${state.admin.managerName} · ${siteName(state.admin.scopeSite)} manager`;
+  const whoLabel = isSuper ? (state.admin.managerName ? `${state.admin.managerName} · ${isSeniorManagementLogin()?'Senior management':'Upper management'}` : `${isSeniorManagementLogin()?'Senior management':'Upper management'} — all sites`) : `${state.admin.managerName} · ${siteName(state.admin.scopeSite)} manager`;
 
   return `${topstrip()}
   <div class="admin-shell">

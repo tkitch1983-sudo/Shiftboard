@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v24';
+const CACHE='neas-shift-board-shell-v25';
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js'];
 
 async function withPinsTab(response){
@@ -6,10 +6,19 @@ async function withPinsTab(response){
   const type=response.headers.get('content-type')||'';
   if(!type.includes('text/html')) return response;
   const html=await response.text();
-  if(html.includes('pins-tab.js')) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  if(html.includes('<script src="./pins-tab.js')){
+    return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  }
+  // Inject only at the document's real closing </body>. The app contains
+  // printable HTML strings with their own </body> tags, so replacing the
+  // first occurrence can alter JavaScript/template output and produce raw
+  // ${...} placeholders in modals.
+  const closeBody=html.toLowerCase().lastIndexOf('</body>');
+  if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const patched=html.slice(0,closeBody)+'<script src="./pins-tab.js?v=2"></script>'+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');
-  return new Response(html.replace('</body>','<script src="./pins-tab.js?v=1"></script></body>'),{status:response.status,statusText:response.statusText,headers});
+  return new Response(patched,{status:response.status,statusText:response.statusText,headers});
 }
 
 self.addEventListener('install',event=>{
@@ -31,7 +40,9 @@ self.addEventListener('fetch',event=>{
   if(req.mode==='navigate'){
     event.respondWith((async()=>{
       try{
-        const fresh=await fetch(req);
+        // Always take a fresh app shell for navigations so an old transformed
+        // copy cannot keep resurfacing on kiosk/PWA devices.
+        const fresh=await fetch(req,{cache:'no-store'});
         const cache=await caches.open(CACHE);
         cache.put('./',fresh.clone());
         return await withPinsTab(fresh);

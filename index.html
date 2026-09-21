@@ -2262,7 +2262,9 @@ function renderHoliday(){
   const emp = state.flow.employee;
   const hourly = isHourly(emp);
   const fillingStation = isFillingStationSite(emp.siteId);
-  const coverStaff = fillingStation ? state.config.employees.filter(e=>e.active!==false&&e.siteId===emp.siteId&&e.id!==emp.id).sort((a,b)=>a.name.localeCompare(b.name)) : [];
+  const coverExempt = ['g marsay','w hodgson'].includes(String(emp.name||'').trim().toLowerCase());
+  const coverRequired = fillingStation && !coverExempt;
+  const coverStaff = coverRequired ? state.config.employees.filter(e=>e.active!==false&&e.siteId===emp.siteId&&e.id!==emp.id).sort((a,b)=>a.name.localeCompare(b.name)) : [];
   const selectedCoverId = String(state.flow.holCoverEmployeeId||'');
   const remaining = Infinity; // balances live server-side now; managers see them
   const start = state.flow.holStart || '';
@@ -2314,7 +2316,7 @@ function renderHoliday(){
     <div class="field"><label>Start date</label><input type="date" id="hol-start" value="${start}"></div>
     <div class="field"><label>End date</label><input type="date" id="hol-end" value="${end}"></div>
     ${extraControls}
-    ${fillingStation?`<div class="field"><label>Who will cover your shift?</label><select id="hol-cover-employee" required><option value="">Choose cover person</option>${coverStaff.map(e=>`<option value="${salesHtml(e.id)}" ${String(e.id)===selectedCoverId?'selected':''}>${salesHtml(e.name)}</option>`).join('')}</select>${coverStaff.length?'':'<div class="excl" style="color:var(--red);margin-top:6px;">No other active staff are available at this station. Ask your manager to update the employee list.</div>'}</div>`:''}
+    ${coverRequired?`<div class="field"><label>Who will cover your shift?</label><select id="hol-cover-employee" required><option value="">Choose cover person</option>${coverStaff.map(e=>`<option value="${salesHtml(e.id)}" ${String(e.id)===selectedCoverId?'selected':''}>${salesHtml(e.name)}</option>`).join('')}</select>${coverStaff.length?'':'<div class="excl" style="color:var(--red);margin-top:6px;">No other active staff are available at this station. Ask your manager to update the employee list.</div>'}</div>`:''}
     <div class="req-summary">
       <b>${(hourly||fillingStation)?Number(totalRequested).toFixed(2):totalRequested} ${(hourly||fillingStation)?'hour':'day'}${totalRequested===1?'':'s'} of holiday</b>
       ${workingDays.length ? workingDays.map(fmtDateShort).join(' · ') : 'Pick a start and end date.'}
@@ -2322,7 +2324,7 @@ function renderHoliday(){
       ${totalRequested > remaining ? `<div class="excl" style="color:var(--red);">This takes your balance to ${(remaining-totalRequested).toFixed(2)} ${unitLabel(emp)} — negative. That's fine, but it needs admin approval.</div>` : ''}
     </div>
     <div class="error-msg">${state.flow.error||''}</div>
-    <button type="button" class="action-btn" data-action="submit-holiday" ${workingDays.length&&(!fillingStation||coverStaff.length)? '' : 'disabled'}>Submit Request</button>
+    <button type="button" class="action-btn" data-action="submit-holiday" ${workingDays.length&&(!coverRequired||coverStaff.length)? '' : 'disabled'}>Submit Request</button>
     <div class="back-link" data-action="go-home">← Cancel</div>
   </div></div>`;
 }
@@ -6600,7 +6602,8 @@ async function onAction(e){
     const workingDays = computeWorkingDays(state.flow.holStart, state.flow.holEnd, emp.siteId);
     if(!workingDays.length) return;
     let coverEmployee=null;
-    if(isFillingStationSite(emp.siteId)){
+    const coverExempt=['g marsay','w hodgson'].includes(String(emp.name||'').trim().toLowerCase());
+    if(isFillingStationSite(emp.siteId) && !coverExempt){
       const coverId=String(state.flow.holCoverEmployeeId||'');
       coverEmployee=state.config.employees.find(e=>e.active!==false&&String(e.id)===coverId&&e.siteId===emp.siteId&&e.id!==emp.id)||null;
       if(!coverEmployee){ showToast('Choose who will cover the shift.',true); return; }

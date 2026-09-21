@@ -1,5 +1,17 @@
-const CACHE='neas-shift-board-shell-v23';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png'];
+const CACHE='neas-shift-board-shell-v24';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js'];
+
+async function withPinsTab(response){
+  if(!response) return response;
+  const type=response.headers.get('content-type')||'';
+  if(!type.includes('text/html')) return response;
+  const html=await response.text();
+  if(html.includes('pins-tab.js')) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const headers=new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(html.replace('</body>','<script src="./pins-tab.js?v=1"></script></body>'),{status:response.status,statusText:response.statusText,headers});
+}
+
 self.addEventListener('install',event=>{
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).catch(()=>{}));
@@ -22,9 +34,10 @@ self.addEventListener('fetch',event=>{
         const fresh=await fetch(req);
         const cache=await caches.open(CACHE);
         cache.put('./',fresh.clone());
-        return fresh;
+        return await withPinsTab(fresh);
       }catch(_e){
-        return (await caches.match('./')) || Response.error();
+        const cached=await caches.match('./');
+        return cached ? await withPinsTab(cached) : Response.error();
       }
     })());
     return;

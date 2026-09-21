@@ -814,14 +814,14 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMonth:null, analysisSite:'all', vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['bankholidays','Bank Holidays','Holiday'],
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
-  ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
+  ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
   ['sites','Sites','System'],['settings','Settings / My account','System']
 ];
@@ -845,7 +845,12 @@ function defaultTabAccessFor(role,siteId,email,tab){
 function isTonyLogin(){
   return state.admin.role==='super' && !!_session && String(_session.email||'').trim().toLowerCase()==='tony@neautoservices.com';
 }
+function isPayRateLogin(){
+  const email=String(_session?.email||'').trim().toLowerCase();
+  return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
+}
 function canAccessAdminTab(tab){
+  if(tab==='payrates') return isPayRateLogin();
   if(isTonyLogin()) return true;
   if(tab==='access') return false;
   if(tab==='settings') return true;
@@ -3774,6 +3779,83 @@ function holidayRequestsNeedingAttention(){
     return state.admin.role==='site' && String(emp.siteId)===String(state.admin.scopeSite);
   });
 }
+
+function payRateEsc(v){ return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+async function loadPayRates(){
+  if(!isPayRateLogin()){ state.admin.payRates=[]; return; }
+  state.admin._loadingPayRates=true; state.admin.payRatesError=null;
+  try{
+    const res=await fetch(SUPABASE_URL+'/rest/v1/staff_pay_rates?select=employee_id,pay_rate,updated_at,updated_by&order=employee_id.asc',{headers:await authHeaders(),cache:'no-store'});
+    if(!res.ok) throw new Error('Pay rates '+res.status);
+    state.admin.payRates=await res.json();
+  }catch(err){ state.admin.payRates=[]; state.admin.payRatesError=err.message||String(err); }
+  state.admin._loadingPayRates=false;
+}
+function payRateForEmployee(empId){
+  const row=(state.admin.payRates||[]).find(r=>String(r.employee_id)===String(empId));
+  return row && row.pay_rate!==null && row.pay_rate!==undefined ? Number(row.pay_rate) : null;
+}
+function renderAdminPayRates(){
+  if(!isPayRateLogin()) return '<h2>Pay Rates</h2><div class="card">You do not have permission to view this page.</div>';
+  if(state.admin.payRates===null || state.admin._loadingPayRates) return '<h2>Pay Rates</h2><div class="card">Loading pay rates…</div>';
+  const rows=(state.config.employees||[]).slice().sort((a,b)=>siteName(a.siteId).localeCompare(siteName(b.siteId))||a.name.localeCompare(b.name)).map(emp=>{
+    const rate=payRateForEmployee(emp.id);
+    return `<tr><td><b>${payRateEsc(emp.name)}</b></td><td>${payRateEsc(siteName(emp.siteId))}</td><td><div style="display:flex;align-items:center;gap:6px;"><span>£</span><input class="pay-rate-input" type="number" min="0" step="0.01" data-pay-emp="${payRateEsc(emp.id)}" value="${rate===null?'':rate.toFixed(2)}" placeholder="0.00" style="max-width:130px;"></div></td></tr>`;
+  }).join('');
+  return `<h2>Pay Rates</h2>
+    <div class="head-sub">Private payroll data. This page and its database records are restricted to Tony and Jack.</div>
+    ${state.admin.payRatesError?`<div class="card" style="border-left:4px solid var(--red);color:var(--red);">${payRateEsc(state.admin.payRatesError)}</div>`:''}
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <div><b>Staff pay rates</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">Enter the hourly/base pay rate used for payroll.</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="pay-rate-csv" type="file" accept=".csv,text/csv" style="display:none;">
+          <button type="button" class="add-btn" data-action="payrates-upload">Upload CSV</button>
+          <button type="button" class="add-btn" data-action="payrates-save">Save rates</button>
+        </div>
+      </div>
+      <div style="overflow:auto;"><table><thead><tr><th>Staff member</th><th>Site</th><th>Pay rate</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div style="font-size:11px;color:var(--muted-2);margin-top:12px;">CSV columns: <span class="mono">employee_id</span> or <span class="mono">name</span>, plus <span class="mono">pay_rate</span>. Existing rates are updated after preview/confirmation.</div>
+    </div>`;
+}
+async function savePayRates(){
+  if(!isPayRateLogin()) throw new Error('Only Tony and Jack can edit pay rates.');
+  const inputs=Array.from(document.querySelectorAll('[data-pay-emp]'));
+  const rows=inputs.filter(el=>String(el.value||'').trim()!=='').map(el=>({
+    employee_id:String(el.dataset.payEmp), pay_rate:Number(el.value), updated_by:String(_session?.email||'').toLowerCase(), updated_at:new Date().toISOString()
+  }));
+  if(rows.some(r=>!Number.isFinite(r.pay_rate)||r.pay_rate<0)) throw new Error('Enter valid pay rates.');
+  const res=await fetch(SUPABASE_URL+'/rest/v1/staff_pay_rates?on_conflict=employee_id',{method:'POST',headers:Object.assign({},await authHeaders(),{'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify(rows)});
+  if(!res.ok){ const d=await res.text(); throw new Error('Could not save pay rates ('+res.status+'): '+d.slice(0,160)); }
+  state.admin.payRates=await res.json(); showToast('Pay rates saved.');
+}
+async function importPayRateCsv(file){
+  if(!isPayRateLogin()) throw new Error('Only Tony and Jack can import pay rates.');
+  const matrix=motCsvMatrix(await file.text());
+  if(matrix.length<2) throw new Error('CSV has no staff rows.');
+  const headers=matrix[0].map(v=>String(v||'').trim().toLowerCase().replace(/[^a-z0-9]/g,''));
+  const idIx=headers.findIndex(h=>['employeeid','staffid','id'].includes(h));
+  const nameIx=headers.findIndex(h=>['name','employee','staff','staffname','employeename'].includes(h));
+  const rateIx=headers.findIndex(h=>['payrate','rate','hourlyrate','hourlypay'].includes(h));
+  if(rateIx<0 || (idIx<0&&nameIx<0)) throw new Error('CSV needs employee_id or name, plus pay_rate.');
+  const byName=new Map((state.config.employees||[]).map(e=>[String(e.name||'').trim().toLowerCase(),e]));
+  const byId=new Map((state.config.employees||[]).map(e=>[String(e.id),e]));
+  const parsed=[]; const unmatched=[];
+  for(const row of matrix.slice(1)){
+    if(!row.some(v=>String(v||'').trim())) continue;
+    const emp=(idIx>=0?byId.get(String(row[idIx]||'').trim()):null)||(nameIx>=0?byName.get(String(row[nameIx]||'').trim().toLowerCase()):null);
+    const rate=Number(String(row[rateIx]||'').replace(/[£,$ ]/g,''));
+    if(!emp || !Number.isFinite(rate) || rate<0){ unmatched.push(row[nameIx>=0?nameIx:idIx]||'Unknown'); continue; }
+    parsed.push({employee_id:String(emp.id),pay_rate:rate,updated_by:String(_session?.email||'').toLowerCase(),updated_at:new Date().toISOString()});
+  }
+  if(!parsed.length) throw new Error('No valid staff pay rates found in the CSV.');
+  const msg=`Import ${parsed.length} pay rate${parsed.length===1?'':'s'}?${unmatched.length?' '+unmatched.length+' row(s) will be skipped.':''}`;
+  if(!confirm(msg)) return;
+  const res=await fetch(SUPABASE_URL+'/rest/v1/staff_pay_rates?on_conflict=employee_id',{method:'POST',headers:Object.assign({},await authHeaders(),{'Prefer':'resolution=merge-duplicates,return=representation'}),body:JSON.stringify(parsed)});
+  if(!res.ok){ const d=await res.text(); throw new Error('CSV import failed ('+res.status+'): '+d.slice(0,160)); }
+  await loadPayRates(); showToast(parsed.length+' pay rates imported.'); render();
+}
+
 function renderAdmin(){
   const isSuper = state.admin.role==='super';
   const requestNoticeCount = holidayRequestsNeedingAttention().length;
@@ -3862,6 +3944,13 @@ function renderAdmin(){
     }
   }
   else if(state.admin.tab==='employees') body = renderAdminEmployees();
+  else if(state.admin.tab==='payrates'){
+    body = renderAdminPayRates();
+    if(state.admin.payRates===null && !state.admin._loadingPayRates){
+      state.admin._loadingPayRates=true;
+      (async ()=>{ state.admin._loadingPayRates=false; await loadPayRates(); render(); })();
+    }
+  }
   else if(state.admin.tab==='contacts') body = renderAdminContacts();
   else if(state.admin.tab==='passwords') body = renderAdminPasswords();
   else if(state.admin.tab==='managers'){
@@ -4914,7 +5003,11 @@ function renderAdminTimesheets(){
         if(!sevenDay && i===5) satHours += dayHours; // Sat = overtime, standard sites only
         else weekTotal += dayHours; // everything else counts (all 7 days for seven-day sites)
         let content;
-        if(isHol) content = `<span class="att-hol">${isHourly(emp)?formatTimesheetHours(holAmt,emp,site.id)+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
+        if(isHol){
+          const holLabel = `<span class="att-hol">${isHourly(emp)?formatTimesheetHours(holAmt,emp,site.id)+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
+          const workedBox = `<input type="text" inputmode="decimal" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?formatTimesheetHours(dayHours,emp,site.id):''}" placeholder="–" ${weekLocked?'disabled':''} style="margin-bottom:3px;">`;
+          content = workedBox + holLabel;
+        }
         else if(dow===0 && !sevenDay && dayHours===0){
           content = `<span style="color:#999;font-style:italic;">Closed</span>`;
         }
@@ -5665,6 +5758,13 @@ function attachHandlers(){
   });
 
 
+  const payCsv=document.getElementById('pay-rate-csv');
+  if(payCsv) payCsv.addEventListener('change', async ()=>{
+    const file=payCsv.files && payCsv.files[0]; if(!file) return;
+    try{ await importPayRateCsv(file); }catch(err){ showToast(err.message||String(err),true); }
+    finally{ payCsv.value=''; }
+  });
+
   const hs = document.getElementById('hol-start');
   const he = document.getElementById('hol-end');
   if(hs) hs.addEventListener('change', ()=>{ state.flow.holStart = hs.value; state.flow.holHalfStart=false; state.flow.holHalfEnd=false; state.flow.holHoursByDate={}; render(); });
@@ -6001,7 +6101,9 @@ async function onAction(e){
   const action = e.currentTarget.dataset.action;
   const id = e.currentTarget.dataset.id;
 
-  if(action==='start-clock'){ state.flow = {mode:'clock', pin:'', employee:null, error:''}; state.view='pin'; }
+  if(action==='payrates-save'){ await savePayRates(); render(); return; }
+  else if(action==='payrates-upload'){ const input=document.getElementById('pay-rate-csv'); if(input) input.click(); return; }
+  else if(action==='start-clock'){ state.flow = {mode:'clock', pin:'', employee:null, error:''}; state.view='pin'; }
   else if(action==='start-holiday'){ state.flow = {mode:'holiday', pin:'', employee:null, error:''}; state.view='pin'; }
   else if(action==='go-home'){ state.view='home'; state.flow={mode:null,pin:'',employee:null,error:''}; }
   else if(action==='go-admin-pin'){ if(state.admin.authed && _session){ state.view='admin'; } else { state.admin.pin=''; state.admin.error=''; state.view='admin-pin'; } }

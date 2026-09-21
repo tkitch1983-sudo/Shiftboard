@@ -280,7 +280,13 @@
   .att-table thead tr:last-child th{background:#f2f2f2;font-weight:700;text-transform:uppercase;}
   .att-table td.att-name{text-align:left;font-weight:700;white-space:nowrap;}
   .att-table td.att-empty-row td{height:24px;}
-  .att-hol{font-style:italic;color:#555;}
+  .att-hol{display:inline-block;font-style:normal;font-weight:700;color:#9b1c1c;background:#ffd6d6;border:1px solid #e59a9a;border-radius:3px;padding:2px 5px;white-space:nowrap;}
+  .att-worked{display:inline-block;font-weight:700;color:#174f86;background:#d7ebff;border:1px solid #9cc9ef;border-radius:3px;padding:2px 5px;white-space:nowrap;}
+  .att-legend{display:flex;gap:18px;align-items:center;justify-content:flex-end;padding:7px 10px;font-size:11px;font-weight:700;}
+  .att-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .att-legend i{width:16px;height:10px;border-radius:2px;display:inline-block;}
+  .att-legend .worked-key i{background:#d7ebff;border:1px solid #9cc9ef;}
+  .att-legend .holiday-key i{background:#ffd6d6;border:1px solid #e59a9a;}
   .att-pending-hol{display:inline-block;margin-left:3px;color:#b36b00;font-weight:700;font-style:normal;}
   .abs-select{width:100%;border:1px solid #ccc;background:#fff;color:#000;font-family:inherit;font-size:11px;padding:2px;border-radius:2px;}
   .hrs-input{width:100%;border:1px solid #bbb;background:#fff;color:#000;font-family:inherit;font-size:12px;text-align:center;padding:3px;border-radius:2px;}
@@ -5014,8 +5020,8 @@ function renderAdminTimesheets(){
         else weekTotal += dayHours; // everything else counts (all 7 days for seven-day sites)
         let content;
         if(isHol){
-          const holLabel = `<span class="att-hol">${isHourly(emp)?formatTimesheetHours(holAmt,emp,site.id)+'h Hol':(holAmt===0.5?'½ Hol':'Hol')}</span>`;
-          const workedBox = `<input type="text" inputmode="decimal" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?formatTimesheetHours(dayHours,emp,site.id):''}" placeholder="–" ${weekLocked?'disabled':''} style="margin-bottom:3px;">`;
+          const holLabel = `<span class="att-hol">Holiday ${isHourly(emp)?formatTimesheetHours(holAmt,emp,site.id)+'h':(holAmt===0.5?'½ day':'day')}</span>`;
+          const workedBox = `<div class="att-worked" style="margin-bottom:3px;">Worked <input type="text" inputmode="decimal" class="hrs-input${hasOverride?' hrs-overridden':''}${(hasAutoClosed && !hasOverride)?' hrs-estimated':''}" data-hrs-emp="${emp.id}" data-hrs-date="${dateStr}" value="${dayHours>0?formatTimesheetHours(dayHours,emp,site.id):''}" placeholder="–" ${weekLocked?'disabled':''} style="width:48px;padding:0;border:0;background:transparent;font-weight:700;"></div>`;
           content = workedBox + holLabel;
         }
         else if(dow===0 && !sevenDay && dayHours===0){
@@ -5598,7 +5604,7 @@ function renderAdminClockLog(){
   <div class="head-sub">Marking someone Inactive only hides them in the app — it does not delete their records. Once your Settings retention period (currently ${state.config.settings.dpRetentionYears || 6} years) has passed since they left, they appear here so you can erase their personal data on purpose. This removes their employee record, clock events, clock photos, holiday requests, sickness records (including any attached sick note file), and timesheet overrides. Bonus sheet entries, if any, are not covered — check those separately.</div>
   ${(()=>{ const due=employeesPastRetention(); if(!due.length) return `<div class="card"><div class="empty-state">Nobody is currently past the retention period.</div></div>`;
     const rows=due.map(e=>`<tr><td>${e.name}</td><td>${siteName(e.siteId)}</td><td>${fmtDateShort(iso(new Date(e.inactivatedAt)))}</td><td>${fmtDateShort(iso(new Date(leaverRetentionDueMs(e))))}</td><td><button type="button" class="icon-btn" data-action="erase-leaver-data" data-id="${e.id}" style="color:var(--red);">Permanently erase</button></td></tr>`).join('');
-    return `<div class="card"><table><thead><tr><th>Name</th><th>Site</th><th>Left on</th><th>Retention due</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="card"><table><thead><tr><th>Name</th><th>Site</th><th>Left on</th><th>Retention due</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="att-legend"><span class="worked-key"><i></i>Worked hours</span><span class="holiday-key"><i></i>Holiday hours</span></div>`;
   })()}
 
   <h2 style="font-size:16px;margin-top:28px;">Backup &amp; restore</h2>

@@ -20,10 +20,50 @@
     }catch(_e){}
   }
 
+  function forceClosePhotoModal(){
+    try{
+      if(typeof state!=='undefined' && state && state.admin) state.admin.viewingClockPhoto=null;
+    }catch(_e){}
+    document.querySelectorAll('.modal-overlay').forEach(function(overlay){
+      const txt=String(overlay.textContent||'');
+      if(txt.includes('Clock photo') || txt.includes('${emp?') || overlay.querySelector('[data-action="close-clock-photo"]')) overlay.remove();
+    });
+    try{ if(typeof render==='function') render(); }catch(_e){}
+  }
+
   document.addEventListener('click',function(e){
-    const el=e.target&&e.target.closest?e.target.closest('[data-action="view-clock-photo"]'):null;
-    if(el) clearOtherModals();
+    const target=e.target&&e.target.closest?e.target.closest('[data-action]'):null;
+    if(!target) return;
+    const action=target.getAttribute('data-action');
+    if(action==='view-clock-photo') clearOtherModals();
+    if(action==='close-clock-photo'){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      forceClosePhotoModal();
+    }
   },true);
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){
+      const hasPhotoModal=!!document.querySelector('[data-action="close-clock-photo"]');
+      if(hasPhotoModal){ e.preventDefault(); forceClosePhotoModal(); }
+    }
+  },true);
+
+  document.addEventListener('click',function(e){
+    if(!e.target || !e.target.matches || !e.target.matches('.modal-overlay')) return;
+    if(e.target.querySelector('[data-action="close-clock-photo"]')) forceClosePhotoModal();
+  },true);
+
+  const observer=new MutationObserver(function(){
+    document.querySelectorAll('.modal-overlay').forEach(function(overlay){
+      if(String(overlay.textContent||'').includes('${emp?')){
+        try{ if(typeof state!=='undefined' && state && state.admin) state.admin.viewingClockPhoto=null; }catch(_e){}
+        overlay.remove();
+      }
+    });
+  });
+  try{ observer.observe(document.documentElement,{childList:true,subtree:true}); }catch(_e){}
 
   try{
     renderClockPhotoModal=function(){

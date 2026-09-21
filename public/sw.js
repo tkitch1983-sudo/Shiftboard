@@ -1,16 +1,16 @@
-const CACHE='neas-shift-board-shell-v5';
-const SHELL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./camera-fix.js'];
+const CACHE='neas-shift-board-shell-v6';
+const SHELL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./camera-fix.js','./modal-fix.js'];
 
-async function injectCameraFix(response){
+async function injectAppFixes(response){
   if(!response) return response;
   const type=response.headers.get('content-type')||'';
   if(!type.includes('text/html')) return response;
-  const html=await response.text();
-  if(html.includes('camera-fix.js')) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
-  const fixed=html.replace('</body>','<script src="./camera-fix.js?v=2"></script></body>');
+  let html=await response.text();
+  if(!html.includes('camera-fix.js')) html=html.replace('</body>','<script src="./camera-fix.js?v=3"></script></body>');
+  if(!html.includes('modal-fix.js')) html=html.replace('</body>','<script src="./modal-fix.js?v=1"></script></body>');
   const headers=new Headers(response.headers);
   headers.delete('content-length');
-  return new Response(fixed,{status:response.status,statusText:response.statusText,headers});
+  return new Response(html,{status:response.status,statusText:response.statusText,headers});
 }
 
 self.addEventListener('install',event=>{
@@ -35,10 +35,10 @@ self.addEventListener('fetch',event=>{
         const fresh=await fetch(req,{cache:'no-store'});
         const cache=await caches.open(CACHE);
         cache.put('./',fresh.clone());
-        return await injectCameraFix(fresh);
+        return await injectAppFixes(fresh);
       }catch(_e){
         const cached=await caches.match('./');
-        return cached ? await injectCameraFix(cached) : Response.error();
+        return cached ? await injectAppFixes(cached) : Response.error();
       }
     })());
     return;

@@ -1,17 +1,5 @@
-const CACHE='neas-shift-board-shell-v22';
-const SHELL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./modal-fix.js'];
-
-async function injectAppFixes(response){
-  if(!response) return response;
-  const type=response.headers.get('content-type')||'';
-  if(!type.includes('text/html')) return response;
-  let html=await response.text();
-  if(!html.includes('modal-fix.js')) html=html.replace('</body>','<script src="./modal-fix.js?v=3"></script></body>');
-  const headers=new Headers(response.headers);
-  headers.delete('content-length');
-  return new Response(html,{status:response.status,statusText:response.statusText,headers});
-}
-
+const CACHE='neas-shift-board-shell-v23';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png'];
 self.addEventListener('install',event=>{
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).catch(()=>{}));
@@ -31,13 +19,12 @@ self.addEventListener('fetch',event=>{
   if(req.mode==='navigate'){
     event.respondWith((async()=>{
       try{
-        const fresh=await fetch(req,{cache:'no-store'});
+        const fresh=await fetch(req);
         const cache=await caches.open(CACHE);
         cache.put('./',fresh.clone());
-        return await injectAppFixes(fresh);
+        return fresh;
       }catch(_e){
-        const cached=await caches.match('./');
-        return cached ? await injectAppFixes(cached) : Response.error();
+        return (await caches.match('./')) || Response.error();
       }
     })());
     return;

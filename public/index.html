@@ -2264,7 +2264,7 @@ function renderHoliday(){
   const fillingStation = isFillingStationSite(emp.siteId);
   const coverExempt = ['g marsay','w hodgson'].includes(String(emp.name||'').trim().toLowerCase());
   const coverRequired = fillingStation && !coverExempt;
-  const coverStaff = coverRequired ? state.config.employees.filter(e=>e.active!==false&&e.siteId===emp.siteId&&e.id!==emp.id).sort((a,b)=>a.name.localeCompare(b.name)) : [];
+  const coverStaff = coverRequired ? ((Array.isArray(emp.coverStaff)&&emp.coverStaff.length ? emp.coverStaff : state.config.employees.filter(e=>e.active!==false&&e.siteId===emp.siteId&&e.id!==emp.id)).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')))) : [];
   const selectedCoverId = String(state.flow.holCoverEmployeeId||'');
   const remaining = Infinity; // balances live server-side now; managers see them
   const start = state.flow.holStart || '';
@@ -6605,7 +6605,7 @@ async function onAction(e){
     const coverExempt=['g marsay','w hodgson'].includes(String(emp.name||'').trim().toLowerCase());
     if(isFillingStationSite(emp.siteId) && !coverExempt){
       const coverId=String(state.flow.holCoverEmployeeId||'');
-      coverEmployee=state.config.employees.find(e=>e.active!==false&&String(e.id)===coverId&&e.siteId===emp.siteId&&e.id!==emp.id)||null;
+      coverEmployee=(Array.isArray(emp.coverStaff)?emp.coverStaff:[]).find(e=>String(e.id)===coverId)||state.config.employees.find(e=>e.active!==false&&String(e.id)===coverId&&e.siteId===emp.siteId&&e.id!==emp.id)||null;
       if(!coverEmployee){ showToast('Choose who will cover the shift.',true); return; }
     }
     let dates;

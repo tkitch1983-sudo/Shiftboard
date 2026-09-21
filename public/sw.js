@@ -1,5 +1,18 @@
-const CACHE='neas-shift-board-shell-v4';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png'];
+const CACHE='neas-shift-board-shell-v5';
+const SHELL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./camera-fix.js'];
+
+async function injectCameraFix(response){
+  if(!response) return response;
+  const type=response.headers.get('content-type')||'';
+  if(!type.includes('text/html')) return response;
+  const html=await response.text();
+  if(html.includes('camera-fix.js')) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const fixed=html.replace('</body>','<script src="./camera-fix.js?v=2"></script></body>');
+  const headers=new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(fixed,{status:response.status,statusText:response.statusText,headers});
+}
+
 self.addEventListener('install',event=>{
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).catch(()=>{}));
@@ -19,12 +32,13 @@ self.addEventListener('fetch',event=>{
   if(req.mode==='navigate'){
     event.respondWith((async()=>{
       try{
-        const fresh=await fetch(req);
+        const fresh=await fetch(req,{cache:'no-store'});
         const cache=await caches.open(CACHE);
         cache.put('./',fresh.clone());
-        return fresh;
+        return await injectCameraFix(fresh);
       }catch(_e){
-        return (await caches.match('./')) || Response.error();
+        const cached=await caches.match('./');
+        return cached ? await injectCameraFix(cached) : Response.error();
       }
     })());
     return;

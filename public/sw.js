@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v6';
+const CACHE='neas-shift-board-shell-v20';
 const SHELL=['./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./camera-fix.js','./modal-fix.js'];
 
 async function injectAppFixes(response){
@@ -7,7 +7,7 @@ async function injectAppFixes(response){
   if(!type.includes('text/html')) return response;
   let html=await response.text();
   if(!html.includes('camera-fix.js')) html=html.replace('</body>','<script src="./camera-fix.js?v=3"></script></body>');
-  if(!html.includes('modal-fix.js')) html=html.replace('</body>','<script src="./modal-fix.js?v=1"></script></body>');
+  if(!html.includes('modal-fix.js')) html=html.replace('</body>','<script src="./modal-fix.js?v=2"></script></body>');
   const headers=new Headers(response.headers);
   headers.delete('content-length');
   return new Response(html,{status:response.status,statusText:response.statusText,headers});

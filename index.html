@@ -850,6 +850,8 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
+  // Payroll is private to Tony and Jack. Neil and every other manager must
+  // never see the Pay Rates tab, even if their general role is "super".
   if(tab==='payrates') return isPayRateLogin();
   if(isTonyLogin()) return true;
   if(tab==='access') return false;

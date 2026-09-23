@@ -1,12 +1,14 @@
-const CACHE='neas-shift-board-shell-v25';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js'];
+const CACHE='neas-shift-board-shell-v26';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js'];
 
 async function withPinsTab(response){
   if(!response) return response;
   const type=response.headers.get('content-type')||'';
   if(!type.includes('text/html')) return response;
   const html=await response.text();
-  if(html.includes('<script src="./pins-tab.js')){
+  const hasPins=html.includes('<script src="./pins-tab.js');
+  const hasBradford=html.includes('<script src="./bradford-fix.js');
+  if(hasPins && hasBradford){
     return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   }
   // Inject only at the document's real closing </body>. The app contains
@@ -15,7 +17,10 @@ async function withPinsTab(response){
   // ${...} placeholders in modals.
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
   if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
-  const patched=html.slice(0,closeBody)+'<script src="./pins-tab.js?v=2"></script>'+html.slice(closeBody);
+  let extra='';
+  if(!hasPins) extra+='<script src="./pins-tab.js?v=2"></script>';
+  if(!hasBradford) extra+='<script src="./bradford-fix.js?v=1"></script>';
+  const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');
   return new Response(patched,{status:response.status,statusText:response.statusText,headers});

@@ -1,0 +1,5 @@
+[[redirects]]
+  from = "/*"
+  to = "https://northeastautoservices.pages.dev/:splat"
+  status = 301
+  force = true

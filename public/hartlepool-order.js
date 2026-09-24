@@ -9,8 +9,6 @@
       'm riley':0,
       'c hann':1,
       'l brown':2,
-      's swainson':3,
-      // Keep the current live spelling in the same position if the record is still S Swanson.
       's swanson':3
     };
 

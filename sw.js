@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v29';
+const CACHE='neas-shift-board-shell-v30';
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js'];
 
 async function withPinsTab(response){
@@ -15,7 +15,7 @@ async function withPinsTab(response){
   let extra='';
   if(!hasPins) extra+='<script src="./pins-tab.js?v=2"></script>';
   if(!hasBradford) extra+='<script src="./bradford-fix.js?v=2"></script>';
-  if(!hasHartlepoolOrder) extra+='<script src="./hartlepool-order.js?v=1"></script>';
+  if(!hasHartlepoolOrder) extra+='<script src="./hartlepool-order.js?v=2"></script>';
   const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');

@@ -13,6 +13,7 @@
         .att-sheet{border:2px solid #000!important;}
         .att-title-row{border-bottom:2px solid #000!important;}
         .att-meta-row{border-bottom:2px solid #000!important;}
+        .att-meta-row>span:first-child{font-size:17px!important;font-weight:800!important;letter-spacing:.02em!important;}
         .att-meta-row .site-tag{font-size:19px!important;font-weight:800!important;letter-spacing:.04em!important;text-transform:uppercase;}
         .att-table th,.att-table td{border:2px solid #000!important;}
         .att-other-info{border-top:2px solid #000!important;}

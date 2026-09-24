@@ -1,5 +1,5 @@
-const CACHE='neas-shift-board-shell-v30';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./clock-fix.js','./hartlepool-order.js'];
+const CACHE='neas-shift-board-shell-v31';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./clock-fix.js','./hartlepool-order.js','./timesheet-print-fix.js'];
 
 async function withPinsTab(response){
   if(!response) return response;
@@ -10,7 +10,8 @@ async function withPinsTab(response){
   const hasBradford=html.includes('<script src="./bradford-fix.js');
   const hasClockFix=html.includes('<script src="./clock-fix.js');
   const hasHartlepoolOrder=html.includes('<script src="./hartlepool-order.js');
-  if(hasPins && hasBradford && hasClockFix && hasHartlepoolOrder) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const hasTimesheetPrintFix=html.includes('<script src="./timesheet-print-fix.js');
+  if(hasPins && hasBradford && hasClockFix && hasHartlepoolOrder && hasTimesheetPrintFix) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
   if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   let extra='';
@@ -18,6 +19,7 @@ async function withPinsTab(response){
   if(!hasBradford) extra+='<script src="./bradford-fix.js?v=2"></script>';
   if(!hasClockFix) extra+='<script src="./clock-fix.js?v=1"></script>';
   if(!hasHartlepoolOrder) extra+='<script src="./hartlepool-order.js?v=2"></script>';
+  if(!hasTimesheetPrintFix) extra+='<script src="./timesheet-print-fix.js?v=1"></script>';
   const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');

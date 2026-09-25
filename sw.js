@@ -15,7 +15,7 @@ async function withPinsTab(response){
   const hasHolidayApprovalSnapshot=html.includes('<script src="./holiday-approval-snapshot.js');
   if(hasPins && hasBradford && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
-  if(closeBody<0) return new Response(html,{status:response.status.statusText,headers:response.headers});
+  if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   let extra='';
   if(!hasPins) extra+='<script src="./pins-tab.js?v=2"></script>';
   if(!hasBradford) extra+='<script src="./bradford-fix.js?v=2"></script>';

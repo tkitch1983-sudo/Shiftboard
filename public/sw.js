@@ -1,5 +1,5 @@
-const CACHE='neas-shift-board-shell-v42';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./clock-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js','./manager-pin-reset.js','./weekly-checks.js','./weekly-checks-print.js','./config-recovery.js'];
+const CACHE='neas-shift-board-shell-v43';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./clock-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js','./manager-pin-reset.js','./weekly-checks.js','./weekly-checks-print.js','./weekly-checks-workshop.js','./weekly-checks-counter-fix.js','./config-recovery.js'];
 
 async function withPinsTab(response){
   if(!response) return response;
@@ -18,8 +18,10 @@ async function withPinsTab(response){
   const hasManagerPinReset=html.includes('<script src="./manager-pin-reset.js');
   const hasWeeklyChecks=html.includes('<script src="./weekly-checks.js');
   const hasWeeklyChecksPrint=html.includes('<script src="./weekly-checks-print.js');
+  const hasWeeklyChecksWorkshop=html.includes('<script src="./weekly-checks-workshop.js');
+  const hasWeeklyChecksCounterFix=html.includes('<script src="./weekly-checks-counter-fix.js');
   const hasConfigRecovery=html.includes('<script src="./config-recovery.js');
-  if(hasPins && hasBradford && hasClockFix && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot && hasAllPrintBranding && hasManagerPinReset && hasWeeklyChecks && hasWeeklyChecksPrint && hasConfigRecovery) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  if(hasPins && hasBradford && hasClockFix && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot && hasAllPrintBranding && hasManagerPinReset && hasWeeklyChecks && hasWeeklyChecksPrint && hasWeeklyChecksWorkshop && hasWeeklyChecksCounterFix && hasConfigRecovery) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
   if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   let extra='';
@@ -36,6 +38,8 @@ async function withPinsTab(response){
   if(!hasManagerPinReset) extra+='<script src="./manager-pin-reset.js?v=1"></script>';
   if(!hasWeeklyChecks) extra+='<script src="./weekly-checks.js?v=1"></script>';
   if(!hasWeeklyChecksPrint) extra+='<script src="./weekly-checks-print.js?v=1"></script>';
+  if(!hasWeeklyChecksWorkshop) extra+='<script src="./weekly-checks-workshop.js?v=1"></script>';
+  if(!hasWeeklyChecksCounterFix) extra+='<script src="./weekly-checks-counter-fix.js?v=1"></script>';
   const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');

@@ -1,5 +1,5 @@
-const CACHE='neas-shift-board-shell-v35';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js'];
+const CACHE='neas-shift-board-shell-v36';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js'];
 
 async function withPinsTab(response){
   if(!response) return response;
@@ -12,9 +12,10 @@ async function withPinsTab(response){
   const hasTimesheetPrintFix=html.includes('<script src="./timesheet-print-fix.js');
   const hasClockOutOptions=html.includes('<script src="./clock-out-options.js');
   const hasSalesYtd=html.includes('<script src="./sales-ytd.js');
-  if(hasPins && hasBradford && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const hasHolidayApprovalSnapshot=html.includes('<script src="./holiday-approval-snapshot.js');
+  if(hasPins && hasBradford && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
-  if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  if(closeBody<0) return new Response(html,{status:response.status.statusText,headers:response.headers});
   let extra='';
   if(!hasPins) extra+='<script src="./pins-tab.js?v=2"></script>';
   if(!hasBradford) extra+='<script src="./bradford-fix.js?v=2"></script>';
@@ -22,6 +23,7 @@ async function withPinsTab(response){
   if(!hasTimesheetPrintFix) extra+='<script src="./timesheet-print-fix.js?v=2"></script>';
   if(!hasClockOutOptions) extra+='<script src="./clock-out-options.js?v=2"></script>';
   if(!hasSalesYtd) extra+='<script src="./sales-ytd.js?v=2"></script>';
+  if(!hasHolidayApprovalSnapshot) extra+='<script src="./holiday-approval-snapshot.js?v=1"></script>';
   const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');

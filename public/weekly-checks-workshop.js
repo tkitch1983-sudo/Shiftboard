@@ -76,11 +76,12 @@
       const label=check.closest('label');
       if(!label || label.parentElement.querySelector('[data-workshop-evidence="'+spec[1]+'"]')) return;
       const div=document.createElement('div');
+      const existingFiles=row&&Array.isArray(row[spec[1]])?row[spec[1]]:[];
       div.setAttribute('data-workshop-evidence',spec[1]);
       div.style.cssText='margin:0 0 12px 32px;padding:0 0 12px;border-bottom:1px solid var(--line-soft);';
-      div.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Attachments / photos <span style="color:var(--muted-2);">optional</span></div>'
-        +'<input type="file" multiple data-workshop-evidence-input="'+spec[1]+'" accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xls,.xlsx" style="max-width:100%;">'
-        +'<div style="margin-top:7px;">'+evidenceButtons(row&&row[spec[1]],spec[2])+'</div>';
+      div.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">Attachments / photos <span style="color:var(--red);font-weight:700;">required</span></div>'
+        +'<input type="file" multiple '+(!existingFiles.length?'required ':'')+'aria-required="true" data-workshop-evidence-input="'+spec[1]+'" accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xls,.xlsx" style="max-width:100%;">'
+        +'<div style="margin-top:7px;">'+evidenceButtons(existingFiles,spec[2])+'</div>';
       label.insertAdjacentElement('afterend',div);
     });
   }
@@ -127,7 +128,7 @@
       }
     }
     const sub=main.querySelector('h2 + .head-sub');
-    if(sub) sub.textContent='Workshop managers complete these once each week. Car cleaning, site cleaning, stocktake and oxy checks can include supporting attachments.';
+    if(sub) sub.textContent='Workshop managers complete these once each week. Car cleaning, site cleaning, stocktake and oxy checks must include supporting attachments.';
 
     const sid=currentSiteId();
     if(sid && isWorkshop(siteFor(sid))){
@@ -172,13 +173,26 @@
     const btn=document.querySelector('[data-weekly-submit]'); if(btn){btn.disabled=true;btn.textContent='Saving…';}
     try{
       const existing=await fetchRow(siteId)||{};
+      const carInput=document.querySelector('[data-workshop-evidence-input="car_cleaning_files"]');
+      const siteInput=document.querySelector('[data-workshop-evidence-input="site_cleaning_files"]');
       const stockInput=document.getElementById('wc-stock-files');
-      const existingStock=Array.isArray(existing.stock_files)?existing.stock_files:[];
-      if(!existingStock.length && !(stockInput&&stockInput.files&&stockInput.files.length)) throw new Error('Upload the completed stock take sheet before submitting.');
-      const car=await appendUploads(existing.car_cleaning_files,document.querySelector('[data-workshop-evidence-input="car_cleaning_files"]'),siteId,'car-cleaning');
-      const site=await appendUploads(existing.site_cleaning_files,document.querySelector('[data-workshop-evidence-input="site_cleaning_files"]'),siteId,'site-cleaning');
+      const oxyInput=document.querySelector('[data-workshop-evidence-input="oxy_acetylene_files"]');
+      const attachmentRequirements=[
+        [existing.car_cleaning_files,carInput,'car cleaning'],
+        [existing.site_cleaning_files,siteInput,'site cleaning'],
+        [existing.stock_files,stockInput,'stock take'],
+        [existing.oxy_acetylene_files,oxyInput,'oxy/acetylene']
+      ];
+      const missingAttachments=attachmentRequirements.filter(function(x){
+        const saved=Array.isArray(x[0])?x[0]:[];
+        const selected=x[1]&&x[1].files?x[1].files.length:0;
+        return !saved.length && !selected;
+      }).map(function(x){return x[2];});
+      if(missingAttachments.length) throw new Error('Upload at least one attachment for: '+missingAttachments.join(', ')+'.');
+      const car=await appendUploads(existing.car_cleaning_files,carInput,siteId,'car-cleaning');
+      const site=await appendUploads(existing.site_cleaning_files,siteInput,siteId,'site-cleaning');
       const stock=await appendUploads(existing.stock_files,stockInput,siteId,'stocktake');
-      const oxy=await appendUploads(existing.oxy_acetylene_files,document.querySelector('[data-workshop-evidence-input="oxy_acetylene_files"]'),siteId,'oxy');
+      const oxy=await appendUploads(existing.oxy_acetylene_files,oxyInput,siteId,'oxy');
       const payload={
         site_id:siteId,week_start:mondayIso(),weekly_timesheet_done:true,car_cleaning_done:true,site_cleaning_done:true,stock_take_done:true,oxy_acetylene_done:true,
         flag_status:(document.getElementById('wc-flag')||{}).value||'ok',mot_log_status:(document.getElementById('wc-mot')||{}).value||'up_to_date',

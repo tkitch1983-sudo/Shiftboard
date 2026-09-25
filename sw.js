@@ -1,5 +1,5 @@
-const CACHE='neas-shift-board-shell-v40';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js','./manager-pin-reset.js','./weekly-checks.js'];
+const CACHE='neas-shift-board-shell-v41';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js','./manager-pin-reset.js','./weekly-checks.js','./config-recovery.js'];
 
 async function withPinsTab(response){
   if(!response) return response;
@@ -16,10 +16,12 @@ async function withPinsTab(response){
   const hasAllPrintBranding=html.includes('<script src="./all-print-branding.js');
   const hasManagerPinReset=html.includes('<script src="./manager-pin-reset.js');
   const hasWeeklyChecks=html.includes('<script src="./weekly-checks.js');
-  if(hasPins && hasBradford && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot && hasAllPrintBranding && hasManagerPinReset && hasWeeklyChecks) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const hasConfigRecovery=html.includes('<script src="./config-recovery.js');
+  if(hasPins && hasBradford && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot && hasAllPrintBranding && hasManagerPinReset && hasWeeklyChecks && hasConfigRecovery) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
   if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   let extra='';
+  if(!hasConfigRecovery) extra+='<script src="./config-recovery.js?v=1"></script>';
   if(!hasPins) extra+='<script src="./pins-tab.js?v=2"></script>';
   if(!hasBradford) extra+='<script src="./bradford-fix.js?v=2"></script>';
   if(!hasHartlepoolOrder) extra+='<script src="./hartlepool-order.js?v=2"></script>';

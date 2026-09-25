@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v37';
+const CACHE='neas-shift-board-shell-v38';
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js'];
 
 async function withPinsTab(response){

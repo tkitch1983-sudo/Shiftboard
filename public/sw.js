@@ -1,5 +1,5 @@
-const CACHE='neas-shift-board-shell-v38';
-const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./clock-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js'];
+const CACHE='neas-shift-board-shell-v39';
+const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./clock-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js','./manager-pin-reset.js'];
 
 async function withPinsTab(response){
   if(!response) return response;
@@ -15,7 +15,8 @@ async function withPinsTab(response){
   const hasSalesYtd=html.includes('<script src="./sales-ytd.js');
   const hasHolidayApprovalSnapshot=html.includes('<script src="./holiday-approval-snapshot.js');
   const hasAllPrintBranding=html.includes('<script src="./all-print-branding.js');
-  if(hasPins && hasBradford && hasClockFix && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot && hasAllPrintBranding) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
+  const hasManagerPinReset=html.includes('<script src="./manager-pin-reset.js');
+  if(hasPins && hasBradford && hasClockFix && hasHartlepoolOrder && hasTimesheetPrintFix && hasClockOutOptions && hasSalesYtd && hasHolidayApprovalSnapshot && hasAllPrintBranding && hasManagerPinReset) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const closeBody=html.toLowerCase().lastIndexOf('</body>');
   if(closeBody<0) return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   let extra='';
@@ -28,6 +29,7 @@ async function withPinsTab(response){
   if(!hasSalesYtd) extra+='<script src="./sales-ytd.js?v=2"></script>';
   if(!hasHolidayApprovalSnapshot) extra+='<script src="./holiday-approval-snapshot.js?v=1"></script>';
   if(!hasAllPrintBranding) extra+='<script src="./all-print-branding.js?v=1"></script>';
+  if(!hasManagerPinReset) extra+='<script src="./manager-pin-reset.js?v=1"></script>';
   const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);
   headers.delete('content-length');

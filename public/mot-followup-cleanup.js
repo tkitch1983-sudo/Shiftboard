@@ -2,7 +2,6 @@
 'use strict';
 const TAB='mot';
 const ATTENTION_LABELS=new Set(['Missing invoice','Duplicate invoice','Credited / £0','Autowork only','Additional invoice']);
-function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function colIndex(table,re){return Array.from(table.querySelectorAll('thead th')).findIndex(th=>re.test(String(th.textContent||'').trim()));}
 function rowReg(tr,table){const i=colIndex(table,/^Registration$/i);return i>=0?String(tr.children[i]?.textContent||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''):'';}
 function rowInvoiceCell(tr,table){const i=colIndex(table,/Invoice check/i);return i>=0?tr.children[i]:null;}
@@ -14,16 +13,14 @@ function motRegs(){
 }
 function markRow(tr,table,regs){
  const cell=rowInvoiceCell(tr,table);if(!cell)return;
- const original=String(cell.textContent||'').trim();
- const reg=rowReg(tr,table);
- if(isDoneRow(tr)){
-   cell.innerHTML='<span style="color:var(--green);font-weight:800;">FIXED</span>';
-   tr.setAttribute('data-mot-fixed','1');
-   return;
- }
+ const original=String(cell.textContent||'').trim(),reg=rowReg(tr,table);
  if(original==='Autowork only'&&reg&&regs.has(reg)){
    cell.innerHTML='<span style="color:var(--red);font-weight:700;">Additional invoice</span>';
    const ex=rowExplanationCell(tr,table);if(ex)ex.textContent='Additional Autowork MOT invoice for a registration already present on the MOT log';
+ }
+ if(isDoneRow(tr)){
+   cell.innerHTML='<span style="color:var(--green);font-weight:800;">FIXED</span>';
+   tr.setAttribute('data-mot-fixed','1');
  }
 }
 function patchMot(root){

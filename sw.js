@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v55';
+const CACHE='neas-shift-board-shell-v56';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -22,7 +22,7 @@ const INJECT=[
   ['mot-followup.js','1'],
   ['mot-followup-cleanup.js','1'],
   ['monthly-mot-qc.js','1'],
-  ['mot-safety-sync.js','1'],
+  ['mot-safety-sync.js','2'],
   ['bonus-tracking-fix.js','1']
 ];
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png',...INJECT.map(([f])=>'./'+f)];

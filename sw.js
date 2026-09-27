@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v51';
+const CACHE='neas-shift-board-shell-v52';
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png','./pins-tab.js','./bradford-fix.js','./hartlepool-order.js','./timesheet-print-fix.js','./clock-out-options.js','./sales-ytd.js','./holiday-approval-snapshot.js','./all-print-branding.js','./manager-pin-reset.js','./weekly-checks.js','./weekly-checks-print.js','./weekly-checks-workshop.js','./weekly-checks-name-dropdowns.js','./weekly-checks-counter-fix.js','./weekly-checks-section-saves.js','./monthly-hs.js','./mot-qc-register.js','./monthly-mot-qc.js','./public/monthly-mot-qc.js','./bonus-tracking-fix.js','./config-recovery.js'];
 
 async function withPinsTab(response){

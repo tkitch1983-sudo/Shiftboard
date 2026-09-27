@@ -50,7 +50,11 @@ function linkHtml(m,s){
  <div style="font-size:11px;color:${r?.completed?'var(--green)':'var(--amber)'};margin-top:7px">${r?.completed?'Completed register is the MOT QC evidence; no duplicate upload is required.':'Monthly H&S can be saved as a draft, but cannot be published until MOT QC is complete.'}</div></div>`;
 }
 function patch(html){
- if(!state||!state.admin)return html;const w=document.createElement('div');w.innerHTML=html,m=w.querySelector('.admin-main');if(!m)return html;
+ if(!state||!state.admin)return html;
+ const w=document.createElement('div');
+ w.innerHTML=html;
+ const m=w.querySelector('.admin-main');
+ if(!m)return html;
  if(state.admin.tab===M){const x=motMonth();schedule(x);const sel=m.querySelector('#mot-month');if(sel&&!Array.from(sel.options).some(o=>o.value===x)){const o=document.createElement('option');o.value=x;o.textContent=fm(x);o.selected=true;sel.prepend(o)}if(!m.querySelector('[data-q-register]')){const foot=Array.from(m.querySelectorAll('div')).find(d=>/A matching registration counts as invoiced/i.test(d.textContent||''));(foot||m).insertAdjacentHTML(foot?'beforebegin':'beforeend',registerHtml(x))}const p=m.querySelector('[data-action="mot-print"]');if(p)p.textContent='🖶 Print MOT Admin + QC Register';}
  if(state.admin.tab===H){const x=hsMonth(),s=hsSite();if(s){schedule(x);const old=m.querySelector('[data-monthly-mot-qc-upload]');if(old)old.outerHTML=linkHtml(x,s);const r=rec(x,s),row=m.querySelector('[data-monthly-mot-qc-row]');if(r&&row){const st=row.querySelector('[data-monthly-status="mot_qc"]'),nt=row.querySelector('[data-monthly-note="mot_qc"]'),issue=!!String(r.issues_found||'').trim();if(st){st.value=issue?'issue':'ok';st.disabled=true}if(nt){nt.value='Checked through '+fd(r.checked_through)+(r.issues_found?' · '+r.issues_found:' · no issues recorded')+(r.actions_taken?' · action: '+r.actions_taken:'');nt.readOnly=true}}}}
  return w.innerHTML;

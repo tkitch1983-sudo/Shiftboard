@@ -1,146 +1,67 @@
 (function(){
-  'use strict';
-
-  function amount(v){
-    const n=Number(v||0);
-    return Number.isFinite(n)?n:0;
-  }
-
-  function correctedBonusAddOn(snapshot){
-    if(!snapshot) return 0;
-    const tracking=amount(snapshot.tracking);
-    const trackingPay=tracking>=50 ? tracking*2 : tracking;
-    return trackingPay+
-      amount(snapshot.pollen)+
-      amount(snapshot.bfc)+
-      amount(snapshot.diag)+
-      amount(snapshot.coolant)+
-      amount(snapshot.ac);
-  }
-
-  // At 50 trackings the whole tracking rate becomes £2 each:
-  // 49 = £49, 50 = £100, 51 = £102.
-  try{ window.bonusAddOn=correctedBonusAddOn; }catch(_e){}
-  try{ bonusAddOn=correctedBonusAddOn; }catch(_e){}
-
-  // Reference scheme recovered from the bonus discussion. This is deliberately
-  // comparison-only: it must not replace or save over the live Shiftboard rules.
-  const REFERENCE_RULES={
-    peterlee:      {label:'Peterlee',      staffStart:90000, staffBase:350, davantiTarget:150},
-    middlesbrough: {label:'Middlesbrough', staffStart:90000, staffBase:350, davantiTarget:150},
-    fairfield:     {label:'Fairfield',     staffStart:80000, staffBase:450, davantiTarget:100},
-    chester:       {label:'Chester',       staffStart:70000, staffBase:350, davantiTarget:50},
-    gateshead:     {label:'Gateshead',     staffStart:80000, staffBase:450, davantiTarget:75},
-    seaham:        {label:'Seaham',        staffStart:70000, staffBase:350, davantiTarget:100},
-    hartlepool:    {label:'Hartlepool',    staffStart:45000, staffBase:400, davantiTarget:50},
-    lido:          {label:'Lido',          staffStart:null,  staffBase:0,   davantiTarget:100}
+'use strict';
+const num=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0};
+function fixedAddOn(s){if(!s)return 0;const t=num(s.tracking);return(t>=50?t*2:t)+num(s.pollen)+num(s.bfc)+num(s.diag)+num(s.coolant)+num(s.ac)}
+try{window.bonusAddOn=fixedAddOn}catch(_e){} try{bonusAddOn=fixedAddOn}catch(_e){}
+const cash=v=>'£'+num(v).toLocaleString('en-GB',{maximumFractionDigits:0});
+const tony=()=>{try{return typeof isTonyLogin==='function'&&isTonyLogin()}catch(_e){return false}};
+const extras={
+ middlesbrough:['T Hope',[[110000,200],[120000,250],[130000,300],[140000,400],[150000,500],[160000,600]]],
+ fairfield:['M McCormick',[[85000,250],[90000,300],[95000,350],[100000,400]]],
+ chester:['S Jauncey',[[80000,100],[90000,200],[100000,300]]],
+ gateshead:['S Gibson',[[100000,300],[110000,400],[120000,500],[130000,600],[140000,700]]]
+};
+function chips(start,base,count){
+ if(start==null)return '<span style="color:var(--amber)">Not set</span>';
+ let a=['Below '+cash(start)+' = £0'];
+ for(let i=0;i<count;i++)a.push(cash(start+i*5000)+' = '+cash(base+i*50));
+ return a.map(x=>'<span style="display:inline-block;padding:5px 7px;margin:2px;border:1px solid var(--line);background:var(--panel-2);font-size:11px;">'+x+'</span>').join('')+
+ '<div style="font-size:10px;color:var(--muted);margin-top:5px;">Then +£50 for every complete £5,000 above — uncapped.</div>';
+}
+function manager(key){
+ const x=extras[key];if(!x)return '<span style="color:var(--muted-2)">None set</span>';
+ return '<b>'+x[0]+'</b><div style="margin-top:4px;">'+x[1].map(r=>cash(r[0])+' → '+cash(r[1])).join(' · ')+'</div>';
+}
+function site(key,r){
+ const d=r.davantiTarget==null?'Not set':('Below '+r.davantiTarget+' = £0 · '+r.davantiTarget+' = £50 · '+(r.davantiTarget+1)+' = £52 · '+(r.davantiTarget+10)+' = £70 · then +£2 each');
+ return '<div class="card" style="border-left:4px solid var(--amber);">'+
+ '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;"><div><div style="font-family:Oswald,sans-serif;font-size:20px;font-weight:700;">'+r.label+'</div>'+
+ '<div style="font-size:10px;color:'+(r.groupActive===false?'var(--amber)':'var(--green)')+';">'+(r.groupActive===false?'Excluded from group totals':'Included in group totals')+'</div></div>'+
+ '<div style="font-size:11px;color:var(--muted);">Davanti target <b style="color:var(--text);">'+(r.davantiTarget==null?'—':r.davantiTarget)+'</b></div></div>'+
+ '<div style="margin-top:12px;"><b style="font-size:11px;">STAFF TURNOVER LEVELS</b><div style="margin-top:5px;">'+chips(r.staffStart,r.staffBase,11)+'</div></div>'+
+ '<div style="margin-top:12px;"><b style="font-size:11px;">DAVANTI</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">'+d+' — full amount to each receptionist, not split.</div></div>'+
+ '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px;">'+
+ '<div><b style="font-size:11px;">TONY SITE-SALES LEVELS</b><div style="margin-top:4px;">'+chips(r.tonyStart,r.tonyBase,5)+'</div></div>'+
+ '<div><b style="font-size:11px;">SPECIAL MANAGER EXTRA</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">'+manager(key)+'</div></div>'+
+ '</div></div>';
+}
+function levels(){
+ let rules={};try{rules=BONUS_SITE_RULES}catch(_e){}
+ const order=['peterlee','middlesbrough','fairfield','chester','gateshead','seaham','hartlepool','lido'];
+ return '<h2>Bonus Levels</h2><div class="head-sub">Tony-only view of the bonus levels currently coded into Shiftboard. Read only.</div>'+
+ '<div class="card"><b>Shared rules</b><div style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.7;">Tracking 0–49 = £1 each · at 50+ every tracking = £2 · BFC, Coolant, Pollen, A/C and Diagnostics = £1 each · add-on pot split equally between reception · Davanti paid in full to each receptionist.</div></div>'+
+ order.filter(k=>rules[k]).map(k=>site(k,rules[k])).join('')+
+ '<div class="card"><b>Group / personal rules</b><div style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.7;">Tony Davanti: 600 = £100, then +£25 per complete 25 units; Gateshead excluded. · Neil turnover: £500,000 = £700, then +£25 per complete £25,000. · Neil Davanti: 550 = £100, then +£25 per complete 25 units. · More than 2 weekday sick days removes the bonus; otherwise the base has a daily sick deduction.</div></div>';
+}
+function tabs(mode){
+ const b=(id,label)=>'<button type="button" data-bonus-view="'+id+'" style="padding:9px 14px;border:1px solid '+(mode===id?'var(--amber)':'var(--line)')+';background:'+(mode===id?'var(--amber-dim)':'var(--panel-2)')+';color:var(--text);cursor:pointer;font-weight:700;">'+label+'</button>';
+ return '<div class="no-print" style="display:flex;gap:7px;margin-bottom:16px;">'+b('sheet','Bonus Sheet')+b('levels','Bonus Levels')+'</div>';
+}
+try{
+ if(typeof renderAdminBonus==='function'){
+  const original=renderAdminBonus;
+  renderAdminBonus=function(){
+   if(!tony())return original.apply(this,arguments);
+   const mode=window.__bonusTonyView==='levels'?'levels':'sheet';
+   return tabs(mode)+(mode==='levels'?levels():original.apply(this,arguments));
   };
-
-  function tier(value,start,base){
-    value=amount(value);
-    return start!=null && value>=start ? amount(base)+(Math.floor((value-start)/5000)*50) : 0;
-  }
-
-  function davanti(units,target){
-    units=amount(units);
-    return target!=null && units>=target ? 50+Math.max(0,units-target)*2 : 0;
-  }
-
-  function money(v){
-    try{ if(typeof bonusMoney==='function') return bonusMoney(v); }catch(_e){}
-    const n=amount(v);
-    return '£'+n.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
-  }
-
-  function signedMoney(v){
-    const n=amount(v);
-    if(Math.abs(n)<0.005) return '—';
-    return (n>0?'+':'−')+money(Math.abs(n));
-  }
-
-  function currentRule(key){
-    try{ return (typeof BONUS_SITE_RULES!=='undefined' && BONUS_SITE_RULES[key]) ? BONUS_SITE_RULES[key] : null; }
-    catch(_e){ return null; }
-  }
-
-  function comparisonSnapshots(month){
-    let snaps={};
-    try{ if(typeof bonusSnapshotsForMonth==='function') snaps=bonusSnapshotsForMonth(month)||{}; }catch(_e){}
-    try{
-      const currentMonth=new Date().toISOString().slice(0,7);
-      if(month===currentMonth && state && state.admin && state.admin.bonusPredictMode && typeof bonusProjectSnapshot==='function'){
-        Object.keys(snaps).forEach(k=>{ snaps[k]=bonusProjectSnapshot(snaps[k],month); });
-      }
-    }catch(_e){}
-    return snaps;
-  }
-
-  function tonyOnlyComparison(){
-    try{ if(typeof isTonyLogin!=='function' || !isTonyLogin()) return ''; }catch(_e){ return ''; }
-    let month=new Date().toISOString().slice(0,7);
-    try{ month=(state&&state.admin&&state.admin.bonusMonth)||month; }catch(_e){}
-    const snaps=comparisonSnapshots(month);
-    let liveSum=0, refSum=0;
-
-    const rows=Object.entries(REFERENCE_RULES).map(([key,ref])=>{
-      const live=currentRule(key);
-      const snap=snaps[key]||null;
-      const sales=amount(snap&&snap.total_current);
-      const units=amount(snap&&snap.davanti);
-      const liveTurnover=live&&live.staffStart!=null ? tier(sales,live.staffStart,live.staffBase) : 0;
-      const refTurnover=ref.staffStart!=null ? tier(sales,ref.staffStart,ref.staffBase) : 0;
-      const liveDavanti=live&&live.davantiTarget!=null ? davanti(units,live.davantiTarget) : 0;
-      const refDavanti=ref.davantiTarget!=null ? davanti(units,ref.davantiTarget) : 0;
-      const addOn=correctedBonusAddOn(snap);
-      liveSum+=liveTurnover;
-      refSum+=refTurnover;
-      const turnoverNote=ref.staffStart==null
-        ? '<span style="color:var(--amber);font-size:10px;">Reference turnover not set</span>'
-        : '<span style="color:var(--muted-2);font-size:10px;">Target '+money(ref.staffStart).replace('.00','')+' · starts '+money(ref.staffBase).replace('.00','')+'</span>';
-      return '<tr>'+ 
-        '<td><b>'+ref.label+'</b><div>'+turnoverNote+'</div></td>'+ 
-        '<td>'+money(sales)+'</td>'+ 
-        '<td>'+money(liveTurnover)+'</td>'+ 
-        '<td>'+money(refTurnover)+'</td>'+ 
-        '<td style="font-weight:700;">'+signedMoney(refTurnover-liveTurnover)+'</td>'+ 
-        '<td>'+units+' / '+money(liveDavanti)+'</td>'+ 
-        '<td>'+money(refDavanti)+'</td>'+ 
-        '<td>'+money(addOn)+'</td>'+ 
-      '</tr>';
-    }).join('');
-
-    let label=month;
-    try{ label=new Date(month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'}); }catch(_e){}
-    const totalDiff=refSum-liveSum;
-
-    return '<div id="bonus-tony-comparison" class="card" style="margin-top:16px;border-left:4px solid var(--amber);">'+
-      '<div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap;">'+
-        '<div><div style="font-family:Oswald,sans-serif;font-size:19px;font-weight:700;">Tony-only bonus comparison</div>'+ 
-        '<div style="font-size:12px;color:var(--muted);margin-top:4px;">'+label+' · read only · does not alter saved Bonus Sheet figures</div></div>'+ 
-        '<div style="text-align:right;"><div style="font-size:10px;color:var(--muted-2);text-transform:uppercase;">Turnover base comparison</div>'+ 
-        '<div style="font-size:18px;font-weight:800;">'+signedMoney(totalDiff)+'</div></div>'+ 
-      '</div>'+ 
-      '<div style="overflow-x:auto;margin-top:13px;"><table style="min-width:980px;font-size:11px;">'+
-        '<thead><tr><th>Site</th><th>Sales</th><th>Shiftboard live<br>turnover / eligible employee</th><th>Reference scheme<br>turnover / eligible employee</th><th>Difference</th><th>Live Davanti<br>units / each receptionist</th><th>Reference Davanti<br>each receptionist</th><th>Add-on pot<br>shared reception</th></tr></thead>'+ 
-        '<tbody>'+rows+'</tbody>'+ 
-      '</table></div>'+ 
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:13px;">'+
-        '<div style="background:var(--panel-2);padding:10px;border:1px solid var(--line-soft);"><b style="font-size:11px;">Turnover</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">Reference: branch start bonus, then +£50 for every complete £5,000 above target, uncapped.</div></div>'+ 
-        '<div style="background:var(--panel-2);padding:10px;border:1px solid var(--line-soft);"><b style="font-size:11px;">Tracking / add-ons</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">0–49 tracking = £1 each. At 50+, every tracking = £2. BFC, Coolant, Pollen, A/C and Diagnostics = £1 each. Pot split equally across reception.</div></div>'+ 
-        '<div style="background:var(--panel-2);padding:10px;border:1px solid var(--line-soft);"><b style="font-size:11px;">Davanti</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">£50 at site target, then +£2 per tyre above target. Full Davanti amount is paid to each receptionist, not divided.</div></div>'+ 
-      '</div>'+ 
-      '<div style="font-size:10px;color:var(--muted-2);margin-top:10px;">Lido turnover is intentionally left unset in the reference column because no confirmed starting turnover target/base bonus was recovered. Existing Shiftboard calculations remain untouched.</div>'+ 
-    '</div>';
-  }
-
-  try{
-    if(typeof renderAdminBonus==='function'){
-      const originalRenderAdminBonus=renderAdminBonus;
-      renderAdminBonus=function(){
-        const html=originalRenderAdminBonus.apply(this,arguments);
-        return html+tonyOnlyComparison();
-      };
-      try{ window.renderAdminBonus=renderAdminBonus; }catch(_e){}
-    }
-  }catch(_e){}
+  try{window.renderAdminBonus=renderAdminBonus}catch(_e){}
+ }
+}catch(_e){}
+document.addEventListener('click',e=>{
+ const b=e.target&&e.target.closest?e.target.closest('[data-bonus-view]'):null;
+ if(!b||!tony())return;
+ e.preventDefault();window.__bonusTonyView=b.getAttribute('data-bonus-view')==='levels'?'levels':'sheet';
+ try{if(typeof render==='function')render()}catch(_e){}
+});
 })();

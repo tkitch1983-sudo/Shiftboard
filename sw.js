@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v58';
+const CACHE='neas-shift-board-shell-v59';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -24,6 +24,7 @@ const INJECT=[
   ['monthly-mot-qc.js','1'],
   ['mot-safety-sync.js','2'],
   ['mot-import-delete.js','1'],
+  ['mot-neil-upload-access.js','1'],
   ['mobile-register-fix.js','1'],
   ['bonus-tracking-fix.js','1']
 ];
@@ -41,7 +42,7 @@ async function withAppScripts(response){
   if(!extra)return new Response(html,{status:response.status,statusText:response.statusText,headers:response.headers});
   const patched=html.slice(0,closeBody)+extra+html.slice(closeBody);
   const headers=new Headers(response.headers);headers.delete('content-length');
-  return new Response(patched,{status:response.status,statusText:response.statusText,headers});
+  return new Response(patched,{status:response.status,statusText:response.statusText,headers:headers});
 }
 self.addEventListener('install',event=>{self.skipWaiting();event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).catch(()=>{}));});
 self.addEventListener('activate',event=>{event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim();})());});

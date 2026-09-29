@@ -12,7 +12,7 @@ const INJECT=[
   ['all-print-branding.js','1'],
   ['manager-pin-reset.js','1'],
   ['weekly-checks.js','1'],
-  ['weekly-checks-print.js','2'],
+  ['weekly-checks-print.js','1'],
   ['weekly-checks-workshop.js','3'],
   ['weekly-checks-name-dropdowns.js','1'],
   ['weekly-checks-counter-fix.js','1'],

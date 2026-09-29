@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v67';
+const CACHE='neas-shift-board-shell-v68';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -7,6 +7,7 @@ const INJECT=[
   ['hartlepool-order.js','2'],
   ['timesheet-print-fix.js','2'],
   ['clock-out-options.js','2'],
+  ['half-day-hours-fix.js','1'],
   ['sales-ytd.js','2'],
   ['holiday-approval-snapshot.js','1'],
   ['all-print-branding.js','1'],

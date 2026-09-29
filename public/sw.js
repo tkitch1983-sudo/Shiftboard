@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v62';
+const CACHE='neas-shift-board-shell-v63';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -26,7 +26,8 @@ const INJECT=[
   ['mot-import-delete.js','1'],
   ['mot-neil-upload-access.js','1'],
   ['mobile-register-fix.js','1'],
-  ['bonus-tracking-fix.js','4']
+  ['bonus-tracking-fix.js','4'],
+  ['auto-update.js','1']
 ];
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png',...INJECT.map(([f])=>'./'+f)];
 
@@ -57,6 +58,9 @@ self.addEventListener('activate',event=>{
     await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));
     await self.clients.claim();
   })());
+});
+self.addEventListener('message',event=>{
+  if(event.data && event.data.type==='SKIP_WAITING') self.skipWaiting();
 });
 self.addEventListener('fetch',event=>{
   const req=event.request;

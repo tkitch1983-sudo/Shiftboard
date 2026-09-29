@@ -18,6 +18,26 @@ function chips(start,base,count){
  return a.map(x=>'<span style="display:inline-block;padding:5px 7px;margin:2px;border:1px solid var(--line);background:var(--panel-2);font-size:11px;">'+x+'</span>').join('')+
  '<div style="font-size:10px;color:var(--muted);margin-top:5px;">Then +£50 for every complete £5,000 above — uncapped.</div>';
 }
+function neilMoneyLevels(){
+ let a=['Below £500,000 = £0'];
+ for(let i=0;i<11;i++)a.push(cash(500000+i*25000)+' = '+cash(700+i*25));
+ return a.map(x=>'<span style="display:inline-block;padding:5px 7px;margin:2px;border:1px solid var(--line);background:var(--panel-2);font-size:11px;">'+x+'</span>').join('')+
+ '<div style="font-size:10px;color:var(--muted);margin-top:5px;">Then +£25 for every complete £25,000 above — uncapped.</div>';
+}
+function neilDavantiLevels(){
+ let a=['Below 550 = £0'];
+ for(let i=0;i<11;i++)a.push((550+i*25)+' = '+cash(100+i*25));
+ return a.map(x=>'<span style="display:inline-block;padding:5px 7px;margin:2px;border:1px solid var(--line);background:var(--panel-2);font-size:11px;">'+x+'</span>').join('')+
+ '<div style="font-size:10px;color:var(--muted);margin-top:5px;">Then +£25 for every complete 25 Davanti units above — uncapped.</div>';
+}
+function neilCard(){
+ return '<div class="card" style="border-left:4px solid var(--green);">'+
+ '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;"><div><div style="font-family:Oswald,sans-serif;font-size:20px;font-weight:700;">Neil</div><div style="font-size:10px;color:var(--green);">Group bonus levels</div></div><div style="font-size:11px;color:var(--muted);">Read only</div></div>'+
+ '<div style="margin-top:12px;"><b style="font-size:11px;">GROUP TURNOVER LEVELS</b><div style="margin-top:5px;">'+neilMoneyLevels()+'</div><div style="font-size:10px;color:var(--muted-2);margin-top:5px;">Calculated from sites included in group totals. Lido is currently excluded from group totals.</div></div>'+
+ '<div style="margin-top:12px;"><b style="font-size:11px;">GROUP DAVANTI LEVELS</b><div style="margin-top:5px;">'+neilDavantiLevels()+'</div><div style="font-size:10px;color:var(--muted-2);margin-top:5px;">Uses Davanti units from sites included in group totals.</div></div>'+
+ '<div style="margin-top:12px;font-size:11px;color:var(--muted);">The Bonus Sheet also has a manual <b style="color:var(--text);">Owed</b> adjustment for Neil which is added to his calculated total.</div>'+
+ '</div>';
+}
 function manager(key){
  const x=extras[key];if(!x)return '<span style="color:var(--muted-2)">None set</span>';
  return '<b>'+x[0]+'</b><div style="margin-top:4px;">'+x[1].map(r=>cash(r[0])+' → '+cash(r[1])).join(' · ')+'</div>';
@@ -40,8 +60,9 @@ function levels(){
  const order=['peterlee','middlesbrough','fairfield','chester','gateshead','seaham','hartlepool','lido'];
  return '<h2>Bonus Levels</h2><div class="head-sub">Tony-only view of the bonus levels currently coded into Shiftboard. Read only.</div>'+
  '<div class="card"><b>Shared rules</b><div style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.7;">Tracking 0–49 = £1 each · at 50+ every tracking = £2 · BFC, Coolant, Pollen, A/C and Diagnostics = £1 each · add-on pot split equally between reception · Davanti paid in full to each receptionist.</div></div>'+
+ neilCard()+
  order.filter(k=>rules[k]).map(k=>site(k,rules[k])).join('')+
- '<div class="card"><b>Group / personal rules</b><div style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.7;">Tony Davanti: 600 = £100, then +£25 per complete 25 units; Gateshead excluded. · Neil turnover: £500,000 = £700, then +£25 per complete £25,000. · Neil Davanti: 550 = £100, then +£25 per complete 25 units. · More than 2 weekday sick days removes the bonus; otherwise the base has a daily sick deduction.</div></div>';
+ '<div class="card"><b>Other personal rules</b><div style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.7;">Tony Davanti: 600 = £100, then +£25 per complete 25 units; Gateshead excluded. · More than 2 weekday sick days removes the bonus; otherwise the base has a daily sick deduction.</div></div>';
 }
 function tabs(mode){
  const b=(id,label)=>'<button type="button" data-bonus-view="'+id+'" style="padding:9px 14px;border:1px solid '+(mode===id?'var(--amber)':'var(--line)')+';background:'+(mode===id?'var(--amber-dim)':'var(--panel-2)')+';color:var(--text);cursor:pointer;font-weight:700;">'+label+'</button>';

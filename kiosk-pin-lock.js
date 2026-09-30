@@ -1,6 +1,7 @@
 (function(){
   'use strict';
 
+  const MODE_KEY='sb_kiosk_mode_enabled_v1';
   const HASH_KEY='sb_kiosk_unlock_hash_v1';
   const SALT_KEY='sb_kiosk_unlock_salt_v1';
   const UNLOCK_UNTIL='sb_kiosk_unlocked_until';
@@ -9,14 +10,7 @@
   const UNLOCK_MS=10*60*1000;
   let holdTimer=null;
   let modal=null;
-  let lockNowButton=null;
-
-  function kioskSite(){
-    try{
-      if(typeof getKioskSite==='function') return getKioskSite();
-      return localStorage.getItem('sb_kiosk_site')||null;
-    }catch(_e){ return null; }
-  }
+  let controls=null;
 
   function tabletLike(){
     const ua=String(navigator.userAgent||'');
@@ -28,23 +22,24 @@
     return ipad||androidTablet||(touch&&minSide>=600);
   }
 
-  function configuredTablet(){ return !!kioskSite()&&tabletLike(); }
+  function kioskEnabled(){
+    try{ return localStorage.getItem(MODE_KEY)==='1'; }catch(_e){ return false; }
+  }
+  window.shiftboardKioskEnabled=kioskEnabled;
+
   function unlocked(){
     try{ return Number(sessionStorage.getItem(UNLOCK_UNTIL)||0)>Date.now(); }catch(_e){ return false; }
   }
   window.shiftboardKioskUnlocked=unlocked;
 
-  function locked(){ return configuredTablet()&&!unlocked(); }
+  function activeTablet(){ return tabletLike()&&kioskEnabled(); }
+  function locked(){ return activeTablet()&&!unlocked(); }
 
   function fireChange(){
     try{ window.dispatchEvent(new Event('shiftboard-kiosk-lock-change')); }catch(_e){}
   }
 
-  function lockNow(){
-    try{ sessionStorage.removeItem(UNLOCK_UNTIL); }catch(_e){}
-    closeModal();
-    apply();
-    fireChange();
+  function returnHome(){
     try{
       if(typeof state==='object'&&state&&['admin-pin','admin'].includes(state.view)){
         state.view='home';
@@ -54,42 +49,70 @@
     }catch(_e){}
   }
 
+  function lockNow(){
+    try{ sessionStorage.removeItem(UNLOCK_UNTIL); }catch(_e){}
+    closeModal();
+    apply();
+    fireChange();
+    returnHome();
+  }
+
   function unlockTemporarily(){
     try{ sessionStorage.setItem(UNLOCK_UNTIL,String(Date.now()+UNLOCK_MS)); }catch(_e){}
     apply();
     fireChange();
   }
 
+  function enableKiosk(){
+    try{
+      localStorage.setItem(MODE_KEY,'1');
+      sessionStorage.removeItem(UNLOCK_UNTIL);
+    }catch(_e){}
+    closeModal();
+    apply();
+    fireChange();
+    returnHome();
+  }
+
+  function disableKiosk(){
+    try{
+      localStorage.removeItem(MODE_KEY);
+      sessionStorage.removeItem(UNLOCK_UNTIL);
+    }catch(_e){}
+    closeModal();
+    apply();
+    fireChange();
+  }
+
   function apply(){
-    if(!configuredTablet()){
-      document.documentElement.classList.remove('sb-kiosk-pin-locked');
-      removeLockNow();
-      return;
-    }
     const on=locked();
     document.documentElement.classList.toggle('sb-kiosk-pin-locked',on);
-    if(on) removeLockNow(); else showLockNow();
+    if(activeTablet()&&unlocked()) showControls(); else removeControls();
   }
   window.shiftboardApplyKioskLock=apply;
 
-  function showLockNow(){
-    if(lockNowButton||!document.body||!configuredTablet()) return;
-    lockNowButton=document.createElement('button');
-    lockNowButton.type='button';
-    lockNowButton.textContent='Lock kiosk now';
-    lockNowButton.style.cssText='position:fixed;right:14px;bottom:14px;z-index:2147483000;background:#151516;color:#f7f7f8;border:1px solid #e2222d;padding:10px 14px;font:600 13px Inter,system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.35);';
-    lockNowButton.addEventListener('click',lockNow);
-    document.body.appendChild(lockNowButton);
+  function showControls(){
+    if(controls||!document.body) return;
+    controls=document.createElement('div');
+    controls.style.cssText='position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:94vw;font-family:Inter,system-ui,sans-serif;';
+    const lock=document.createElement('button');
+    lock.type='button'; lock.textContent='Lock kiosk now';
+    lock.style.cssText='background:#151516;color:#f7f7f8;border:1px solid #e2222d;padding:10px 14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.35);';
+    lock.addEventListener('click',lockNow);
+    const off=document.createElement('button');
+    off.type='button'; off.textContent='Turn kiosk mode off';
+    off.style.cssText='background:#151516;color:#b4b6b8;border:1px solid #555;padding:10px 14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.35);';
+    off.addEventListener('click',()=>openModal('disable'));
+    controls.append(lock,off);
+    document.body.appendChild(controls);
   }
 
-  function removeLockNow(){
-    if(lockNowButton&&lockNowButton.parentNode) lockNowButton.parentNode.removeChild(lockNowButton);
-    lockNowButton=null;
+  function removeControls(){
+    if(controls&&controls.parentNode) controls.parentNode.removeChild(controls);
+    controls=null;
   }
 
-  function bytesToBase64(bytes){
-    let s=''; for(const b of bytes) s+=String.fromCharCode(b); return btoa(s);
-  }
+  function bytesToBase64(bytes){ let s=''; for(const b of bytes) s+=String.fromCharCode(b); return btoa(s); }
 
   async function digest(pin,salt){
     if(!window.crypto||!crypto.subtle) throw new Error('Secure PIN storage is not supported on this tablet browser.');
@@ -133,13 +156,11 @@
     return {ok:false,blocked:false,remaining:5-failures};
   }
 
-  function closeModal(){
-    if(modal&&modal.parentNode) modal.parentNode.removeChild(modal);
-    modal=null;
-  }
+  function closeModal(){ if(modal&&modal.parentNode) modal.parentNode.removeChild(modal); modal=null; }
 
-  function openModal(){
-    if(!configuredTablet()||modal) return;
+  function openModal(purpose){
+    if(!tabletLike()||modal) return;
+    purpose=purpose||(!kioskEnabled()?'enable':'unlock');
     let mode=hasPin()?'verify':'set';
     let firstPin='';
     let entered='';
@@ -164,15 +185,21 @@
     const pad=modal.querySelector('#sb-kiosk-pin-pad');
 
     function text(){
-      if(mode==='verify'){
-        title.textContent='Unlock kiosk';
-        sub.textContent='Enter the 4-digit supervisor PIN. Shiftboard will unlock for 10 minutes.';
+      if(mode==='set'){
+        title.textContent='Set kiosk PIN';
+        sub.textContent='Choose a 4-digit supervisor PIN for this tablet. The PIN itself is not stored.';
       }else if(mode==='confirm'){
         title.textContent='Confirm kiosk PIN';
         sub.textContent='Enter the same 4 digits again.';
+      }else if(purpose==='enable'){
+        title.textContent='Turn kiosk mode on';
+        sub.textContent='Enter the supervisor PIN to lock this tablet to the staff kiosk.';
+      }else if(purpose==='disable'){
+        title.textContent='Turn kiosk mode off';
+        sub.textContent='Enter the supervisor PIN. This tablet will return to normal Shiftboard afterwards.';
       }else{
-        title.textContent='Set kiosk PIN';
-        sub.textContent='Supervisor setup: choose a 4-digit PIN for this tablet. The PIN itself is not stored.';
+        title.textContent='Unlock kiosk';
+        sub.textContent='Enter the supervisor PIN. Shiftboard will unlock for 10 minutes.';
       }
     }
 
@@ -187,6 +214,12 @@
 
     function reset(message){ entered=''; error.textContent=message||''; text(); drawDots(); }
 
+    function completePurpose(){
+      if(purpose==='enable') enableKiosk();
+      else if(purpose==='disable') disableKiosk();
+      else { unlockTemporarily(); closeModal(); }
+    }
+
     async function processPin(){
       if(entered.length!==4) return;
       const pin=entered;
@@ -195,23 +228,19 @@
       }
       if(mode==='confirm'){
         if(pin!==firstPin){ mode='set'; firstPin=''; reset('PINs did not match. Start again.'); return; }
-        try{
-          await storePin(pin);
-          unlockTemporarily();
-          closeModal();
-        }catch(err){ reset(err&&err.message?err.message:'Could not save kiosk PIN.'); }
+        try{ await storePin(pin); completePurpose(); }
+        catch(err){ mode='set'; reset(err&&err.message?err.message:'Could not save kiosk PIN.'); }
         return;
       }
       try{
         const result=await checkPin(pin);
-        if(result.ok){ unlockTemporarily(); closeModal(); return; }
+        if(result.ok){ completePurpose(); return; }
         if(result.blocked){ reset('Too many attempts. Try again in '+result.seconds+' seconds.'); return; }
         reset('Incorrect PIN. '+result.remaining+' attempt'+(result.remaining===1?'':'s')+' remaining.');
       }catch(err){ reset(err&&err.message?err.message:'Could not check kiosk PIN.'); }
     }
 
-    const keys=['1','2','3','4','5','6','7','8','9','clear','0','back'];
-    keys.forEach(key=>{
+    ['1','2','3','4','5','6','7','8','9','clear','0','back'].forEach(key=>{
       const btn=document.createElement('button');
       btn.type='button';
       btn.textContent=key==='clear'?'Clear':key==='back'?'⌫':key;
@@ -234,11 +263,15 @@
   (document.head||document.documentElement).appendChild(style);
 
   function startHold(event){
-    if(!configuredTablet()) return;
+    if(!tabletLike()) return;
     const target=event.target&&event.target.closest?event.target.closest('.brand-logo'):null;
     if(!target) return;
     clearTimeout(holdTimer);
-    holdTimer=setTimeout(()=>{ holdTimer=null; openModal(); },1800);
+    holdTimer=setTimeout(()=>{
+      holdTimer=null;
+      if(!kioskEnabled()) openModal('enable');
+      else if(!unlocked()) openModal('unlock');
+    },1800);
   }
   function cancelHold(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } }
 

@@ -1,13 +1,6 @@
 (function(){
   'use strict';
 
-  function kioskSite(){
-    try{
-      if(typeof getKioskSite==='function') return getKioskSite();
-      return localStorage.getItem('sb_kiosk_site')||null;
-    }catch(_e){ return null; }
-  }
-
   function tabletLike(){
     const ua=String(navigator.userAgent||'');
     const touch=Number(navigator.maxTouchPoints||0)>0;
@@ -15,15 +8,21 @@
     const androidTablet=/Android/i.test(ua)&&!/Mobile/i.test(ua);
     let minSide=0;
     try{ minSide=Math.min(Number(screen.width||0),Number(screen.height||0)); }catch(_e){}
-    const largeTouch=touch&&minSide>=600;
-    return ipad||androidTablet||largeTouch;
+    return ipad||androidTablet||(touch&&minSide>=600);
+  }
+
+  function kioskEnabled(){
+    try{
+      if(typeof window.shiftboardKioskEnabled==='function') return window.shiftboardKioskEnabled();
+      return localStorage.getItem('sb_kiosk_mode_enabled_v1')==='1';
+    }catch(_e){ return false; }
   }
 
   function supervisorUnlocked(){
     try{return typeof window.shiftboardKioskUnlocked==='function'&&window.shiftboardKioskUnlocked();}catch(_e){return false;}
   }
 
-  function locked(){ return !!kioskSite()&&tabletLike()&&!supervisorUnlocked(); }
+  function locked(){ return tabletLike()&&kioskEnabled()&&!supervisorUnlocked(); }
 
   function apply(){
     const on=locked();

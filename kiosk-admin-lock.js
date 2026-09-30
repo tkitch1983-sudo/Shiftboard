@@ -1,0 +1,55 @@
+(function(){
+  'use strict';
+
+  function kioskSite(){
+    try{
+      if(typeof getKioskSite==='function') return getKioskSite();
+      return localStorage.getItem('sb_kiosk_site')||null;
+    }catch(_e){ return null; }
+  }
+
+  function tabletLike(){
+    const ua=String(navigator.userAgent||'');
+    const touch=Number(navigator.maxTouchPoints||0)>0;
+    const ipad=/iPad/i.test(ua)||(/Macintosh/i.test(ua)&&Number(navigator.maxTouchPoints||0)>1);
+    const androidTablet=/Android/i.test(ua)&&!/Mobile/i.test(ua);
+    let minSide=0;
+    try{ minSide=Math.min(Number(screen.width||0),Number(screen.height||0)); }catch(_e){}
+    const largeTouch=touch&&minSide>=600;
+    return ipad||androidTablet||largeTouch;
+  }
+
+  function locked(){ return !!kioskSite()&&tabletLike(); }
+
+  function apply(){
+    const on=locked();
+    document.documentElement.classList.toggle('sb-kiosk-tablet-lock',on);
+    if(!on) return;
+    try{
+      if(typeof state==='object'&&state&&['admin-pin','admin'].includes(state.view)){
+        state.view='home';
+        if(state.admin){ state.admin.pin=''; state.admin.error=''; }
+        if(typeof render==='function') render();
+      }
+    }catch(_e){}
+  }
+
+  const style=document.createElement('style');
+  style.textContent='.sb-kiosk-tablet-lock [data-action="go-admin-pin"]{display:none!important;}';
+  (document.head||document.documentElement).appendChild(style);
+
+  document.addEventListener('click',function(event){
+    if(!locked()) return;
+    const target=event.target&&event.target.closest?event.target.closest('[data-action="go-admin-pin"]'):null;
+    if(!target) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    apply();
+  },true);
+
+  window.addEventListener('resize',apply);
+  window.addEventListener('orientationchange',apply);
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') apply(); });
+  setInterval(apply,15000);
+  apply();
+})();

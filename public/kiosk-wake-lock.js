@@ -3,13 +3,6 @@
 
   let wakeLock=null;
 
-  function kioskConfigured(){
-    try{
-      if(typeof getKioskSite==='function') return !!getKioskSite();
-      return !!localStorage.getItem('sb_kiosk_site');
-    }catch(_e){ return false; }
-  }
-
   function tabletLike(){
     const ua=String(navigator.userAgent||'');
     const touch=Number(navigator.maxTouchPoints||0)>0;
@@ -20,12 +13,18 @@
     return ipad||androidTablet||(touch&&minSide>=600);
   }
 
-  function shouldHold(){
-    return kioskConfigured()&&tabletLike()&&document.visibilityState==='visible';
+  function kioskEnabled(){
+    try{
+      if(typeof window.shiftboardKioskEnabled==='function') return window.shiftboardKioskEnabled();
+      return localStorage.getItem('sb_kiosk_mode_enabled_v1')==='1';
+    }catch(_e){ return false; }
   }
 
+  function shouldHold(){ return tabletLike()&&kioskEnabled()&&document.visibilityState==='visible'; }
+
   async function acquire(){
-    if(!shouldHold() || !('wakeLock' in navigator) || wakeLock) return;
+    if(!shouldHold()) { await release(); return; }
+    if(!('wakeLock' in navigator)||wakeLock) return;
     try{
       wakeLock=await navigator.wakeLock.request('screen');
       wakeLock.addEventListener('release',()=>{ wakeLock=null; });
@@ -38,6 +37,7 @@
     wakeLock=null;
   }
 
+  window.addEventListener('shiftboard-kiosk-lock-change',acquire);
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState==='visible') acquire(); else release();
   });

@@ -19,7 +19,11 @@
     return ipad||androidTablet||largeTouch;
   }
 
-  function locked(){ return !!kioskSite()&&tabletLike(); }
+  function supervisorUnlocked(){
+    try{return typeof window.shiftboardKioskUnlocked==='function'&&window.shiftboardKioskUnlocked();}catch(_e){return false;}
+  }
+
+  function locked(){ return !!kioskSite()&&tabletLike()&&!supervisorUnlocked(); }
 
   function apply(){
     const on=locked();
@@ -47,9 +51,10 @@
     apply();
   },true);
 
+  window.addEventListener('shiftboard-kiosk-lock-change',apply);
   window.addEventListener('resize',apply);
   window.addEventListener('orientationchange',apply);
   document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') apply(); });
-  setInterval(apply,15000);
+  setInterval(apply,10000);
   apply();
 })();

@@ -26,7 +26,7 @@
 
   function statusEl(input){
     if(!input||!input.parentElement)return null;
-    let el=input.parentElement.querySelector('[data-target-autosave-status="'+CSS.escape(keyFor(input))+'"]');
+    let el=Array.from(input.parentElement.querySelectorAll('[data-target-autosave-status]')).find(function(x){return x.getAttribute('data-target-autosave-status')===keyFor(input);})||null;
     if(!el){
       el=document.createElement('div');
       el.setAttribute('data-target-autosave-status',keyFor(input));

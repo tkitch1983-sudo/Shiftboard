@@ -123,8 +123,21 @@
   function statusText(v){ return v==='ok'?'OK':v==='issue'?'ISSUE':v==='na'?'N/A':'NOT SET'; }
   function statusColour(v){ return v==='ok'?'var(--green)':v==='issue'?'var(--red)':v==='na'?'var(--muted)':'var(--amber)'; }
 
+  function workingChecks(check){
+    if(!check)return {};
+    const draft=check.draft_checks;
+    if(draft&&typeof draft==='object'&&!Array.isArray(draft)&&Object.keys(draft).length)return draft;
+    return check.checks||{};
+  }
+  function workingManagerNotes(check){
+    if(!check)return '';
+    return check.draft_manager_notes!==null&&check.draft_manager_notes!==undefined
+      ? String(check.draft_manager_notes)
+      : String(check.manager_notes||'');
+  }
+
   function renderCheckRows(check){
-    const values=(check&&check.checks)||{};
+    const values=workingChecks(check);
     return CHECKS.map(function(item){
       const key=item[0], label=item[1], row=values[key]||{};
       const st=String(row.status||'');
@@ -189,7 +202,7 @@
       +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;"><div><h3 style="font-size:19px;">'+esc(site.name)+' · '+esc(fmtMonth(month))+'</h3>'+publishMeta+'</div>'+statusBadge+'</div>'
       +'<div style="font-size:12px;color:var(--muted);margin:14px 0 8px;">Complete every item from the existing Monthly H&amp;S Template. Use Issue where action is required and add details in the notes column.</div>'
       +'<div style="overflow:auto;"><table style="min-width:760px;"><thead><tr><th>Check</th><th>Result</th><th>Notes</th></tr></thead><tbody>'+renderCheckRows(check)+'</tbody></table></div>'
-      +'<div class="field" style="margin-top:16px;"><label>Manager notes / actions</label><textarea id="monthly-hs-manager-notes" rows="4" placeholder="Overall notes or actions for this month">'+esc(check.manager_notes||'')+'</textarea></div>'
+      +'<div class="field" style="margin-top:16px;"><label>Manager notes / actions</label><textarea id="monthly-hs-manager-notes" rows="4" placeholder="Overall notes or actions for this month">'+esc(workingManagerNotes(check))+'</textarea></div>'
       +'<div class="no-print" style="display:flex;gap:10px;flex-wrap:wrap;">'
       +(!published?'<button type="button" class="btn-sm" data-monthly-save>Save draft</button>':'')
       +'<button type="button" class="action-btn" data-monthly-publish style="max-width:340px;margin-top:0;">'+(published?'Publish update':'Publish for staff acknowledgement')+'</button>'
@@ -220,7 +233,7 @@
     saving=true;
     try{
       const headers=await authHeaders(); headers['Content-Type']='application/json'; headers['Prefer']='resolution=merge-duplicates,return=representation';
-      const payload={site_id:sid,month_start:monthStart(month),checks:form.checks,manager_notes:form.managerNotes,status:publish?'published':'draft'};
+      const payload={site_id:sid,month_start:monthStart(month),checks:form.checks,manager_notes:form.managerNotes,status:publish?'published':'draft',draft_checks:null,draft_manager_notes:null};
       const res=await fetch(SUPABASE_URL+'/rest/v1/monthly_hs_checks?on_conflict=site_id,month_start',{method:'POST',headers,body:JSON.stringify(payload)});
       if(!res.ok){const text=await res.text().catch(function(){return '';});throw new Error(text||('Save failed ('+res.status+')'));}
       c.loaded=false; kioskCache.delete(sid+'|'+currentMonth());

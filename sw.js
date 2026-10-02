@@ -19,6 +19,7 @@ const INJECT=[
   ['admin-cleanup-targets.js','1'],
   ['holiday-approval-snapshot.js','1'],
   ['all-print-branding.js','1'],
+  ['admin-help-cleanup.js','1'],
   ['manager-pin-reset.js','1'],
   ['weekly-checks.js','1'],
   ['weekly-checks-print.js','1'],

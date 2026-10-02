@@ -828,7 +828,7 @@ const state = {
 const ADMIN_TAB_OPTIONS=[
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['bankholidays','Bank Holidays','Holiday'],
-  ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
+  ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
   ['sites','Sites','System'],['settings','Settings / My account','System']
@@ -863,6 +863,7 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
+  if(tab==='targetsetup') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
   // never see the Pay Rates tab, even if their general role is "super".
   if(tab==='payrates') return isPayRateLogin();
@@ -3551,22 +3552,59 @@ function targetGroupSheet(plan){
   }).join('');
   return `<div class="att-sheet" id="target-group-output"><div class="att-title-row"><img class="att-logo" src="${LOGO_DATA_URI}" alt="North East Auto Services"><span>MONTHLY TARGET — GROUP</span></div><div class="att-meta-row"><span>${salesHtml(targetMonthLabel(plan.month))}</span><span class="site-tag">TARGET ${targetMoney(groupTarget)}</span></div><div style="padding:7px 10px;font-size:10px;color:#555;border-bottom:1px solid #bbb;display:flex;gap:18px;flex-wrap:wrap;align-items:center;"><span>Automatically totalled from the figures saved by each site. No separate Group figures are needed.</span><span style="font-size:11px;">+ / − Month to date <b style="color:${groupMtdVariance>0?'#12824c':groupMtdVariance<0?'#b3261e':'#555'};">${targetSignedMoney(groupMtdVariance)}</b></span></div><div class="att-table-wrap"><table class="att-table"><thead><tr><th style="text-align:left;">Site</th><th>Monthly target</th><th>Actual total</th><th>Days entered</th><th>+ / − Month to date</th><th>+ / − Full month</th></tr></thead><tbody>${summary}</tbody></table><table class="att-table" style="margin-top:12px;"><thead><tr><th style="text-align:left;">Date</th><th>Group target</th><th>Actual</th><th>+ / − Day</th><th>+ / − Month</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
+function renderAdminTargetSetup(){
+  if(!isTonyLogin()) return '<h2>Target Setup</h2><div class="card">This page is available to Tony only.</div>';
+  const month=state.admin.targetMonth||new Date().toISOString().slice(0,7);
+  const plan=targetMonthPlan(month);
+  const siteCount=plan&&plan.sites?Object.keys(plan.sites).length:0;
+  return `
+    <h2>Target Setup</h2>
+    <div class="head-sub">Set or recalculate the monthly workshop targets here. The normal Targets page is kept clear for viewing daily targets and entering actual figures.</div>
+    <div class="cal-toolbar no-print">
+      <label>Month <input id="target-month" type="month" value="${month}"></label>
+      <button type="button" class="add-btn secondary" data-admin-tab="targets" style="margin-left:auto;">View target sheet</button>
+    </div>
+    ${targetSetupPanel(month,plan)}
+    ${plan?`<div class="card" style="margin-top:14px;"><b>Current month is set up</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">${siteCount} workshop target sheet${siteCount===1?'':'s'} · last updated ${plan.updatedAt?fmtTime(plan.updatedAt):'—'}.</div></div>`:'<div class="card" style="margin-top:14px;">No target sheets have been issued for this month yet.</div>'}
+  `;
+}
+
 function renderAdminTargets(){
   const isSuper=state.admin.role==='super', month=state.admin.targetMonth||new Date().toISOString().slice(0,7), plan=targetMonthPlan(month);
   const workshopSites=targetWorkshopSites();
   const allowed=workshopSites.some(x=>isSuper||String(x.site.id)===String(state.admin.scopeSite));
   if(!allowed) return '<h2>Monthly Targets</h2><div class="card">No workshop target sheet is assigned to this account.</div>';
+
   let selected=isSuper?(state.admin.targetSite||'all'):String(state.admin.scopeSite);
   if(selected!=='all'&&!workshopSites.some(x=>String(x.site.id)===String(selected))) selected=isSuper?'all':String(state.admin.scopeSite);
   const options='<option value="all" '+(selected==='all'?'selected':'')+'>Group</option>'+workshopSites.map(x=>`<option value="${salesHtml(x.site.id)}" ${String(selected)===String(x.site.id)?'selected':''}>${salesHtml(TARGET_SITE_DEFAULTS[x.key].label)}</option>`).join('');
-  const setup=targetSetupPanel(month,plan);
+
   if(!plan){
-    return `<h2>Monthly Targets</h2><div class="head-sub">Create the site target sheets from the correct opening days for the selected month.</div><div class="cal-toolbar no-print"><label>Month <input id="target-month" type="month" value="${month}"></label></div>${setup}${isSuper?'':'<div class="card">Upper Management has not issued this month’s target sheet yet.</div>'}`;
+    return `<h2>Monthly Targets</h2>
+      <div class="head-sub">Daily target sheets and actual figures are shown here once the month has been issued.</div>
+      <div class="cal-toolbar no-print">
+        <label>Month <input id="target-month" type="month" value="${month}"></label>
+        ${isTonyLogin()?'<button type="button" class="add-btn" data-admin-tab="targetsetup" style="margin-left:auto;">Set monthly targets</button>':''}
+      </div>
+      <div class="card">No target sheet has been created for this month yet.${isTonyLogin()?' Use Target Setup to create it.':''}</div>`;
   }
+
   const visibleSite=selected==='all'?null:plan.sites?.[selected];
   const output=selected==='all'?targetGroupSheet(plan):(visibleSite?targetSiteSheet(Object.assign({month},visibleSite),isSuper):'<div class="empty-state">This site has no target sheet for the selected month.</div>');
-  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;"><div><h2 style="margin-bottom:4px;">Monthly Targets</h2><div style="font-size:12px;color:var(--muted);">Targets reconcile exactly to each site’s monthly figure.</div></div><div class="no-print" style="display:flex;gap:7px;flex-wrap:wrap;"><button type="button" class="add-btn" data-action="target-save">Save figures</button>${selected==='all'?'<button type="button" class="add-btn secondary" data-action="target-group-print">Print group</button><button type="button" class="add-btn secondary" data-action="target-group-download">Download group</button>':`<button type="button" class="add-btn secondary" data-action="target-site-print" data-site="${salesHtml(selected)}">Print site</button><button type="button" class="add-btn secondary" data-action="target-site-download" data-site="${salesHtml(selected)}">Download site</button>`}</div></div>
-  <div class="cal-toolbar no-print" style="margin-top:14px;"><label>Month <input id="target-month" type="month" value="${month}"></label>${isSuper?`<label>View <select id="target-site-filter">${options}</select></label>`:''}<span style="margin-left:auto;font-size:11px;color:var(--muted);">Updated ${plan.updatedAt?fmtTime(plan.updatedAt):'—'}</span></div>${setup}<div id="target-sheet-output">${output}</div>`;
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div><h2 style="margin-bottom:4px;">Monthly Targets</h2><div class="head-sub">View the issued target sheet and enter actual figures. Monthly setup is kept on Tony’s separate Target Setup page.</div></div>
+      <div class="no-print" style="display:flex;gap:7px;flex-wrap:wrap;">
+        <button type="button" class="add-btn" data-action="target-save">Save figures</button>
+        ${isTonyLogin()?'<button type="button" class="add-btn secondary" data-admin-tab="targetsetup">Target Setup</button>':''}
+        ${selected==='all'?'<button type="button" class="add-btn secondary" data-action="target-group-print">Print group</button><button type="button" class="add-btn secondary" data-action="target-group-download">Download group</button>':`<button type="button" class="add-btn secondary" data-action="target-site-print" data-site="${salesHtml(selected)}">Print site</button><button type="button" class="add-btn secondary" data-action="target-site-download" data-site="${salesHtml(selected)}">Download site</button>`}
+      </div>
+    </div>
+    <div class="cal-toolbar no-print" style="margin-top:14px;">
+      <label>Month <input id="target-month" type="month" value="${month}"></label>
+      ${isSuper?`<label>View <select id="target-site-filter">${options}</select></label>`:''}
+      <span style="margin-left:auto;font-size:11px;color:var(--muted);">Updated ${plan.updatedAt?fmtTime(plan.updatedAt):'—'}</span>
+    </div>
+    <div id="target-sheet-output">${output}</div>`;
 }
 function bonusMoney(v){
   const n=Number(v||0);
@@ -3925,6 +3963,7 @@ function renderAdmin(){
     }
   }
   else if(state.admin.tab==='targets') body = renderAdminTargets();
+  else if(state.admin.tab==='targetsetup') body = renderAdminTargetSetup();
   else if(state.admin.tab==='stock'){
     body = renderAdminStock();
     if(state.admin.stockRows===null && !state.admin._loadingStock){

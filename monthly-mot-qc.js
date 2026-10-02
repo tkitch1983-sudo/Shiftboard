@@ -6,7 +6,7 @@
   // public implementation from this root-level entry point.
   if(document.querySelector('script[data-monthly-mot-qc-impl]')) return;
   const script=document.createElement('script');
-  script.src='./public/monthly-mot-qc.js?v=1';
+  script.src='./public/monthly-mot-qc.js?v=2';
   script.async=false;
   script.setAttribute('data-monthly-mot-qc-impl','1');
   (document.head||document.documentElement).appendChild(script);

@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v80';
+const CACHE='neas-shift-board-shell-v81';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -26,6 +26,7 @@ const INJECT=[
   ['weekly-checks-name-dropdowns.js','1'],
   ['weekly-checks-counter-fix.js','1'],
   ['weekly-checks-section-saves.js','1'],
+  ['weekly-cleaning-name-autosave.js','1'],
   ['weekly-checks-save-feedback.js','1'],
   ['monthly-hs.js','1'],
   ['mot-qc-register.js','1'],

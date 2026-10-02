@@ -49,8 +49,13 @@
   }
 
   function qcFiles(rec){return Array.isArray(rec&&rec.mot_qc_files)?rec.mot_qc_files:[];}
+  function workingChecks(rec){
+    const draft=rec&&rec.draft_checks;
+    if(draft&&typeof draft==='object'&&!Array.isArray(draft)&&Object.keys(draft).length)return draft;
+    return (rec&&rec.checks)||{};
+  }
   function qcRow(rec){
-    const row=((rec&&rec.checks)||{}).mot_qc||{},st=String(row.status||'');
+    const row=workingChecks(rec).mot_qc||{},st=String(row.status||'');
     return '<tr data-monthly-mot-qc-row>'
       +'<td style="font-weight:700;white-space:nowrap;">MOT QC</td>'
       +'<td style="width:170px;"><select data-monthly-status="mot_qc" style="width:100%;padding:9px;">'
@@ -141,7 +146,7 @@
       if(publish&&!files.length)throw new Error('Upload the completed MOT QC copy before publishing.');
       const notes=document.getElementById('monthly-hs-manager-notes');
       const headers=await authHeaders();headers['Content-Type']='application/json';headers['Prefer']='resolution=merge-duplicates,return=representation';
-      const payload={site_id:sid,month_start:monthStart(month),checks:checks,manager_notes:notes?String(notes.value||'').trim():'',mot_qc_files:files,status:publish?'published':'draft'};
+      const payload={site_id:sid,month_start:monthStart(month),checks:checks,manager_notes:notes?String(notes.value||'').trim():'',mot_qc_files:files,status:publish?'published':'draft',draft_checks:null,draft_manager_notes:null};
       const res=await fetch(SUPABASE_URL+'/rest/v1/monthly_hs_checks?on_conflict=site_id,month_start',{method:'POST',headers,body:JSON.stringify(payload)});
       if(!res.ok){const text=await res.text().catch(function(){return '';});throw new Error(text||('Save failed ('+res.status+')'));}
       cache.delete(keyFor(sid,month));

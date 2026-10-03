@@ -27,6 +27,7 @@ R.init=function(){
 R.period=function(){
  R.init();const mode=state.admin.reportPeriodMode,d=state.admin.reportPeriodDate||R.today();
  if(mode==='day')return{mode,start:d,end:d,month:d.slice(0,7),label:'Daily · '+R.fmt(d)};
+ if(mode==='saturday'){const base=d>R.today()?R.today():d,bd=R.fd(base),diff=(bd.getDay()+1)%7,sat=R.add(base,-diff);return{mode,start:sat,end:sat,month:sat.slice(0,7),label:'Saturday · '+R.fmt(sat)}}
  if(mode==='week'){const a=R.mon(d),z=R.add(a,6),b=z>R.today()?R.today():z;return{mode,start:a,end:b,month:b.slice(0,7),label:'Week · '+R.fmt(a)+' to '+R.fmt(b)}}
  if(mode==='mtd'){const b=d>R.today()?R.today():d;return{mode,start:b.slice(0,7)+'-01',end:b,month:b.slice(0,7),label:'MTD · '+R.fmt(b.slice(0,7)+'-01')+' to '+R.fmt(b)}}
  const m=state.admin.reportPeriodMonth,a=R.ms(m),z=R.me(m),b=z>R.today()?R.today():z;return{mode,start:a,end:b,month:m,label:'Month · '+R.ml(m)+(m===R.today().slice(0,7)?' to '+R.fmt(b):'')};
@@ -72,11 +73,11 @@ R.people=function(p,rates){
  const bonus=((state.bonusSheets||{})[p.month]||{}).employees||{};
  return(state.config.employees||[]).filter(e=>e.active!==false).map(e=>{
   const arr=((shifts[e.id]&&shifts[e.id].shifts)||[]).filter(s=>R.inr(s.date,p.start,p.end)),by={};arr.forEach(s=>(by[s.date]=by[s.date]||[]).push(s));
-  let hours=0,worked=0,auto=0,manual=0;const dayHours={},dayAuto={};
-  Object.keys(by).forEach(d=>{let h=0;try{h=paidHoursForDay(by[d],d,e.siteId,e)}catch(x){h=by[d].reduce((n,s)=>n+Math.max(0,(R.n(s.outTs)-R.n(s.inTs))/3600000),0)}if(overrides.has(e.id+'|'+d)){h=overrides.get(e.id+'|'+d);manual++}if(h>0)worked++;const ac=by[d].filter(s=>s.autoClosed).length;hours+=h;auto+=ac;dayHours[d]=h;dayAuto[d]=ac;});
+  let hours=0,worked=0,auto=0,manual=0;const dayHours={},dayAuto={},daySites={};
+  Object.keys(by).forEach(d=>{let h=0;try{h=paidHoursForDay(by[d],d,e.siteId,e)}catch(x){h=by[d].reduce((n,s)=>n+Math.max(0,(R.n(s.outTs)-R.n(s.inTs))/3600000),0)}if(overrides.has(e.id+'|'+d)){h=overrides.get(e.id+'|'+d);manual++}if(h>0)worked++;const ac=by[d].filter(s=>s.autoClosed).length;hours+=h;auto+=ac;dayHours[d]=h;dayAuto[d]=ac;daySites[d]=String((by[d][0]&&by[d][0].siteId)||e.siteId||'');});
   let bf={score:0};try{bf=bradfordStatsForEmployee(e,p.end)}catch(x){}
   const b=bonus[e.id]||{},bon=R.n(b.owed)+R.n(b.extra)-R.n(b.damages),pr=rate.has(String(e.id))?rate.get(String(e.id)):null;
-  return{id:String(e.id),name:e.name,siteId:String(e.siteId),hours,worked,sick:sick.get(String(e.id))||0,holiday:holiday.get(String(e.id))||0,pending:pending.get(String(e.id))||0,bradford:R.n(bf.score),auto,manual,bonus:bon,payRate:pr,payRef:pr==null?null:hours*pr,dayHours,dayAuto};
+  return{id:String(e.id),name:e.name,siteId:String(e.siteId),hours,worked,sick:sick.get(String(e.id))||0,holiday:holiday.get(String(e.id))||0,pending:pending.get(String(e.id))||0,bradford:R.n(bf.score),auto,manual,bonus:bon,payRate:pr,payRef:pr==null?null:hours*pr,dayHours,dayAuto,daySites};
  });
 };
 
@@ -106,13 +107,19 @@ R.model=function(){
   const saturdays=daily.filter(x=>R.fd(x.date).getDay()===6);
   const saturdayDetail=saturdays.map(x=>{
     const target=t&&t.dayTargets?R.n(t.dayTargets[x.date]):0;
-    const staff=pe.filter(e=>R.n(e.dayHours&&e.dayHours[x.date])>0);
-    return{date:x.date,sales:x.value,target,variance:x.value-target,hours:staff.reduce((n,e)=>n+R.n(e.dayHours[x.date]),0),staff:staff.length,auto:staff.reduce((n,e)=>n+R.n(e.dayAuto&&e.dayAuto[x.date]),0)};
+    const staff=people.filter(e=>R.n(e.dayHours&&e.dayHours[x.date])>0&&String(e.daySites&&e.daySites[x.date])===id);
+    const source=rows.find(r=>String(r.snapshot_date)===String(x.date));
+    const margin=source&&source.margin_current!=null?R.n(source.margin_current):null;
+    const wages=staff.reduce((n,e)=>n+(e.payRate==null?0:R.n(e.dayHours[x.date])*R.n(e.payRate)),0);
+    const missingRates=staff.filter(e=>e.payRate==null).length;
+    const grossEstimate=margin==null?null:x.value*margin/100;
+    const afterWages=grossEstimate==null?null:grossEstimate-wages;
+    return{date:x.date,sales:x.value,target,variance:x.value-target,hours:staff.reduce((n,e)=>n+R.n(e.dayHours[x.date]),0),staff:staff.length,auto:staff.reduce((n,e)=>n+R.n(e.dayAuto&&e.dayAuto[x.date]),0),wages,missingRates,margin,grossEstimate,afterWages};
   });
-  const satSales=saturdayDetail.reduce((n,x)=>n+x.sales,0),satTarget=saturdayDetail.reduce((n,x)=>n+x.target,0),satHours=saturdayDetail.reduce((n,x)=>n+x.hours,0),satStaffShifts=saturdayDetail.reduce((n,x)=>n+x.staff,0),satAuto=saturdayDetail.reduce((n,x)=>n+x.auto,0),satHit=saturdayDetail.filter(x=>x.target>0&&x.sales>=x.target).length;
+  const satSales=saturdayDetail.reduce((n,x)=>n+x.sales,0),satTarget=saturdayDetail.reduce((n,x)=>n+x.target,0),satHours=saturdayDetail.reduce((n,x)=>n+x.hours,0),satStaffShifts=saturdayDetail.reduce((n,x)=>n+x.staff,0),satAuto=saturdayDetail.reduce((n,x)=>n+x.auto,0),satHit=saturdayDetail.filter(x=>x.target>0&&x.sales>=x.target).length,satWages=saturdayDetail.reduce((n,x)=>n+x.wages,0),satMissingRates=saturdayDetail.reduce((n,x)=>n+x.missingRates,0),satGross=saturdayDetail.reduce((n,x)=>n+(x.grossEstimate==null?0:x.grossEstimate),0),satAfterWages=saturdayDetail.reduce((n,x)=>n+(x.afterWages==null?0:x.afterWages),0);
   const weekdayDetail=daily.filter(x=>{const q=R.fd(x.date).getDay();return q>=1&&q<=5;});
   const weekdaySales=weekdayDetail.reduce((n,x)=>n+x.value,0),weekdayTarget=t?t.weekdayTarget:0;
-  return{id,name:s.name,workshop:work.has(id),people:pe,head:pe.length,hours:pe.reduce((n,x)=>n+x.hours,0),sick:pe.reduce((n,x)=>n+x.sick,0),holiday:pe.reduce((n,x)=>n+x.holiday,0),pending:pe.reduce((n,x)=>n+x.pending,0),auto:pe.reduce((n,x)=>n+x.auto,0),manual:pe.reduce((n,x)=>n+x.manual,0),bonus:pe.reduce((n,x)=>n+x.bonus,0),sales:R.delta(rows,'total_current',p.start,p.end),compare:R.delta(rows,'total_prior',p.start,p.end),margin:last&&last.margin_current!=null?R.n(last.margin_current):null,target:t?t.target:0,stock:st?R.n(st.stock_value):0,stockDate:st&&st.snapshot_date,weekly:w,weeklyDone:w.filter(R.weekDone).length,hs:h,hsIssues:R.hsIssues(h),expected,acked:am.get(id)||0,mot:m,saturday:{count:saturdayDetail.length,sales:satSales,target:satTarget,variance:satSales-satTarget,hours:satHours,staffShifts:satStaffShifts,auto:satAuto,hit:satHit,detail:saturdayDetail,weekdaySales,weekdayTarget}};
+  return{id,name:s.name,workshop:work.has(id),people:pe,head:pe.length,hours:pe.reduce((n,x)=>n+x.hours,0),sick:pe.reduce((n,x)=>n+x.sick,0),holiday:pe.reduce((n,x)=>n+x.holiday,0),pending:pe.reduce((n,x)=>n+x.pending,0),auto:pe.reduce((n,x)=>n+x.auto,0),manual:pe.reduce((n,x)=>n+x.manual,0),bonus:pe.reduce((n,x)=>n+x.bonus,0),sales:R.delta(rows,'total_current',p.start,p.end),compare:R.delta(rows,'total_prior',p.start,p.end),margin:last&&last.margin_current!=null?R.n(last.margin_current):null,target:t?t.target:0,stock:st?R.n(st.stock_value):0,stockDate:st&&st.snapshot_date,weekly:w,weeklyDone:w.filter(R.weekDone).length,hs:h,hsIssues:R.hsIssues(h),expected,acked:am.get(id)||0,mot:m,saturday:{count:saturdayDetail.length,sales:satSales,target:satTarget,variance:satSales-satTarget,hours:satHours,staffShifts:satStaffShifts,auto:satAuto,hit:satHit,wages:satWages,missingRates:satMissingRates,grossEstimate:satGross,afterWages:satAfterWages,detail:saturdayDetail,weekdaySales,weekdayTarget}};
  })};
 };
 })();

@@ -355,19 +355,43 @@
     const r=kioskRecord||{}, values=r.checks||{};
     const rows=CHECKS.map(function(item){
       const v=values[item[0]]||{}, st=String(v.status||'');
-      return '<div style="padding:11px 0;border-bottom:1px solid var(--line-soft);text-align:left;">'
-        +'<div style="display:flex;justify-content:space-between;gap:12px;"><b>'+esc(item[1])+'</b><b style="color:'+statusColour(st)+';">'+esc(statusText(st))+'</b></div>'
-        +(v.note?'<div style="font-size:12px;color:var(--muted);margin-top:4px;">'+esc(v.note)+'</div>':'')
+      return '<div style="padding:13px 0;border-bottom:1px solid var(--line-soft);text-align:left;">'
+        +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><b>'+esc(item[1])+'</b><b style="color:'+statusColour(st)+';white-space:nowrap;">'+esc(statusText(st))+'</b></div>'
+        +(v.note?'<div style="font-size:12px;color:var(--muted);margin-top:5px;white-space:pre-wrap;">'+esc(v.note)+'</div>':'')
         +'</div>';
     }).join('');
     const appEl=document.getElementById('app'); if(!appEl) return;
     const already=!!r.acked;
-    appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')+'<div class="flow" style="justify-content:flex-start;padding-top:28px;"><div class="flow-card" style="width:620px;max-width:94vw;">'
-      +'<h2>Monthly H&amp;S · '+esc(fmtMonth(r.month_start))+'</h2><div class="sub">'+esc(r.employee_name||'')+' · Review every item before acknowledging.</div>'
-      +'<div class="card" style="text-align:left;max-height:56vh;overflow:auto;">'+rows+(r.manager_notes?'<div style="margin-top:14px;padding:12px;border-left:4px solid var(--amber);background:var(--panel-2);"><b>Manager notes / actions</b><div style="font-size:12px;color:var(--muted);margin-top:5px;white-space:pre-wrap;">'+esc(r.manager_notes)+'</div></div>':'')+'</div>'
-      +(already?'<div class="card" style="border-left:4px solid var(--green);text-align:left;"><b style="color:var(--green);">Already acknowledged</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Recorded '+esc(fmtDateTime(r.acknowledged_at))+'.</div></div><button type="button" class="action-btn" data-monthly-kiosk-done>Done</button>'
-        :'<div style="text-align:left;font-size:12px;color:var(--muted);margin-top:12px;">By pressing acknowledge you confirm that you have read and understood the monthly H&amp;S checks and notes shown above. Your existing employee PIN verifies who acknowledged it; the PIN itself is not stored in the acknowledgement record.</div><button type="button" class="action-btn" data-monthly-ack>I have read and understood — acknowledge</button>')
-      +'<div class="back-link" data-monthly-kiosk-cancel>← Cancel</div></div></div>';
+
+    try{
+      document.documentElement.style.overflowY='auto';
+      document.documentElement.style.height='auto';
+      document.body.style.overflowY='auto';
+      document.body.style.height='auto';
+      appEl.style.overflow='visible';
+      appEl.style.minHeight='100dvh';
+    }catch(_e){}
+
+    const action=already
+      ?'<div class="card" style="border-left:4px solid var(--green);text-align:left;margin-top:14px;"><b style="color:var(--green);">Already acknowledged</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Recorded '+esc(fmtDateTime(r.acknowledged_at))+'.</div></div><button type="button" class="action-btn" data-monthly-kiosk-done>Done</button>'
+      :'<div style="text-align:left;font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5;">By pressing acknowledge you confirm that you have read and understood the monthly H&amp;S checks and notes shown above. Your existing employee PIN verifies who acknowledged it; the PIN itself is not stored in the acknowledgement record.</div>'
+       +'<div style="position:sticky;bottom:0;z-index:10;background:linear-gradient(to bottom,rgba(11,11,12,0),var(--bg) 18%);padding:22px 0 8px;">'
+       +'<button type="button" class="action-btn" data-monthly-ack style="margin-top:0;">I have read and understood — acknowledge</button></div>';
+
+    appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')
+      +'<div class="flow monthly-kiosk-review" style="display:block;flex:none;width:100%;padding:24px 18px 40px;overflow:visible;touch-action:pan-y;overscroll-behavior-y:auto;-webkit-overflow-scrolling:touch;">'
+      +'<div class="flow-card" style="width:680px;max-width:96vw;margin:0 auto;text-align:center;">'
+      +'<h2>Monthly H&amp;S · '+esc(fmtMonth(r.month_start))+'</h2>'
+      +'<div class="sub" style="margin-bottom:14px;">'+esc(r.employee_name||'')+' · Scroll through every check, then acknowledge below.</div>'
+      +'<div class="card" data-monthly-review-list style="text-align:left;max-height:none;overflow:visible;touch-action:pan-y;">'
+      +rows
+      +(r.manager_notes?'<div style="margin-top:14px;padding:12px;border-left:4px solid var(--amber);background:var(--panel-2);"><b>Manager notes / actions</b><div style="font-size:12px;color:var(--muted);margin-top:5px;white-space:pre-wrap;">'+esc(r.manager_notes)+'</div></div>':'')
+      +'</div>'
+      +action
+      +'<div class="back-link" data-monthly-kiosk-cancel style="padding-bottom:18px;">← Cancel</div>'
+      +'</div></div>';
+
+    try{window.scrollTo({top:0,left:0,behavior:'auto'});}catch(_e){try{window.scrollTo(0,0);}catch(_e2){}}
   }
 
   async function acknowledgeMonthly(){

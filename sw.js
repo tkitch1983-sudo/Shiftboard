@@ -28,7 +28,7 @@ const INJECT=[
   ['weekly-checks-section-saves.js','1'],
   ['weekly-checks-save-feedback.js','1'],
   ['weekly-checks-autosave-all.js','2'],
-  ['monthly-hs.js','2'],
+  ['monthly-hs.js','3'],
   ['monthly-hs-autosave.js','1'],
   ['mot-qc-register.js','1'],
   ['mot-followup.js','1'],

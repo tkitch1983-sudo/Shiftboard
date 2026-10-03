@@ -64,6 +64,20 @@
     const wk=currentWeekStart();
     return weekRows.find(function(r){ return String(r.site_id)===String(siteId) && String(r.week_start)===wk; })||null;
   }
+  function loanCarChecksRequired(site){
+    const name=String(site&&site.name||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+    return name.indexOf('gateshead')>=0 || name.indexOf('chester le street')>=0;
+  }
+  function weeklyRecordComplete(rec,site){
+    if(!rec)return false;
+    return !!(
+      rec.weekly_timesheet_done &&
+      rec.site_cleaning_done &&
+      rec.stock_take_done &&
+      rec.oxy_acetylene_done &&
+      (!loanCarChecksRequired(site) || rec.car_cleaning_done)
+    );
+  }
   function cleanName(name){ return String(name||'file').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,120)||'file'; }
   function storagePath(path){ return String(path||'').split('/').filter(Boolean).map(encodeURIComponent).join('/'); }
   function fileExt(name){ const p=String(name||'').toLowerCase().split('.'); return p.length>1?p.pop():''; }
@@ -153,12 +167,12 @@
     if(!site) return '<div class="card">No site selected.</div>';
     const rec=recordFor(siteId)||{};
     const stockFiles=Array.isArray(rec.stock_files)?rec.stock_files:[];
-    const done=!!rec.id;
+    const done=weeklyRecordComplete(rec,site), draft=!!rec.id&&!done;
     return '<div class="card" style="margin-top:14px;">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">'
       +'<div><h3 style="font-size:19px;">'+esc(site.name)+'</h3><div style="color:var(--muted);font-size:12px;margin-top:4px;">Week commencing '+esc(fmtDate(currentWeekStart()))+' · through '+esc(fmtDate(addDays(currentWeekStart(),6)))+'</div></div>'
-      +'<span class="pill '+(done?'pill-approved':'pill-rejected')+'">'+(done?'SUBMITTED':'NOT DONE')+'</span></div>'
-      +(done?'<div style="margin-top:10px;color:var(--muted);font-size:12px;">Submitted '+esc(fmtDateTime(rec.submitted_at))+(rec.submitted_by_email?' by '+esc(rec.submitted_by_email):'')+'. You can update and resubmit if something changes.</div>':'<div style="margin-top:10px;color:var(--red);font-size:12px;font-weight:700;">This week is still outstanding.</div>')
+      +'<span class="pill '+(done?'pill-approved':draft?'pill-pending':'pill-rejected')+'">'+(done?'SUBMITTED':draft?'DRAFT SAVED':'NOT DONE')+'</span></div>'
+      +(done?'<div style="margin-top:10px;color:var(--muted);font-size:12px;">Submitted '+esc(fmtDateTime(rec.submitted_at))+(rec.submitted_by_email?' by '+esc(rec.submitted_by_email):'')+'. You can update and resubmit if something changes.</div>':draft?'<div style="margin-top:10px;color:var(--amber);font-size:12px;font-weight:700;">Saved as a draft. Complete the remaining checks before final submission.</div>':'<div style="margin-top:10px;color:var(--red);font-size:12px;font-weight:700;">This week is still outstanding.</div>')
       +'<form id="weekly-check-form" data-site-id="'+esc(siteId)+'" style="margin-top:16px;">'
       +checkboxRow('wc-timesheet','Weekly time sheet completed',!!rec.weekly_timesheet_done,'Confirm the weekly time sheet has been completed.')
       +checkboxRow('wc-car','Car cleaning sheet completed',!!rec.car_cleaning_done,'Confirm the car cleaning check has been completed.')
@@ -181,9 +195,9 @@
     const all=sites();
     let done=0;
     const rows=all.map(function(site){
-      const r=recordFor(site.id);
-      if(r) done++;
-      return '<tr><td><b>'+esc(site.name)+'</b></td><td><span class="pill '+(r?'pill-approved':'pill-rejected')+'">'+(r?'Done':'Not done')+'</span></td><td>'+(r?esc(fmtDateTime(r.submitted_at)):'—')+'</td><td>'+(r?esc(r.submitted_by_email||''):'—')+'</td><td><button type="button" class="btn-sm" data-weekly-site="'+esc(site.id)+'">Review</button></td></tr>';
+      const r=recordFor(site.id), complete=weeklyRecordComplete(r,site), draft=!!r&&!complete;
+      if(complete) done++;
+      return '<tr><td><b>'+esc(site.name)+'</b></td><td><span class="pill '+(complete?'pill-approved':draft?'pill-pending':'pill-rejected')+'">'+(complete?'Done':draft?'Draft':'Not done')+'</span></td><td>'+(r?esc(fmtDateTime(r.submitted_at)):'—')+'</td><td>'+(r?esc(r.submitted_by_email||''):'—')+'</td><td><button type="button" class="btn-sm" data-weekly-site="'+esc(site.id)+'">Review</button></td></tr>';
     }).join('');
     return '<div class="card"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;"><div><h3 style="font-size:18px;">All-sites weekly status</h3><div style="color:var(--muted);font-size:12px;margin-top:3px;">Week commencing '+esc(fmtDate(currentWeekStart()))+'</div></div><div style="font-size:13px;"><b>'+done+'</b> of <b>'+all.length+'</b> completed</div></div>'
       +'<div style="overflow:auto;"><table><thead><tr><th>Site</th><th>Status</th><th>Submitted</th><th>Manager</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
@@ -218,10 +232,12 @@
   function reminderHtml(){
     if(state.admin.role!=='site' || loading || loadError || loadedWeek!==currentWeekStart()) return '';
     const sid=String(state.admin.scopeSite||'');
-    if(!sid || recordFor(sid)) return '';
-    return '<div style="margin:0 0 16px;padding:13px 14px;border:1px solid var(--red);border-left:5px solid var(--red);background:var(--red-dim);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">'
-      +'<div><b style="display:block;color:var(--red);">Weekly checks not completed</b><span style="font-size:12px;color:var(--muted);">Week commencing '+esc(fmtDate(currentWeekStart()))+'. This reminder will stay here until the checks are submitted.</span></div>'
-      +'<button type="button" class="btn-sm reject" data-weekly-open>Complete now</button></div>';
+    const rec=recordFor(sid), site=siteFor(sid);
+    if(!sid || weeklyRecordComplete(rec,site)) return '';
+    const draft=!!rec;
+    return '<div style="margin:0 0 16px;padding:13px 14px;border:1px solid '+(draft?'var(--amber)':'var(--red)')+';border-left:5px solid '+(draft?'var(--amber)':'var(--red)')+';background:'+(draft?'var(--panel)':'var(--red-dim)')+';display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">'
+      +'<div><b style="display:block;color:'+(draft?'var(--amber)':'var(--red)')+';">'+(draft?'Weekly checks saved as draft':'Weekly checks not completed')+'</b><span style="font-size:12px;color:var(--muted);">Week commencing '+esc(fmtDate(currentWeekStart()))+'. '+(draft?'Your saved entries are still here; complete the remaining checks and final-submit the week.':'This reminder will stay here until the checks are submitted.')+'</span></div>'
+      +'<button type="button" class="btn-sm '+(draft?'':'reject')+'" data-weekly-open>'+(draft?'Continue':'Complete now')+'</button></div>';
   }
 
   async function uploadStockFile(siteId,weekStart,file){

@@ -1444,6 +1444,7 @@ function selectedReportHtml(selector, title, orientation){
   const source=document.querySelector(selector);
   if(!source) return null;
   const clone=source.cloneNode(true);
+  clone.querySelectorAll('details').forEach(function(d){ d.open=true; });
   if(String(source.id||'').startsWith('bonus-') || String(source.id||'').startsWith('mot-')){
     const brand=document.createElement('div'); brand.className='bonus-print-brand';
     const img=document.createElement('img'); img.src=LOGO_DATA_URI; img.alt='North East Auto Services';
@@ -6396,6 +6397,10 @@ async function onAction(e){
     render(); return;
   }
   else if(action==='print-analysis'){
+    if(state.admin.tab==='fullreport' && isTonyLogin()){
+      const label=(window.NEASFullReport&&window.NEASFullReport.period)?window.NEASFullReport.period().label:'Current view';
+      printSelectedReport('#sales-analysis-output','Full Management Report · '+label,'landscape'); return;
+    }
     if(!canViewPrivateTab('analysis')){ showToast('You do not have permission for this page.',true); return render(); }
     const month=state.admin.analysisMonth||'latest';
     printSelectedReport('#sales-analysis-output','Site Sales Analysis '+month,'landscape'); return;

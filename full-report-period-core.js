@@ -5,6 +5,8 @@ R.cache={key:'',busy:false,error:'',data:null};
 R.e=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 R.n=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 R.money=v=>'£'+R.n(v).toLocaleString('en-GB',{maximumFractionDigits:0});
+R.dec=(v,d=0)=>R.n(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
+R.pct=v=>Number.isFinite(Number(v))?Number(v).toFixed(1)+'%':'—';
 R.iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 R.today=()=>R.iso(new Date());
 R.fd=s=>{const a=String(s).slice(0,10).split('-').map(Number);return new Date(a[0],a[1]-1,a[2],12)};

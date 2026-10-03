@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v101';
+const CACHE='neas-shift-board-shell-v102';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -39,7 +39,7 @@ const INJECT=[
   ['mot-import-delete.js','1'],
   ['full-report.js','1'],
   ['full-report-period-core.js','7'],
-  ['full-report-professional-ui.js','8'],
+  ['full-report-professional-ui.js','9'],
   ['mot-neil-upload-access.js','1'],
   ['mobile-register-fix.js','1'],
   ['bonus-tracking-fix.js','4'],

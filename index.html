@@ -1445,6 +1445,14 @@ function selectedReportHtml(selector, title, orientation){
   if(!source) return null;
   const clone=source.cloneNode(true);
   clone.querySelectorAll('details').forEach(function(d){ d.open=true; });
+  if(String(source.id||'')==='sales-analysis-output' && state.admin && state.admin.tab==='fullreport'){
+    const brand=document.createElement('div'); brand.className='bonus-print-brand';
+    const img=document.createElement('img'); img.src=LOGO_DATA_URI; img.alt='North East Auto Services'; img.setAttribute('data-neas-print-brand','1');
+    const text=document.createElement('div');
+    const company=document.createElement('b'); company.textContent='NORTH EAST AUTO SERVICES';
+    const report=document.createElement('span'); report.textContent=String(title||'Full Management Report');
+    text.append(company,report); brand.append(img,text); clone.insertBefore(brand,clone.firstChild);
+  }
   if(String(source.id||'').startsWith('bonus-') || String(source.id||'').startsWith('mot-')){
     const brand=document.createElement('div'); brand.className='bonus-print-brand';
     const img=document.createElement('img'); img.src=LOGO_DATA_URI; img.alt='North East Auto Services';

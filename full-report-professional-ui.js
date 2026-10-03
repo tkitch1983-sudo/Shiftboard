@@ -10,6 +10,8 @@ R.issues=function(s,p){
  if(s.workshop&&s.mot&&!s.mot.completed)a.push(['MOT QC','Monthly MOT QC is not complete']);
  if(s.workshop&&!s.mot&&['mtd','month'].includes(p.mode))a.push(['MOT QC','No monthly MOT QC record saved']);
  if(s.mot&&String(s.mot.issues_found||'').trim())a.push(['MOT QC',String(s.mot.issues_found).trim()]);
+ if(s.auto)a.push(['Attendance',s.auto+' automatic clock-out'+(s.auto===1?'':'s')+' to review']);
+ if(s.pending)a.push(['Holiday',R.dec(s.pending,2)+' pending holiday day'+(s.pending===1?'':'s')]);
  (s.weekly||[]).forEach(w=>{
   if(!R.weekDone(w))a.push(['Weekly checks',R.fmt(w.week_start)+' — checks incomplete']);
   if(String(w.maintenance_status||'OK').toUpperCase()!=='OK')a.push(['Weekly checks',R.fmt(w.week_start)+' — maintenance: '+w.maintenance_status]);
@@ -36,6 +38,7 @@ R.done=function(s,p){
   else if(['mtd','month'].includes(p.mode))no.push('MOT QC not completed');
  }
  if(s.stockDate)ok.push('Stock value captured '+R.fmt(s.stockDate));
+ if(!s.auto)ok.push('No automatic clock-outs in the selected period');else no.push(s.auto+' automatic clock-out'+(s.auto===1?'':'s')+' to check');
  return{ok,no};
 };
 R.summary=function(ss,p){
@@ -48,10 +51,12 @@ R.summary=function(ss,p){
  const wi=ss.filter(s=>s.weekly.length&&s.weeklyDone<s.weekly.length);if(wi.length)bad.push('Weekly checks incomplete: '+wi.map(s=>s.name+' '+s.weeklyDone+'/'+s.weekly.length).join(', ')+'.');
  const ha=ss.filter(s=>s.hs&&s.hs.status==='published'&&s.acked<s.expected);if(ha.length)bad.push('H&S acknowledgements outstanding: '+ha.map(s=>s.name+' '+s.acked+'/'+s.expected).join(', ')+'.');
  const ic=ss.reduce((n,s)=>n+R.issues(s,p).length,0);if(ic)bad.push(ic+' recorded operational/compliance item'+(ic===1?' needs':'s need')+' review.');
+ facts.push('Recorded staff hours: '+R.dec(ss.reduce((n,s)=>n+s.hours,0),2)+'.');
+ facts.push('Sick workdays recorded: '+ss.reduce((n,s)=>n+s.sick,0)+'.');
+ facts.push('Approved holiday days recorded: '+R.dec(ss.reduce((n,s)=>n+s.holiday,0),2)+'.');
  facts.push('Sales recorded: '+R.money(ss.reduce((n,s)=>n+s.sales,0))+'.');
  facts.push('Target for covered workshop sites: '+R.money(ss.reduce((n,s)=>n+s.target,0))+'.');
  facts.push('Latest stock value shown: '+R.money(ss.reduce((n,s)=>n+s.stock,0))+'.');
- facts.push('Active staff across this view: '+ss.reduce((n,s)=>n+s.head,0)+'.');
  if(!good.length)good.push('No positive completion statement is available yet for this period.');
  if(!bad.length)bad.push('No saved operational or compliance items are currently flagged for attention.');
  return{good,bad,facts};
@@ -70,14 +75,15 @@ R.finishedOptions=function(){
 R.view=function(m){
  const sid=state.admin.reportPeriodSite||'all',sel=sid==='all'?null:m.sites.find(s=>s.id===sid),ss=sel?[sel]:m.sites,sm=R.summary(ss,m.p),issues=ss.flatMap(s=>R.issues(s,m.p).map(x=>[s.name,x[0],x[1]])),OK=[],NO=[];
  ss.forEach(s=>{const d=R.done(s,m.p);d.ok.forEach(x=>OK.push([s.name,x]));d.no.forEach(x=>NO.push([s.name,x]))});
- const cmp='<div style="overflow:auto;"><table style="min-width:1250px;"><thead><tr><th>Site</th><th>Staff</th><th>Sales</th><th>Target</th><th>Variance</th><th>Margin</th><th>Stock</th><th>Vs comparison</th><th>Weekly</th><th>H&S</th><th>Issues</th></tr></thead><tbody>'+ss.map(s=>{const v=s.sales-s.target,c=s.compare?((s.sales-s.compare)/Math.abs(s.compare))*100:null;return'<tr><td><b>'+R.e(s.name)+'</b></td><td>'+s.head+'</td><td>'+R.money(s.sales)+'</td><td>'+(s.target?R.money(s.target):'—')+'</td><td>'+(s.target?(v>=0?'+':'')+R.money(v):'—')+'</td><td>'+R.pct(s.margin)+'</td><td>'+R.money(s.stock)+'</td><td>'+(c==null?'—':(c>=0?'+':'')+c.toFixed(1)+'%')+'</td><td>'+(s.weekly.length?s.weeklyDone+'/'+s.weekly.length:'—')+'</td><td>'+(s.hs?s.acked+'/'+s.expected:'—')+'</td><td>'+R.issues(s,m.p).length+'</td></tr>'}).join('')+'</tbody></table></div>';
+ const cmp='<div style="overflow:auto;"><table style="min-width:1250px;"><thead><tr><th>Site</th><th>Staff</th><th>Hours</th><th>Sick</th><th>Holiday</th><th>Sales</th><th>Target</th><th>Variance</th><th>Margin</th><th>Stock</th><th>Vs comparison</th><th>Weekly</th><th>H&S</th><th>Issues</th></tr></thead><tbody>'+ss.map(s=>{const v=s.sales-s.target,c=s.compare?((s.sales-s.compare)/Math.abs(s.compare))*100:null;return'<tr><td><b>'+R.e(s.name)+'</b></td><td>'+s.head+'</td><td>'+R.dec(s.hours,2)+'</td><td>'+s.sick+'</td><td>'+R.dec(s.holiday,2)+'</td><td>'+R.money(s.sales)+'</td><td>'+(s.target?R.money(s.target):'—')+'</td><td>'+(s.target?(v>=0?'+':'')+R.money(v):'—')+'</td><td>'+R.pct(s.margin)+'</td><td>'+R.money(s.stock)+'</td><td>'+(c==null?'—':(c>=0?'+':'')+c.toFixed(1)+'%')+'</td><td>'+(s.weekly.length?s.weeklyDone+'/'+s.weekly.length:'—')+'</td><td>'+(s.hs?s.acked+'/'+s.expected:'—')+'</td><td>'+R.issues(s,m.p).length+'</td></tr>'}).join('')+'</tbody></table></div>';
  return'<div class="card" style="border-left:4px solid var(--amber);"><b>'+R.e(m.p.label)+'</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">Operational data shown through '+R.fmt(m.p.end)+'. Monthly H&S and MOT QC use '+R.ml(m.p.month)+'.</div></div>'
  +'<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px;"><div class="card" style="margin:0;"><small>Sites</small><div class="mono" style="font-size:24px;">'+ss.length+'</div></div><div class="card" style="margin:0;"><small>Sales</small><div class="mono" style="font-size:24px;">'+R.money(ss.reduce((n,s)=>n+s.sales,0))+'</div></div><div class="card" style="margin:0;"><small>Target</small><div class="mono" style="font-size:24px;">'+R.money(ss.reduce((n,s)=>n+s.target,0))+'</div></div><div class="card" style="margin:0;"><small>To address</small><div class="mono" style="font-size:24px;">'+issues.length+'</div></div></div>'
  +'<div class="card"><h3>Management summary</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;"><div style="padding:12px;border-left:4px solid var(--green);background:var(--green-dim);"><b style="color:var(--green);">What’s going well</b>'+list(sm.good)+'</div><div style="padding:12px;border-left:4px solid var(--red);background:var(--red-dim);"><b style="color:var(--red);">Needs attention</b>'+list(sm.bad)+'</div><div style="padding:12px;border-left:4px solid var(--amber);background:var(--panel-2);"><b style="color:var(--amber);">Key facts</b>'+list(sm.facts)+'</div></div><div style="font-size:10px;color:var(--muted-2);margin-top:9px;">The written summary uses operational/compliance data only. It does not rate employees or make employment decisions.</div></div>'
  +'<details class="card" open><summary style="cursor:pointer;font-weight:800;">'+(sid==='all'?'Group comparison':'Site overview')+'</summary><div style="margin-top:12px;">'+cmp+'</div></details>'
  +'<details class="card" open><summary style="cursor:pointer;font-weight:800;color:var(--red);">Not done / needs attention · '+NO.length+'</summary><div style="margin-top:12px;">'+(NO.length?'<table><thead><tr><th>Site</th><th>Outstanding</th></tr></thead><tbody>'+rows(NO)+'</tbody></table>':'<b style="color:var(--green);">Everything applicable is complete.</b>')+'</div></details>'
  +'<details class="card"><summary style="cursor:pointer;font-weight:800;color:var(--green);">Done / completed · '+OK.length+'</summary><div style="margin-top:12px;">'+(OK.length?'<table><thead><tr><th>Site</th><th>Completed</th></tr></thead><tbody>'+rows(OK)+'</tbody></table>':'None yet.')+'</div></details>'
- +'<details class="card" '+(issues.length?'open':'')+'><summary style="cursor:pointer;font-weight:800;">Recorded issues / actions · '+issues.length+'</summary><div style="margin-top:12px;">'+(issues.length?'<table><thead><tr><th>Site</th><th>Area</th><th>Issue / action</th></tr></thead><tbody>'+rows(issues)+'</tbody></table>':'<b style="color:var(--green);">No saved issues found.</b>')+'</div></details>';
+ +'<details class="card" '+(issues.length?'open':'')+'><summary style="cursor:pointer;font-weight:800;">Recorded issues / actions · '+issues.length+'</summary><div style="margin-top:12px;">'+(issues.length?'<table><thead><tr><th>Site</th><th>Area</th><th>Issue / action</th></tr></thead><tbody>'+rows(issues)+'</tbody></table>':'<b style="color:var(--green);">No saved issues found.</b>')+'</div></details>'
+ +(sel?'<details class="card"><summary style="cursor:pointer;font-weight:800;">Staff / attendance detail · '+sel.people.length+'</summary><div style="margin-top:12px;overflow:auto;"><table style="min-width:1050px;"><thead><tr><th>Employee</th><th>Hours</th><th>Worked days</th><th>Sick</th><th>Holiday</th><th>Bradford</th><th>Auto-close</th><th>Manual edits</th><th>Month bonus</th><th>Pay rate</th><th>Hours × rate</th></tr></thead><tbody>'+sel.people.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>'<tr><td><b>'+R.e(x.name)+'</b></td><td>'+R.dec(x.hours,2)+'</td><td>'+x.worked+'</td><td>'+x.sick+'</td><td>'+R.dec(x.holiday,2)+'</td><td>'+x.bradford+'</td><td>'+x.auto+'</td><td>'+x.manual+'</td><td>'+R.money(x.bonus)+'</td><td>'+(x.payRate==null?'—':R.money(x.payRate))+'</td><td>'+(x.payRef==null?'—':R.money(x.payRef))+'</td></tr>').join('')+'</tbody></table></div></details>':'');
 };
 
 R.panel=function(){

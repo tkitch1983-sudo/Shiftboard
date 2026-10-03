@@ -35,7 +35,12 @@ R.period=function(){
  if(mode==='saturdays')return{mode,start:a,end:b,month:m,label:'All Saturdays · '+R.ml(m)};
  return{mode,start:a,end:b,month:m,label:'Month · '+R.ml(m)+(m===R.today().slice(0,7)?' to '+R.fmt(b):'')};
 };
-R.sites=()=> (state.config.sites||[]).filter(s=>!['upper management','floaters'].includes(String(s.name||'').toLowerCase()));
+R.sites=()=> (state.config.sites||[]).filter(s=>{
+ const n=String(s.name||'').toLowerCase();
+ if(['upper management','floaters'].includes(n))return false;
+ try{if(typeof isFillingStationSite==='function'&&isFillingStationSite(s.id))return false}catch(_e){}
+ return true;
+});
 R.siteName=id=>{const s=(state.config.sites||[]).find(x=>String(x.id)===String(id));return s?s.name:String(id||'')};
 R.key=s=>{let n=String(s.name||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');if(n.includes('etac-workshop'))return'peterlee';if(n.includes('chester'))return'chester-le-street';return n};
 R.workshops=function(){try{return new Set(targetWorkshopSites().map(x=>String(x.site.id)))}catch(e){return new Set()}};

@@ -17,7 +17,7 @@ R.me=m=>{const a=String(m).slice(0,7).split('-').map(Number);return R.iso(new Da
 R.fmt=s=>R.fd(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 R.ml=m=>new Date(String(m).slice(0,7)+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
 R.inr=(d,a,b)=>!!d&&String(d).slice(0,10)>=a&&String(d).slice(0,10)<=b;
-R.allowedDate=(d,p)=>R.allowedDate(d,p)&&(p.mode!=='saturdays'||R.fd(d).getDay()===6);
+R.allowedDate=(d,p)=>R.inr(d,p.start,p.end)&&(p.mode!=='saturdays'||R.fd(d).getDay()===6);
 
 R.init=function(){
  if(!state.admin.reportPeriodMode)state.admin.reportPeriodMode='mtd';

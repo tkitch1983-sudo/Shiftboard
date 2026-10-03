@@ -51,6 +51,12 @@ R.summary=function(ss,p){
  const wi=ss.filter(s=>s.weekly.length&&s.weeklyDone<s.weekly.length);if(wi.length)bad.push('Weekly checks incomplete: '+wi.map(s=>s.name+' '+s.weeklyDone+'/'+s.weekly.length).join(', ')+'.');
  const ha=ss.filter(s=>s.hs&&s.hs.status==='published'&&s.acked<s.expected);if(ha.length)bad.push('H&S acknowledgements outstanding: '+ha.map(s=>s.name+' '+s.acked+'/'+s.expected).join(', ')+'.');
  const ic=ss.reduce((n,s)=>n+R.issues(s,p).length,0);if(ic)bad.push(ic+' recorded operational/compliance item'+(ic===1?' needs':'s need')+' review.');
+ const satSites=ss.filter(s=>s.workshop&&s.saturday&&s.saturday.count>0&&s.saturday.target>0);
+ const satOnTarget=satSites.filter(s=>s.saturday.sales>=s.saturday.target);
+ if(satSites.length)good.push('Saturday target: '+satOnTarget.length+' of '+satSites.length+' workshop site'+(satSites.length===1?' is':'s are')+' at or above target in this period.');
+ const satBelow=satSites.filter(s=>s.saturday.sales<s.saturday.target);
+ if(satBelow.length)bad.push('Saturday below target: '+satBelow.map(s=>s.name+' ('+R.money(s.saturday.sales)+' vs '+R.money(s.saturday.target)+')').join(', ')+'.');
+ if(satSites.length)facts.push('Saturday sales: '+R.money(satSites.reduce((n,s)=>n+s.saturday.sales,0))+' against '+R.money(satSites.reduce((n,s)=>n+s.saturday.target,0))+' target.');
  facts.push('Recorded staff hours: '+R.dec(ss.reduce((n,s)=>n+s.hours,0),2)+'.');
  facts.push('Sick workdays recorded: '+ss.reduce((n,s)=>n+s.sick,0)+'.');
  facts.push('Approved holiday days recorded: '+R.dec(ss.reduce((n,s)=>n+s.holiday,0),2)+'.');
@@ -72,6 +78,20 @@ R.finishedOptions=function(){
  return o.join('');
 };
 
+R.saturdayHtml=function(ss,p,selected){
+ const rows=ss.filter(s=>s.saturday&&s.saturday.count>0);
+ if(!rows.length)return '<details class="card"><summary style="cursor:pointer;font-weight:800;color:var(--amber);">Saturday focus</summary><div style="margin-top:12px;color:var(--muted);">No Saturday falls inside this reporting period yet.</div></details>';
+ const body=rows.map(s=>{
+  const q=s.saturday||{},att=q.target>0?(q.sales/q.target*100):null,weekdayAtt=q.weekdayTarget>0?(q.weekdaySales/q.weekdayTarget*100):null;
+  return '<tr><td><b>'+R.e(s.name)+'</b></td><td>'+q.count+'</td><td>'+R.money(q.sales)+'</td><td>'+(q.target?R.money(q.target):'—')+'</td><td style="font-weight:700;color:'+(q.target?(q.variance<0?'var(--red)':'var(--green)'):'var(--muted)')+';">'+(q.target?(q.variance>=0?'+':'')+R.money(q.variance):'—')+'</td><td>'+(att==null?'—':att.toFixed(1)+'%')+'</td><td>'+R.money(q.count?q.sales/q.count:0)+'</td><td>'+R.dec(q.hours,2)+'</td><td>'+R.dec(q.count?q.hours/q.count:0,2)+'</td><td>'+q.staffShifts+'</td><td>'+q.auto+'</td><td>'+(weekdayAtt==null?'—':weekdayAtt.toFixed(1)+'%')+'</td></tr>';
+ }).join('');
+ let detail='';
+ if(selected&&selected.saturday&&selected.saturday.detail&&selected.saturday.detail.length){
+  detail='<div style="margin-top:14px;"><b>'+R.e(selected.name)+' Saturday detail</b><div style="overflow:auto;margin-top:8px;"><table><thead><tr><th>Saturday</th><th>Sales</th><th>Target</th><th>Variance</th><th>% target</th><th>Staff working</th><th>Staff hours</th><th>Auto-close</th></tr></thead><tbody>'+selected.saturday.detail.map(x=>{const a=x.target>0?x.sales/x.target*100:null;return '<tr><td>'+R.fmt(x.date)+'</td><td>'+R.money(x.sales)+'</td><td>'+(x.target?R.money(x.target):'—')+'</td><td>'+(x.target?(x.variance>=0?'+':'')+R.money(x.variance):'—')+'</td><td>'+(a==null?'—':a.toFixed(1)+'%')+'</td><td>'+x.staff+'</td><td>'+R.dec(x.hours,2)+'</td><td>'+x.auto+'</td></tr>'}).join('')+'</tbody></table></div></div>';
+ }
+ return '<details class="card" open><summary style="cursor:pointer;font-weight:800;color:var(--amber);">Saturday focus · '+rows.reduce((n,s)=>n+s.saturday.count,0)+' site-Saturday'+(rows.reduce((n,s)=>n+s.saturday.count,0)===1?'':'s')+'</summary><div style="margin-top:10px;font-size:11px;color:var(--muted);">Saturday sales and staffing are separated out so you can see whether the problem is sales performance, target attainment or staffing coverage. Weekday % target is shown only as context.</div><div style="overflow:auto;margin-top:10px;"><table style="min-width:1250px;"><thead><tr><th>Site</th><th>Saturdays</th><th>Sat sales</th><th>Sat target</th><th>Variance</th><th>% target</th><th>Avg sales / Sat</th><th>Sat staff hours</th><th>Avg hrs / Sat</th><th>Staff attendances</th><th>Auto-close</th><th>Weekday % target</th></tr></thead><tbody>'+body+'</tbody></table></div>'+detail+'</details>';
+};
+
 R.view=function(m){
  const sid=state.admin.reportPeriodSite||'all',sel=sid==='all'?null:m.sites.find(s=>s.id===sid),ss=sel?[sel]:m.sites,sm=R.summary(ss,m.p),issues=ss.flatMap(s=>R.issues(s,m.p).map(x=>[s.name,x[0],x[1]])),OK=[],NO=[];
  ss.forEach(s=>{const d=R.done(s,m.p);d.ok.forEach(x=>OK.push([s.name,x]));d.no.forEach(x=>NO.push([s.name,x]))});
@@ -79,6 +99,7 @@ R.view=function(m){
  return'<div class="card" style="border-left:4px solid var(--amber);"><b>'+R.e(m.p.label)+'</b><div style="font-size:11px;color:var(--muted);margin-top:4px;">Operational data shown through '+R.fmt(m.p.end)+'. Monthly H&S and MOT QC use '+R.ml(m.p.month)+'.</div></div>'
  +'<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px;"><div class="card" style="margin:0;"><small>Sites</small><div class="mono" style="font-size:24px;">'+ss.length+'</div></div><div class="card" style="margin:0;"><small>Sales</small><div class="mono" style="font-size:24px;">'+R.money(ss.reduce((n,s)=>n+s.sales,0))+'</div></div><div class="card" style="margin:0;"><small>Target</small><div class="mono" style="font-size:24px;">'+R.money(ss.reduce((n,s)=>n+s.target,0))+'</div></div><div class="card" style="margin:0;"><small>To address</small><div class="mono" style="font-size:24px;">'+issues.length+'</div></div></div>'
  +'<div class="card"><h3>Management summary</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;"><div style="padding:12px;border-left:4px solid var(--green);background:var(--green-dim);"><b style="color:var(--green);">What’s going well</b>'+list(sm.good)+'</div><div style="padding:12px;border-left:4px solid var(--red);background:var(--red-dim);"><b style="color:var(--red);">Needs attention</b>'+list(sm.bad)+'</div><div style="padding:12px;border-left:4px solid var(--amber);background:var(--panel-2);"><b style="color:var(--amber);">Key facts</b>'+list(sm.facts)+'</div></div><div style="font-size:10px;color:var(--muted-2);margin-top:9px;">The written summary uses operational/compliance data only. It does not rate employees or make employment decisions.</div></div>'
+ +R.saturdayHtml(ss,m.p,sel)
  +'<details class="card" open><summary style="cursor:pointer;font-weight:800;">'+(sid==='all'?'Group comparison':'Site overview')+'</summary><div style="margin-top:12px;">'+cmp+'</div></details>'
  +'<details class="card" open><summary style="cursor:pointer;font-weight:800;color:var(--red);">Not done / needs attention · '+NO.length+'</summary><div style="margin-top:12px;">'+(NO.length?'<table><thead><tr><th>Site</th><th>Outstanding</th></tr></thead><tbody>'+rows(NO)+'</tbody></table>':'<b style="color:var(--green);">Everything applicable is complete.</b>')+'</div></details>'
  +'<details class="card"><summary style="cursor:pointer;font-weight:800;color:var(--green);">Done / completed · '+OK.length+'</summary><div style="margin-top:12px;">'+(OK.length?'<table><thead><tr><th>Site</th><th>Completed</th></tr></thead><tbody>'+rows(OK)+'</tbody></table>':'None yet.')+'</div></details>'

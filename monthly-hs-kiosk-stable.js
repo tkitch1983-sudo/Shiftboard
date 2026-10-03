@@ -59,13 +59,16 @@
   function overlay(){
     return document.getElementById(OVERLAY_ID);
   }
-  function removeOverlay(){
+  function removeOverlayOnly(){
     const el=overlay();
     if(el)el.remove();
+  }
+  function closeSession(){
+    removeOverlayOnly();
     pin='';verifiedPin='';record=null;busy=false;
   }
   function shell(inner){
-    removeOverlay();
+    removeOverlayOnly();
     const el=document.createElement('div');
     el.id=OVERLAY_ID;
     el.style.cssText='position:fixed;inset:0;z-index:2147483000;background:var(--bg,#0b0b0c);color:var(--text,#f7f7f8);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y;';
@@ -81,7 +84,7 @@
   }
   function bindCancel(root){
     const btn=root.querySelector('[data-mhk-cancel]');
-    if(btn)btn.addEventListener('click',function(e){e.preventDefault();removeOverlay();});
+    if(btn)btn.addEventListener('click',function(e){e.preventDefault();closeSession();});
   }
 
   function renderPin(){
@@ -187,7 +190,12 @@
     try{root.scrollTop=0;}catch(_e){}
   }
   async function saveAck(root,btn){
-    if(busy||!record||!record.check_id||!verifiedPin)return;
+    if(busy)return;
+    if(!record||!record.check_id||!verifiedPin){
+      const missing=root.querySelector('[data-mhk-error]');
+      if(missing)missing.textContent='Acknowledgement session expired. Please enter your PIN again.';
+      return;
+    }
     busy=true;
     const old=btn.textContent;
     btn.disabled=true;btn.textContent='Saving acknowledgement…';
@@ -221,6 +229,6 @@
 
   window.MonthlyHsKiosk={
     open:function(){renderPin();},
-    close:function(){removeOverlay();}
+    close:function(){closeSession();}
   };
 })();

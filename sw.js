@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v82';
+const CACHE='neas-shift-board-shell-v83';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -20,14 +20,14 @@ const INJECT=[
   ['all-print-branding.js','1'],
   ['admin-help-cleanup.js','1'],
   ['manager-pin-reset.js','1'],
-  ['weekly-checks.js','1'],
+  ['weekly-checks.js','2'],
   ['weekly-checks-print.js','1'],
   ['weekly-checks-workshop.js','3'],
   ['weekly-checks-name-dropdowns.js','1'],
   ['weekly-checks-counter-fix.js','1'],
   ['weekly-checks-section-saves.js','1'],
-  ['weekly-cleaning-name-autosave.js','1'],
   ['weekly-checks-save-feedback.js','1'],
+  ['weekly-checks-autosave-all.js','1'],
   ['monthly-hs.js','1'],
   ['monthly-hs-autosave.js','1'],
   ['mot-qc-register.js','1'],

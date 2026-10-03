@@ -27,6 +27,7 @@
   const kioskLoading=new Set();
   let saving=false;
   let kioskPin='';
+  let kioskVerifiedPin='';
   let kioskError='';
   let kioskRecord=null;
   let kioskBusy=false;
@@ -323,7 +324,7 @@
   function showMonthlyPin(){
     kioskScreenActive=true;
     pinLookupScheduled=false;
-    kioskPin=''; kioskError=''; kioskRecord=null;
+    kioskPin=''; kioskVerifiedPin=''; kioskError=''; kioskRecord=null;
     const appEl=document.getElementById('app'); if(!appEl) return;
     appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')+'<div class="flow"><div class="flow-card"><h2>Monthly H&amp;S</h2><div class="sub">Enter your PIN to review this month\'s checks</div><div class="pin-dots" data-monthly-pin-dots>'+Array.from({length:4},function(){return '<div class="pin-dot"></div>';}).join('')+'</div>'+monthlyPinPad()+'<div class="error-msg" data-monthly-pin-error></div><div class="back-link" data-monthly-kiosk-cancel>← Cancel</div></div></div>';
   }
@@ -345,7 +346,7 @@
       if(!res.ok) throw new Error('Could not verify PIN.');
       const data=await res.json();
       if(!data||!data.ok){kioskError=(data&&data.message)||'PIN not recognised.';kioskPin='';pinLookupScheduled=false;refreshMonthlyPinUi();return;}
-      kioskRecord=data; renderMonthlyReview();
+      kioskVerifiedPin=kioskPin; kioskRecord=data; renderMonthlyReview();
     }catch(err){kioskError=err&&err.message?err.message:'Could not verify PIN.';kioskPin='';pinLookupScheduled=false;refreshMonthlyPinUi();}
     finally{kioskBusy=false;}
   }
@@ -375,8 +376,7 @@
     const action=already
       ?'<div class="card" style="border-left:4px solid var(--green);text-align:left;margin-top:14px;"><b style="color:var(--green);">Already acknowledged</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Recorded '+esc(fmtDateTime(r.acknowledged_at))+'.</div></div><button type="button" class="action-btn" data-monthly-kiosk-done>Done</button>'
       :'<div style="text-align:left;font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5;">By pressing acknowledge you confirm that you have read and understood the monthly H&amp;S checks and notes shown above. Your existing employee PIN verifies who acknowledged it; the PIN itself is not stored in the acknowledgement record.</div>'
-       +'<div style="position:sticky;bottom:0;z-index:10;background:linear-gradient(to bottom,rgba(11,11,12,0),var(--bg) 18%);padding:22px 0 8px;">'
-       +'<button type="button" class="action-btn" data-monthly-ack style="margin-top:0;">I have read and understood — acknowledge</button></div>';
+       +'<button type="button" class="action-btn" data-monthly-ack style="margin-top:18px;position:relative;z-index:2;touch-action:manipulation;">I have read and understood — acknowledge</button>';
 
     appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')
       +'<div class="flow monthly-kiosk-review" style="display:block;flex:none;width:100%;padding:24px 18px 40px;overflow:visible;touch-action:pan-y;overscroll-behavior-y:auto;-webkit-overflow-scrolling:touch;">'
@@ -391,15 +391,27 @@
       +'<div class="back-link" data-monthly-kiosk-cancel style="padding-bottom:18px;">← Cancel</div>'
       +'</div></div>';
 
+    const ackButton=appEl.querySelector('[data-monthly-ack]');
+    if(ackButton&&!ackButton.hasAttribute('data-monthly-ack-direct-bound')){
+      ackButton.setAttribute('data-monthly-ack-direct-bound','1');
+      ackButton.addEventListener('click',function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        acknowledgeMonthly(ackButton);
+      });
+    }
+
     try{window.scrollTo({top:0,left:0,behavior:'auto'});}catch(_e){try{window.scrollTo(0,0);}catch(_e2){}}
   }
 
-  async function acknowledgeMonthly(){
+  async function acknowledgeMonthly(button){
     if(kioskBusy||!kioskRecord||!kioskRecord.check_id) return;
     kioskBusy=true;
+    const oldText=button&&button.textContent;
+    if(button){button.disabled=true;button.textContent='Saving acknowledgement…';}
     try{
       const headers=await authHeaders(); headers['Content-Type']='application/json';
-      const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/monthly_hs_acknowledge',{method:'POST',headers,body:JSON.stringify({p_check_id:kioskRecord.check_id,p_pin:kioskPin})});
+      const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/monthly_hs_acknowledge',{method:'POST',headers,body:JSON.stringify({p_check_id:kioskRecord.check_id,p_pin:kioskVerifiedPin||kioskPin})});
       if(!res.ok) throw new Error('Could not save acknowledgement.');
       const data=await res.json();
       if(!data||!data.ok) throw new Error((data&&data.message)||'Could not save acknowledgement.');
@@ -408,7 +420,10 @@
       await loadKioskStatus(sid,true);
       const appEl=document.getElementById('app'); if(!appEl) return;
       appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')+'<div class="flow"><div class="flow-card"><div class="big-check">✓</div><h2>Monthly H&amp;S acknowledged</h2><div class="sub">Thanks, '+esc(data.employee_name||kioskRecord.employee_name||'')+'. Recorded '+esc(fmtDateTime(data.acknowledged_at))+'.</div><button type="button" class="action-btn" data-monthly-kiosk-done>Done</button></div></div>';
-    }catch(err){showToast(err&&err.message?err.message:'Could not save acknowledgement.',true);}
+    }catch(err){
+      showToast(err&&err.message?err.message:'Could not save acknowledgement.',true);
+      if(button&&document.contains(button)){button.disabled=false;button.textContent=oldText||'I have read and understood — acknowledge';}
+    }
     finally{kioskBusy=false;}
   }
 
@@ -498,9 +513,9 @@
       }
       return;
     }
-    if(t.hasAttribute('data-monthly-ack')){e.preventDefault();acknowledgeMonthly();return;}
+    if(t.hasAttribute('data-monthly-ack')){e.preventDefault();e.stopPropagation();acknowledgeMonthly(t);return;}
     if(t.hasAttribute('data-monthly-kiosk-cancel')||t.hasAttribute('data-monthly-kiosk-done')){
-      e.preventDefault(); kioskScreenActive=false;pinLookupScheduled=false;kioskPin='';kioskError='';kioskRecord=null;if(typeof render==='function') render();return;
+      e.preventDefault(); kioskScreenActive=false;pinLookupScheduled=false;kioskPin='';kioskVerifiedPin='';kioskError='';kioskRecord=null;if(typeof render==='function') render();return;
     }
   },true);
 })();

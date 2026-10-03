@@ -1,0 +1,67 @@
+(function(){
+'use strict';
+const R=window.NEASFullReport=window.NEASFullReport||{};
+R.cache={key:'',busy:false,error:'',data:null};
+R.e=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+R.n=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
+R.money=v=>'£'+R.n(v).toLocaleString('en-GB',{maximumFractionDigits:0});
+R.iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+R.today=()=>R.iso(new Date());
+R.fd=s=>{const a=String(s).slice(0,10).split('-').map(Number);return new Date(a[0],a[1]-1,a[2],12)};
+R.add=(s,n)=>{const d=R.fd(s);d.setDate(d.getDate()+n);return R.iso(d)};
+R.mon=s=>{const d=R.fd(s),x=d.getDay();d.setDate(d.getDate()+(x===0?-6:1-x));return R.iso(d)};
+R.ms=m=>String(m).slice(0,7)+'-01';
+R.me=m=>{const a=String(m).slice(0,7).split('-').map(Number);return R.iso(new Date(a[0],a[1],0,12))};
+R.fmt=s=>R.fd(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+R.ml=m=>new Date(String(m).slice(0,7)+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+R.inr=(d,a,b)=>!!d&&String(d).slice(0,10)>=a&&String(d).slice(0,10)<=b;
+
+R.init=function(){
+ if(!state.admin.reportPeriodMode)state.admin.reportPeriodMode='mtd';
+ if(!state.admin.reportPeriodDate)state.admin.reportPeriodDate=R.today();
+ if(!state.admin.reportPeriodMonth)state.admin.reportPeriodMonth=R.today().slice(0,7);
+ if(!state.admin.reportPeriodSite)state.admin.reportPeriodSite='all';
+};
+R.period=function(){
+ R.init();const mode=state.admin.reportPeriodMode,d=state.admin.reportPeriodDate||R.today();
+ if(mode==='day')return{mode,start:d,end:d,month:d.slice(0,7),label:'Daily · '+R.fmt(d)};
+ if(mode==='week'){const a=R.mon(d),z=R.add(a,6),b=z>R.today()?R.today():z;return{mode,start:a,end:b,month:b.slice(0,7),label:'Week · '+R.fmt(a)+' to '+R.fmt(b)}}
+ if(mode==='mtd'){const b=d>R.today()?R.today():d;return{mode,start:b.slice(0,7)+'-01',end:b,month:b.slice(0,7),label:'MTD · '+R.fmt(b.slice(0,7)+'-01')+' to '+R.fmt(b)}}
+ const m=state.admin.reportPeriodMonth,a=R.ms(m),z=R.me(m),b=z>R.today()?R.today():z;return{mode,start:a,end:b,month:m,label:'Month · '+R.ml(m)+(m===R.today().slice(0,7)?' to '+R.fmt(b):'')};
+};
+R.sites=()=> (state.config.sites||[]).filter(s=>!['upper management','floaters'].includes(String(s.name||'').toLowerCase()));
+R.siteName=id=>{const s=(state.config.sites||[]).find(x=>String(x.id)===String(id));return s?s.name:String(id||'')};
+R.key=s=>{let n=String(s.name||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');if(n.includes('etac-workshop'))return'peterlee';if(n.includes('chester'))return'chester-le-street';return n};
+R.workshops=function(){try{return new Set(targetWorkshopSites().map(x=>String(x.site.id)))}catch(e){return new Set()}};
+R.api=async p=>{const x=await fetch(SUPABASE_URL+'/rest/v1/'+p,{headers:await authHeaders(),cache:'no-store'});if(!x.ok)throw Error('Report data '+x.status);return x.json()};
+
+R.delta=function(rows,key,a,b){let t=0,last={};rows.forEach(r=>{const d=String(r.snapshot_date),m=d.slice(0,7),v=R.n(r[key]),q=last[m]||0;if(R.inr(d,a,b))t+=v-q;last[m]=v});return t};
+R.target=function(id,p){
+ const s=state.targetSheets&&state.targetSheets[p.month]&&state.targetSheets[p.month].sites&&state.targetSheets[p.month].sites[id];if(!s)return null;
+ const ds=(s.days||[]).filter(d=>d.open&&R.inr(d.date,p.start,p.end));return{target:ds.reduce((n,d)=>n+R.n(d.target),0),days:ds.length};
+};
+R.weekDone=r=>{try{return weeklyRecordComplete(r,(state.config.sites||[]).find(s=>String(s.id)===String(r.site_id)))}catch(e){return!!(r.weekly_timesheet_done&&r.site_cleaning_done&&r.stock_take_done&&r.oxy_acetylene_done)}};
+R.hsIssues=h=>{if(!h)return[];const s=(h.draft_checks&&Object.keys(h.draft_checks).length?h.draft_checks:h.checks)||{},a=[];Object.keys(s).forEach(k=>{const q=s[k]||{};if(q.status==='issue')a.push((q.label||k)+(q.note?' — '+q.note:''))});if(String(h.draft_manager_notes||h.manager_notes||'').trim())a.push('Manager note — '+String(h.draft_manager_notes||h.manager_notes).trim());return a};
+
+R.load=async function(force){
+ const p=R.period(),key=[p.mode,p.start,p.end,p.month].join('|');if(R.cache.busy)return;if(!force&&R.cache.key===key&&R.cache.data)return;R.cache={key,busy:true,error:'',data:null};
+ try{
+  const q=await Promise.all([
+   R.api('sales_daily_snapshots?select=*&snapshot_date=gte.'+encodeURIComponent(R.ms(p.start.slice(0,7)))+'&snapshot_date=lte.'+encodeURIComponent(p.end)+'&order=snapshot_date.asc'),
+   R.api('stock_value_snapshots?select=*&snapshot_date=gte.'+encodeURIComponent(R.add(p.end,-90))+'&snapshot_date=lte.'+encodeURIComponent(p.end)+'&order=snapshot_date.desc'),
+   R.api('weekly_site_checks?select=*&week_start=gte.'+encodeURIComponent(R.mon(p.start))+'&week_start=lte.'+encodeURIComponent(p.end)+'&order=week_start.desc'),
+   R.api('monthly_hs_checks?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
+   R.api('monthly_hs_acknowledgements?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
+   R.api('mot_monthly_qc?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01'))
+  ]);
+  const stock=new Map();q[1].forEach(r=>{if(!stock.has(String(r.site_key)))stock.set(String(r.site_key),r)});
+  R.cache.data={p,sales:q[0],stock,weekly:q[2],hs:q[3],acks:q[4],mot:q[5]};
+ }catch(e){R.cache.error=e.message||String(e)}
+ R.cache.busy=false;try{if(state.admin.tab==='fullreport')render()}catch(e){}
+};
+
+R.model=function(){
+ const d=R.cache.data,p=d.p,work=R.workshops(),hm=new Map(d.hs.map(x=>[String(x.site_id),x])),mm=new Map(d.mot.map(x=>[String(x.site_id),x])),am=new Map();d.acks.forEach(x=>am.set(String(x.site_id),(am.get(String(x.site_id))||0)+1));
+ return{p,sites:R.sites().map(s=>{const id=String(s.id),k=R.key(s),rows=d.sales.filter(x=>String(x.site_key)===k).sort((a,b)=>String(a.snapshot_date).localeCompare(String(b.snapshot_date))),last=rows.filter(x=>String(x.snapshot_date)<=p.end).slice(-1)[0],t=R.target(id,p),w=d.weekly.filter(x=>String(x.site_id)===id),h=hm.get(id)||null,m=mm.get(id)||null,st=d.stock.get(k),expected=Array.isArray(h&&h.expected_staff)?h.expected_staff.length:0;return{id,name:s.name,workshop:work.has(id),head:(state.config.employees||[]).filter(e=>e.active!==false&&String(e.siteId)===id).length,sales:R.delta(rows,'total_current',p.start,p.end),compare:R.delta(rows,'total_prior',p.start,p.end),margin:last&&last.margin_current!=null?R.n(last.margin_current):null,target:t?t.target:0,stock:st?R.n(st.stock_value):0,stockDate:st&&st.snapshot_date,weekly:w,weeklyDone:w.filter(R.weekDone).length,hs:h,hsIssues:R.hsIssues(h),expected,acked:am.get(id)||0,mot:m}})};
+};
+})();

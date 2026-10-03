@@ -31,6 +31,7 @@
   let kioskRecord=null;
   let kioskBusy=false;
   let kioskScreenActive=false;
+  let pinLookupScheduled=false;
 
   function esc(v){
     return String(v==null?'':v).replace(/[&<>"']/g,function(ch){
@@ -308,6 +309,7 @@
 
   function showMonthlyPin(){
     kioskScreenActive=true;
+    pinLookupScheduled=false;
     kioskPin=''; kioskError=''; kioskRecord=null;
     const appEl=document.getElementById('app'); if(!appEl) return;
     appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')+'<div class="flow"><div class="flow-card"><h2>Monthly H&amp;S</h2><div class="sub">Enter your PIN to review this month\'s checks</div><div class="pin-dots" data-monthly-pin-dots>'+Array.from({length:4},function(){return '<div class="pin-dot"></div>';}).join('')+'</div>'+monthlyPinPad()+'<div class="error-msg" data-monthly-pin-error></div><div class="back-link" data-monthly-kiosk-cancel>← Cancel</div></div></div>';
@@ -320,6 +322,7 @@
   }
 
   async function openMonthlyForPin(){
+    pinLookupScheduled=false;
     if(kioskBusy||kioskPin.length!==4) return;
     const sid=typeof getKioskSite==='function'?getKioskSite():'';
     kioskBusy=true; kioskError='Checking PIN…'; refreshMonthlyPinUi();
@@ -328,9 +331,9 @@
       const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/monthly_hs_for_pin',{method:'POST',headers,body:JSON.stringify({p_site_id:String(sid),p_pin:kioskPin})});
       if(!res.ok) throw new Error('Could not verify PIN.');
       const data=await res.json();
-      if(!data||!data.ok){kioskError=(data&&data.message)||'PIN not recognised.';kioskPin='';refreshMonthlyPinUi();return;}
+      if(!data||!data.ok){kioskError=(data&&data.message)||'PIN not recognised.';kioskPin='';pinLookupScheduled=false;refreshMonthlyPinUi();return;}
       kioskRecord=data; renderMonthlyReview();
-    }catch(err){kioskError=err&&err.message?err.message:'Could not verify PIN.';kioskPin='';refreshMonthlyPinUi();}
+    }catch(err){kioskError=err&&err.message?err.message:'Could not verify PIN.';kioskPin='';pinLookupScheduled=false;refreshMonthlyPinUi();}
     finally{kioskBusy=false;}
   }
 
@@ -407,6 +410,13 @@
         return wrap.innerHTML;
       };
     }
+    if(typeof render==='function'){
+      const monthlyHsRootRender=render;
+      render=function(){
+        if(kioskScreenActive) return;
+        return monthlyHsRootRender.apply(this,arguments);
+      };
+    }
     if(typeof renderHome==='function'){
       const oldRenderHome=renderHome;
       renderHome=function(){return injectKioskTile(oldRenderHome());};
@@ -439,14 +449,21 @@
     if(t.hasAttribute('data-monthly-pin-key')){
       e.preventDefault();
       const k=t.getAttribute('data-monthly-pin-key');
-      if(k==='clear') kioskPin=''; else if(k==='back') kioskPin=kioskPin.slice(0,-1); else if(/^\d$/.test(k)&&kioskPin.length<4) kioskPin+=k;
+      const beforeLen=kioskPin.length;
+      if(kioskBusy||pinLookupScheduled){e.preventDefault();return;}
+      if(k==='clear') kioskPin='';
+      else if(k==='back') kioskPin=kioskPin.slice(0,-1);
+      else if(/^\d$/.test(k)&&kioskPin.length<4) kioskPin+=k;
       kioskError=''; refreshMonthlyPinUi();
-      if(kioskPin.length===4) setTimeout(openMonthlyForPin,80);
+      if(beforeLen<4&&kioskPin.length===4){
+        pinLookupScheduled=true;
+        setTimeout(openMonthlyForPin,40);
+      }
       return;
     }
     if(t.hasAttribute('data-monthly-ack')){e.preventDefault();acknowledgeMonthly();return;}
     if(t.hasAttribute('data-monthly-kiosk-cancel')||t.hasAttribute('data-monthly-kiosk-done')){
-      e.preventDefault(); kioskScreenActive=false;kioskPin='';kioskError='';kioskRecord=null;if(typeof render==='function') render();return;
+      e.preventDefault(); kioskScreenActive=false;pinLookupScheduled=false;kioskPin='';kioskError='';kioskRecord=null;if(typeof render==='function') render();return;
     }
   },true);
 })();

@@ -70,13 +70,30 @@
   }
   function weeklyRecordComplete(rec,site){
     if(!rec)return false;
-    return !!(
-      rec.weekly_timesheet_done &&
-      rec.site_cleaning_done &&
-      rec.stock_take_done &&
-      rec.oxy_acetylene_done &&
-      (!loanCarChecksRequired(site) || rec.car_cleaning_done)
-    );
+    const days=(rec.site_cleaning_form&&rec.site_cleaning_form.days)||{};
+    const cleaning=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].every(function(day){
+      const d=days[day]||{};
+      return !!(String(d.reception||'').trim()&&String(d.office||'').trim()&&String(d.toilets||'').trim()&&String(d.mess||'').trim()&&String(d.signature||'').trim());
+    });
+    const oxy=rec.oxy_acetylene_form||{},answers=oxy.answers||{},itemNotes=oxy.item_notes||{};
+    const oxyKeys=['cylinders_upright','cylinder_key','fire_gloves','ppe_suitable','regulators_type_date','connection_nuts','oxygen_regulator_clean','flashback_arrestors','hoses_good','clips_factory','spliced_hoses_checked','torch_condition','nozzle_seated'];
+    const oxyAnswered=oxyKeys.every(function(k){return !!String(answers[k]||'').trim();});
+    const oxyNos=oxyKeys.filter(function(k){return String(answers[k]||'')==='no';});
+    const oxyDone=!!String(oxy.completed_by||'').trim()&&oxyAnswered&&(!oxyNos.length||!!String(oxy.notes||'').trim()||oxyNos.some(function(k){return !!String(itemNotes[k]||'').trim();}));
+    let carDone=true;
+    if(loanCarChecksRequired(site)){
+      const car=rec.car_cleaning_form||{},cars=Array.isArray(car.cars)?car.cars:[];
+      if(car.enabled===false||car.no_cars===true) carDone=true;
+      else{
+        const carKeys=['rubbish','dashboard','centre_console','doors_pockets','steering_wheel','gear_stick','seats_wipe','carpets','seats_hoover','mats','boot_space','outside','wheels_trims','windows','wipers'];
+        const first=cars[0]||{};
+        carDone=!!String(car.completed_by||'').trim()&&!!String(first.reg||'').trim()&&cars.filter(function(x){return x&&String(x.reg||'').trim();}).every(function(x){
+          const items=x.items||{};return carKeys.every(function(k){return !!String(items[k]||'').trim();});
+        });
+      }
+    }
+    const stock=Array.isArray(rec.stock_files)&&rec.stock_files.length>0;
+    return !!(rec.weekly_timesheet_done&&cleaning&&stock&&oxyDone&&carDone);
   }
   function cleanName(name){ return String(name||'file').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,120)||'file'; }
   function storagePath(path){ return String(path||'').split('/').filter(Boolean).map(encodeURIComponent).join('/'); }

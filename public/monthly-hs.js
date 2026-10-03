@@ -30,6 +30,7 @@
   let kioskError='';
   let kioskRecord=null;
   let kioskBusy=false;
+  let kioskScreenActive=false;
 
   function esc(v){
     return String(v==null?'':v).replace(/[&<>"']/g,function(ch){
@@ -273,7 +274,7 @@
       const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/monthly_hs_kiosk_status',{method:'POST',headers,body:JSON.stringify({p_site_id:String(siteId)})});
       if(!res.ok) throw new Error('Monthly H&S status '+res.status);
       const data=await res.json(); data.loadedAt=Date.now(); kioskCache.set(key,data);
-      try{if(typeof state!=='undefined'&&state.view==='home'&&typeof render==='function') render();}catch(_e){}
+      try{if(!kioskScreenActive&&typeof state!=='undefined'&&state.view==='home'&&typeof render==='function') render();}catch(_e){}
       return data;
     }catch(_e){ return null; }
     finally{kioskLoading.delete(key);}
@@ -306,6 +307,7 @@
   }
 
   function showMonthlyPin(){
+    kioskScreenActive=true;
     kioskPin=''; kioskError=''; kioskRecord=null;
     const appEl=document.getElementById('app'); if(!appEl) return;
     appEl.innerHTML=(typeof topstrip==='function'?topstrip():'')+'<div class="flow"><div class="flow-card"><h2>Monthly H&amp;S</h2><div class="sub">Enter your PIN to review this month\'s checks</div><div class="pin-dots" data-monthly-pin-dots>'+Array.from({length:4},function(){return '<div class="pin-dot"></div>';}).join('')+'</div>'+monthlyPinPad()+'<div class="error-msg" data-monthly-pin-error></div><div class="back-link" data-monthly-kiosk-cancel>← Cancel</div></div></div>';
@@ -333,6 +335,7 @@
   }
 
   function renderMonthlyReview(){
+    kioskScreenActive=true;
     const r=kioskRecord||{}, values=r.checks||{};
     const rows=CHECKS.map(function(item){
       const v=values[item[0]]||{}, st=String(v.status||'');
@@ -443,7 +446,7 @@
     }
     if(t.hasAttribute('data-monthly-ack')){e.preventDefault();acknowledgeMonthly();return;}
     if(t.hasAttribute('data-monthly-kiosk-cancel')||t.hasAttribute('data-monthly-kiosk-done')){
-      e.preventDefault(); kioskPin='';kioskError='';kioskRecord=null;if(typeof render==='function') render();return;
+      e.preventDefault(); kioskScreenActive=false;kioskPin='';kioskError='';kioskRecord=null;if(typeof render==='function') render();return;
     }
   },true);
 })();

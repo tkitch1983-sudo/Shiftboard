@@ -43,6 +43,23 @@ R.target=function(id,p){
 R.weekDone=r=>{try{return weeklyRecordComplete(r,(state.config.sites||[]).find(s=>String(s.id)===String(r.site_id)))}catch(e){return!!(r.weekly_timesheet_done&&r.site_cleaning_done&&r.stock_take_done&&r.oxy_acetylene_done)}};
 R.hsIssues=h=>{if(!h)return[];const s=(h.draft_checks&&Object.keys(h.draft_checks).length?h.draft_checks:h.checks)||{},a=[];Object.keys(s).forEach(k=>{const q=s[k]||{};if(q.status==='issue')a.push((q.label||k)+(q.note?' — '+q.note:''))});if(String(h.draft_manager_notes||h.manager_notes||'').trim())a.push('Manager note — '+String(h.draft_manager_notes||h.manager_notes).trim());return a};
 
+R.people=function(p,rates){
+ const rate=new Map((rates||[]).map(x=>[String(x.employee_id),R.n(x.pay_rate)]));
+ const sick=new Map(),holiday=new Map(),pending=new Map(),overrides=new Map();
+ (state.absences||[]).forEach(a=>{if(a&&a.type==='sick'&&R.inr(a.date,p.start,p.end))sick.set(String(a.employeeId),(sick.get(String(a.employeeId))||0)+1)});
+ (state.requests||[]).forEach(r=>(r&&r.dates||[]).forEach(x=>{let d='',amt=1;try{d=dateEntryDate(x);amt=dateEntryAmount(x)}catch(e){d=typeof x==='string'?x:x&&x.date}if(!R.inr(d,p.start,p.end))return;const m=r.status==='approved'?holiday:r.status==='pending'?pending:null;if(m)m.set(String(r.employeeId),(m.get(String(r.employeeId))||0)+R.n(amt||1))}));
+ const extras=state.timesheetExtras||{};Object.keys(extras).forEach(w=>Object.entries((extras[w]&&extras[w].employees)||{}).forEach(([id,v])=>Object.entries(v.hoursOverride||{}).forEach(([d,h])=>{if(R.inr(d,p.start,p.end)&&String(h).trim()!=='')overrides.set(id+'|'+d,R.n(h))})));
+ let shifts={};try{shifts=computeAllShifts()}catch(e){}
+ const bonus=((state.bonusSheets||{})[p.month]||{}).employees||{};
+ return(state.config.employees||[]).filter(e=>e.active!==false).map(e=>{
+  const arr=((shifts[e.id]&&shifts[e.id].shifts)||[]).filter(s=>R.inr(s.date,p.start,p.end)),by={};arr.forEach(s=>(by[s.date]=by[s.date]||[]).push(s));
+  let hours=0,worked=0,auto=0,manual=0;Object.keys(by).forEach(d=>{let h=0;try{h=paidHoursForDay(by[d],d,e.siteId,e)}catch(x){h=by[d].reduce((n,s)=>n+Math.max(0,(R.n(s.outTs)-R.n(s.inTs))/3600000),0)}if(overrides.has(e.id+'|'+d)){h=overrides.get(e.id+'|'+d);manual++}if(h>0)worked++;hours+=h;auto+=by[d].filter(s=>s.autoClosed).length});
+  let bf={score:0};try{bf=bradfordStatsForEmployee(e,p.end)}catch(x){}
+  const b=bonus[e.id]||{},bon=R.n(b.owed)+R.n(b.extra)-R.n(b.damages),pr=rate.has(String(e.id))?rate.get(String(e.id)):null;
+  return{id:String(e.id),name:e.name,siteId:String(e.siteId),hours,worked,sick:sick.get(String(e.id))||0,holiday:holiday.get(String(e.id))||0,pending:pending.get(String(e.id))||0,bradford:R.n(bf.score),auto,manual,bonus:bon,payRate:pr,payRef:pr==null?null:hours*pr};
+ });
+};
+
 R.load=async function(force){
  const p=R.period(),key=[p.mode,p.start,p.end,p.month].join('|');if(R.cache.busy)return;if(!force&&R.cache.key===key&&R.cache.data)return;R.cache={key,busy:true,error:'',data:null};
  try{
@@ -52,16 +69,17 @@ R.load=async function(force){
    R.api('weekly_site_checks?select=*&week_start=gte.'+encodeURIComponent(R.mon(p.start))+'&week_start=lte.'+encodeURIComponent(p.end)+'&order=week_start.desc'),
    R.api('monthly_hs_checks?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
    R.api('monthly_hs_acknowledgements?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
-   R.api('mot_monthly_qc?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01'))
+   R.api('mot_monthly_qc?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
+   R.api('staff_pay_rates?select=employee_id,pay_rate')
   ]);
   const stock=new Map();q[1].forEach(r=>{if(!stock.has(String(r.site_key)))stock.set(String(r.site_key),r)});
-  R.cache.data={p,sales:q[0],stock,weekly:q[2],hs:q[3],acks:q[4],mot:q[5]};
+  R.cache.data={p,sales:q[0],stock,weekly:q[2],hs:q[3],acks:q[4],mot:q[5],rates:q[6]||[]};
  }catch(e){R.cache.error=e.message||String(e)}
  R.cache.busy=false;try{if(state.admin.tab==='fullreport')render()}catch(e){}
 };
 
 R.model=function(){
- const d=R.cache.data,p=d.p,work=R.workshops(),hm=new Map(d.hs.map(x=>[String(x.site_id),x])),mm=new Map(d.mot.map(x=>[String(x.site_id),x])),am=new Map();d.acks.forEach(x=>am.set(String(x.site_id),(am.get(String(x.site_id))||0)+1));
- return{p,sites:R.sites().map(s=>{const id=String(s.id),k=R.key(s),rows=d.sales.filter(x=>String(x.site_key)===k).sort((a,b)=>String(a.snapshot_date).localeCompare(String(b.snapshot_date))),last=rows.filter(x=>String(x.snapshot_date)<=p.end).slice(-1)[0],t=R.target(id,p),w=d.weekly.filter(x=>String(x.site_id)===id),h=hm.get(id)||null,m=mm.get(id)||null,st=d.stock.get(k),expected=Array.isArray(h&&h.expected_staff)?h.expected_staff.length:0;return{id,name:s.name,workshop:work.has(id),head:(state.config.employees||[]).filter(e=>e.active!==false&&String(e.siteId)===id).length,sales:R.delta(rows,'total_current',p.start,p.end),compare:R.delta(rows,'total_prior',p.start,p.end),margin:last&&last.margin_current!=null?R.n(last.margin_current):null,target:t?t.target:0,stock:st?R.n(st.stock_value):0,stockDate:st&&st.snapshot_date,weekly:w,weeklyDone:w.filter(R.weekDone).length,hs:h,hsIssues:R.hsIssues(h),expected,acked:am.get(id)||0,mot:m}})};
+ const d=R.cache.data,p=d.p,people=R.people(p,d.rates||[]),work=R.workshops(),hm=new Map(d.hs.map(x=>[String(x.site_id),x])),mm=new Map(d.mot.map(x=>[String(x.site_id),x])),am=new Map();d.acks.forEach(x=>am.set(String(x.site_id),(am.get(String(x.site_id))||0)+1));
+ return{p,people,sites:R.sites().map(s=>{const id=String(s.id),k=R.key(s),rows=d.sales.filter(x=>String(x.site_key)===k).sort((a,b)=>String(a.snapshot_date).localeCompare(String(b.snapshot_date))),last=rows.filter(x=>String(x.snapshot_date)<=p.end).slice(-1)[0],t=R.target(id,p),w=d.weekly.filter(x=>String(x.site_id)===id),h=hm.get(id)||null,m=mm.get(id)||null,st=d.stock.get(k),expected=Array.isArray(h&&h.expected_staff)?h.expected_staff.length:0,pe=people.filter(x=>x.siteId===id);return{id,name:s.name,workshop:work.has(id),people:pe,head:pe.length,hours:pe.reduce((n,x)=>n+x.hours,0),sick:pe.reduce((n,x)=>n+x.sick,0),holiday:pe.reduce((n,x)=>n+x.holiday,0),pending:pe.reduce((n,x)=>n+x.pending,0),auto:pe.reduce((n,x)=>n+x.auto,0),manual:pe.reduce((n,x)=>n+x.manual,0),bonus:pe.reduce((n,x)=>n+x.bonus,0),sales:R.delta(rows,'total_current',p.start,p.end),compare:R.delta(rows,'total_prior',p.start,p.end),margin:last&&last.margin_current!=null?R.n(last.margin_current):null,target:t?t.target:0,stock:st?R.n(st.stock_value):0,stockDate:st&&st.snapshot_date,weekly:w,weeklyDone:w.filter(R.weekDone).length,hs:h,hsIssues:R.hsIssues(h),expected,acked:am.get(id)||0,mot:m}})};
 };
 })();

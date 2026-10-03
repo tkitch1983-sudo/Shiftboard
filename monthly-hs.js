@@ -497,7 +497,12 @@
     if(t.hasAttribute('data-monthly-refresh')){
       e.preventDefault(); const c=cacheFor(selectedSiteId(),selectedMonth()); c.loaded=false; loadAdminRecord(selectedSiteId(),selectedMonth(),true); return;
     }
-    if(t.hasAttribute('data-monthly-kiosk-open')){e.preventDefault();e.stopPropagation();showMonthlyPin();return;}
+    if(t.hasAttribute('data-monthly-kiosk-open')){
+      e.preventDefault();e.stopPropagation();
+      if(window.MonthlyHsKiosk&&typeof window.MonthlyHsKiosk.open==='function') window.MonthlyHsKiosk.open();
+      else showToast('Monthly H&S is loading. Please try again in a moment.',true);
+      return;
+    }
     if(t.hasAttribute('data-monthly-pin-key')){
       e.preventDefault();
       const k=t.getAttribute('data-monthly-pin-key');

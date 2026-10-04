@@ -13,6 +13,7 @@ const B=window.NEASBoardroom=window.NEASBoardroom||{
   clockTimer:null,
   wakeLock:null,
   mobilePresentation:false,
+  directRequested:false,
   lastLoaded:'',
   lastError:''
 };
@@ -25,6 +26,32 @@ function pct(v){return R.pct(v)}
 function today(){return R.today()}
 function fmt(v){return R.fmt(v)}
 function isTony(){try{return typeof isTonyLogin==='function'&&isTonyLogin()}catch(_e){return false}}
+
+function directBoardroomUrl(){
+  const u=new URL(location.href);
+  u.searchParams.set('boardroom','1');
+  u.hash='';
+  return u.toString();
+}
+function directRequested(){
+  try{
+    const q=new URLSearchParams(location.search);
+    return q.get('boardroom')==='1'||String(location.hash||'').toLowerCase()==='#boardroom';
+  }catch(_e){return false}
+}
+B.directRequested=directRequested();
+
+async function copyBoardroomLink(){
+  const url=directBoardroomUrl();
+  try{
+    if(navigator.clipboard&&window.isSecureContext){
+      await navigator.clipboard.writeText(url);
+      try{showToast('Direct Boardroom link copied.')}catch(_e){}
+      return;
+    }
+  }catch(_e){}
+  try{window.prompt('Copy this Boardroom link',url)}catch(_e){}
+}
 
 function ensureState(){
   if(!state.admin.boardroomSpeed)state.admin.boardroomSpeed=20;
@@ -213,6 +240,7 @@ function renderPanel(){
   const controls='<div class="card no-print" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:12px 14px;">'
     +'<div style="margin-right:auto;"><b>Boardroom Presentation</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">Live workshop overview. Sensitive employee-level and pay-rate details are not shown.</div></div>'
     +'<label style="font-size:11px;color:var(--muted);">Change slide every<select id="boardroom-speed" style="min-width:110px;"><option value="15" '+(state.admin.boardroomSpeed==15?'selected':'')+'>15 sec</option><option value="20" '+(state.admin.boardroomSpeed==20?'selected':'')+'>20 sec</option><option value="30" '+(state.admin.boardroomSpeed==30?'selected':'')+'>30 sec</option><option value="60" '+(state.admin.boardroomSpeed==60?'selected':'')+'>60 sec</option></select></label>'
+    +'<button type="button" class="add-btn" data-boardroom-copy-link>Copy direct link</button>'
     +'<button type="button" class="add-btn" data-boardroom-refresh>Refresh now</button>'
     +'<button type="button" class="add-btn" data-boardroom-fullscreen>⛶ Start presentation</button>'
     +'</div>';
@@ -358,11 +386,12 @@ document.addEventListener('change',ev=>{
 },true);
 
 document.addEventListener('click',ev=>{
-  const t=ev.target&&ev.target.closest?ev.target.closest('[data-boardroom-fullscreen],[data-boardroom-refresh],[data-boardroom-prev],[data-boardroom-next],[data-boardroom-pause],[data-boardroom-slide],[data-boardroom-exit]'):null;
+  const t=ev.target&&ev.target.closest?ev.target.closest('[data-boardroom-fullscreen],[data-boardroom-refresh],[data-boardroom-prev],[data-boardroom-next],[data-boardroom-pause],[data-boardroom-slide],[data-boardroom-exit],[data-boardroom-copy-link]'):null;
   if(!t||state.admin.tab!==TAB)return;
   ev.preventDefault();
   if(t.hasAttribute('data-boardroom-fullscreen')){fullscreen();return}
   if(t.hasAttribute('data-boardroom-exit')){exitPresentation();refreshShell();return}
+  if(t.hasAttribute('data-boardroom-copy-link')){copyBoardroomLink();return}
   if(t.hasAttribute('data-boardroom-refresh')){load(true);return}
   const model=currentModel();if(!model)return;
   const count=slidesFor(model).length;
@@ -373,6 +402,47 @@ document.addEventListener('click',ev=>{
   refreshShell();
   ensureTimers();
 },true);
+
+
+function openDirectBoardroomWhenReady(){
+  if(!B.directRequested)return;
+  let tries=0;
+  const timer=setInterval(()=>{
+    tries++;
+    if(tries>80){clearInterval(timer);return}
+    if(typeof state==='undefined'||!state.admin)return;
+    if(state.view==='loading')return;
+    if(_session&&isTony()){
+      clearInterval(timer);
+      state.admin.tab=TAB;
+      state.view='admin';
+      if(typeof render==='function')render();
+      return;
+    }
+    if(!_session&&state.view!=='admin-pin'){
+      state.admin.pin='';
+      state.admin.error='';
+      state.view='admin-pin';
+      if(typeof render==='function')render();
+    }
+  },250);
+}
+
+try{
+  if(B.directRequested&&typeof submitManagerLogin==='function'){
+    const oldSubmitManagerLogin=submitManagerLogin;
+    submitManagerLogin=async function(){
+      await oldSubmitManagerLogin();
+      if(B.directRequested&&_session&&isTony()&&!state.admin.forcePasswordChange){
+        state.admin.tab=TAB;
+        state.view='admin';
+        if(typeof render==='function')render();
+      }
+    };
+  }
+}catch(_e){}
+
+openDirectBoardroomWhenReady();
 
 document.addEventListener('fullscreenchange',()=>{
   if(!document.fullscreenElement&&!B.mobilePresentation&&B.wakeLock){try{B.wakeLock.release()}catch(_e){}B.wakeLock=null}

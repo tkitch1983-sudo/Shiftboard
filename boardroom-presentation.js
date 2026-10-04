@@ -12,6 +12,7 @@ const B=window.NEASBoardroom=window.NEASBoardroom||{
   refreshTimer:null,
   clockTimer:null,
   wakeLock:null,
+  mobilePresentation:false,
   lastLoaded:'',
   lastError:''
 };
@@ -177,6 +178,8 @@ function renderSlide(model){
   return '<style>'
     +'#boardroom-shell{min-height:calc(100vh - 80px);background:var(--bg);color:var(--text);border-radius:14px;padding:18px;position:relative;overflow:hidden;}'
     +'#boardroom-shell:fullscreen{min-height:100vh;border-radius:0;padding:26px 34px;background:var(--bg);}'
+    +'#boardroom-shell.boardroom-mobile-presentation{position:fixed;inset:0;z-index:999999;min-height:100dvh;height:100dvh;border-radius:0;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));overflow:auto;background:var(--bg);}'
+    +'#boardroom-shell.boardroom-mobile-presentation .boardroom-content{max-height:none;overflow:visible;}'
     +'#boardroom-shell table{font-size:14px;}'
     +'#boardroom-shell .boardroom-title{font-size:36px;line-height:1.05;font-weight:950;letter-spacing:-.02em;}'
     +'#boardroom-shell:fullscreen .boardroom-title{font-size:48px;}'
@@ -195,6 +198,7 @@ function renderSlide(model){
       +'<button type="button" class="add-btn" data-boardroom-prev style="margin-left:auto;">‹ Previous</button>'
       +'<button type="button" class="add-btn" data-boardroom-pause>'+(B.paused?'▶ Resume':'Ⅱ Pause')+'</button>'
       +'<button type="button" class="add-btn" data-boardroom-next>Next ›</button>'
+      +(B.mobilePresentation?'<button type="button" class="add-btn" data-boardroom-exit>Exit presentation</button>':'')
     +'</div>'
     +'</div>';
 }
@@ -218,15 +222,23 @@ function renderPanel(){
   return controls+renderSlide(model);
 }
 
+function applyPresentationState(el){
+  if(!el)return;
+  el.classList.toggle('boardroom-mobile-presentation',!!B.mobilePresentation);
+  document.documentElement.style.overflow=B.mobilePresentation?'hidden':'';
+  document.body.style.overflow=B.mobilePresentation?'hidden':'';
+}
+
 function refreshShell(){
   if(state.admin.tab!==TAB)return;
   const model=currentModel(),live=document.getElementById('boardroom-shell');
   if(model&&live){
     const wrap=document.createElement('div');wrap.innerHTML=renderSlide(model);
     const fresh=wrap.querySelector('#boardroom-shell');
-    if(fresh){live.innerHTML=fresh.innerHTML;return}
+    if(fresh){live.innerHTML=fresh.innerHTML;applyPresentationState(live);return}
   }
   if(typeof render==='function')render();
+  setTimeout(()=>applyPresentationState(document.getElementById('boardroom-shell')),0);
 }
 
 async function load(force){
@@ -273,16 +285,41 @@ function ensureTimers(){
   },1000);
 }
 
+async function requestWakeLock(){
+  if('wakeLock' in navigator){
+    try{B.wakeLock=await navigator.wakeLock.request('screen')}catch(_e){}
+  }
+}
+
+function startMobilePresentation(){
+  B.mobilePresentation=true;
+  applyPresentationState(document.getElementById('boardroom-shell'));
+}
+
+async function exitPresentation(){
+  B.mobilePresentation=false;
+  applyPresentationState(document.getElementById('boardroom-shell'));
+  if(document.fullscreenElement&&document.exitFullscreen){
+    try{await document.exitFullscreen()}catch(_e){}
+  }
+  if(B.wakeLock){try{await B.wakeLock.release()}catch(_e){}B.wakeLock=null}
+}
+
 async function fullscreen(){
   const el=document.getElementById('boardroom-shell');
+  B.mobilePresentation=false;
+  applyPresentationState(el);
+  let nativeStarted=false;
   try{
-    if(el&&document.fullscreenElement!==el)await el.requestFullscreen();
-    if('wakeLock' in navigator){
-      try{B.wakeLock=await navigator.wakeLock.request('screen')}catch(_e){}
+    if(el&&typeof el.requestFullscreen==='function'){
+      if(document.fullscreenElement!==el)await el.requestFullscreen();
+      nativeStarted=document.fullscreenElement===el;
     }
-  }catch(err){
-    try{showToast('Full screen could not start. Use the browser full-screen control.',true)}catch(_e){}
+  }catch(_e){
+    nativeStarted=false;
   }
+  if(!nativeStarted)startMobilePresentation();
+  await requestWakeLock();
   B.paused=false;ensureTimers();
 }
 
@@ -321,10 +358,11 @@ document.addEventListener('change',ev=>{
 },true);
 
 document.addEventListener('click',ev=>{
-  const t=ev.target&&ev.target.closest?ev.target.closest('[data-boardroom-fullscreen],[data-boardroom-refresh],[data-boardroom-prev],[data-boardroom-next],[data-boardroom-pause],[data-boardroom-slide]'):null;
+  const t=ev.target&&ev.target.closest?ev.target.closest('[data-boardroom-fullscreen],[data-boardroom-refresh],[data-boardroom-prev],[data-boardroom-next],[data-boardroom-pause],[data-boardroom-slide],[data-boardroom-exit]'):null;
   if(!t||state.admin.tab!==TAB)return;
   ev.preventDefault();
   if(t.hasAttribute('data-boardroom-fullscreen')){fullscreen();return}
+  if(t.hasAttribute('data-boardroom-exit')){exitPresentation();refreshShell();return}
   if(t.hasAttribute('data-boardroom-refresh')){load(true);return}
   const model=currentModel();if(!model)return;
   const count=slidesFor(model).length;
@@ -337,7 +375,13 @@ document.addEventListener('click',ev=>{
 },true);
 
 document.addEventListener('fullscreenchange',()=>{
-  if(!document.fullscreenElement&&B.wakeLock){try{B.wakeLock.release()}catch(_e){}B.wakeLock=null}
+  if(!document.fullscreenElement&&!B.mobilePresentation&&B.wakeLock){try{B.wakeLock.release()}catch(_e){}B.wakeLock=null}
+});
+
+window.addEventListener('pagehide',()=>{
+  B.mobilePresentation=false;
+  document.documentElement.style.overflow='';
+  document.body.style.overflow='';
 });
 
 })();

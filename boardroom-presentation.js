@@ -205,17 +205,17 @@ function renderSlide(model){
   const s=slides[B.slide],latest=latestSnapshotDate();
   const dots=slides.map((_,i)=>'<button type="button" data-boardroom-slide="'+i+'" aria-label="Slide '+(i+1)+'" style="width:'+(i===B.slide?'30':'9')+'px;height:9px;border:0;border-radius:999px;padding:0;cursor:pointer;background:'+(i===B.slide?'var(--amber)':'var(--line)')+';"></button>').join('');
   return '<style>'
-    +'#boardroom-shell{min-height:calc(100vh - 80px);background:var(--bg);color:var(--text);border-radius:14px;padding:18px;position:relative;overflow:hidden;}'
-    +'#boardroom-shell:fullscreen{min-height:100vh;border-radius:0;padding:26px 34px;background:var(--bg);}'
-    +'#boardroom-shell.boardroom-mobile-presentation{position:fixed;inset:0;z-index:999999;min-height:100dvh;height:100dvh;border-radius:0;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));overflow:auto;background:var(--bg);}'
-    +'#boardroom-shell.boardroom-mobile-presentation .boardroom-content{max-height:none;overflow:visible;}'
+    +'#boardroom-shell{min-height:calc(100vh - 80px);background:var(--bg);color:var(--text);border-radius:14px;padding:18px;position:relative;overflow:hidden;box-sizing:border-box;}'
+    +'#boardroom-shell:fullscreen{height:100vh;min-height:100vh;border-radius:0;padding:22px 28px;background:var(--bg);}'
+    +'#boardroom-shell.boardroom-mobile-presentation{position:fixed;inset:0;z-index:999999;min-height:100dvh;height:100dvh;border-radius:0;padding:max(12px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));overflow:hidden;background:var(--bg);box-sizing:border-box;}'
+    +'#boardroom-shell .boardroom-stage{transform-origin:top left;width:100%;}'
+    +'#boardroom-shell.boardroom-mobile-presentation .boardroom-content,#boardroom-shell:fullscreen .boardroom-content{max-height:none;overflow:visible;}'
     +'#boardroom-shell table{font-size:14px;}'
     +'#boardroom-shell .boardroom-title{font-size:36px;line-height:1.05;font-weight:950;letter-spacing:-.02em;}'
-    +'#boardroom-shell:fullscreen .boardroom-title{font-size:48px;}'
-    +'#boardroom-shell:fullscreen .boardroom-content{max-height:calc(100vh - 190px);overflow:auto;}'
+    +'#boardroom-shell:fullscreen .boardroom-title{font-size:44px;}'
     +'@media(max-width:900px){#boardroom-shell .boardroom-title{font-size:28px;}#boardroom-shell [style*="grid-template-columns:repeat(4"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;}#boardroom-shell [style*="grid-template-columns:repeat(2"]{grid-template-columns:1fr!important;}}'
     +'</style>'
-    +'<div id="boardroom-shell">'
+    +'<div id="boardroom-shell"><div class="boardroom-stage">'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:18px;">'
       +'<div><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;">'+pill('LIVE','var(--green)')+'<span style="font-size:12px;color:var(--muted);">North East Auto Services · Boardroom</span></div><div class="boardroom-title">'+e(s.title)+'</div><div style="font-size:14px;color:var(--muted);margin-top:6px;">'+e(s.kicker)+'</div></div>'
       +'<div style="text-align:right;"><div id="boardroom-clock" class="mono" style="font-size:26px;font-weight:900;">'+e(new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+e(new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</div><div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+(latest?'Sales data through '+e(fmt(latest)):'Waiting for sales data')+'</div></div>'
@@ -229,7 +229,7 @@ function renderSlide(model){
       +'<button type="button" class="add-btn" data-boardroom-next>Next ›</button>'
       +(B.mobilePresentation?'<button type="button" class="add-btn" data-boardroom-exit>Exit presentation</button>':'')
     +'</div>'
-    +'</div>';
+    +'</div></div>';
 }
 
 function renderPanel(){
@@ -252,11 +252,29 @@ function renderPanel(){
   return controls+renderSlide(model);
 }
 
+function fitBoardroomToViewport(el){
+  if(!el)return;
+  const stage=el.querySelector('.boardroom-stage');if(!stage)return;
+  stage.style.zoom='1';
+  const presenting=!!B.mobilePresentation||document.fullscreenElement===el;
+  if(!presenting)return;
+  requestAnimationFrame(()=>{
+    stage.style.zoom='1';
+    const availableH=Math.max(1,el.clientHeight-4);
+    const availableW=Math.max(1,el.clientWidth-4);
+    const neededH=Math.max(1,stage.scrollHeight);
+    const neededW=Math.max(1,stage.scrollWidth);
+    const scale=Math.min(1,availableH/neededH,availableW/neededW);
+    stage.style.zoom=String(Math.max(.58,scale));
+  });
+}
+
 function applyPresentationState(el){
   if(!el)return;
   el.classList.toggle('boardroom-mobile-presentation',!!B.mobilePresentation);
   document.documentElement.style.overflow=B.mobilePresentation?'hidden':'';
   document.body.style.overflow=B.mobilePresentation?'hidden':'';
+  fitBoardroomToViewport(el);
 }
 
 function refreshShell(){
@@ -447,7 +465,16 @@ try{
 openDirectBoardroomWhenReady();
 
 document.addEventListener('fullscreenchange',()=>{
+  const el=document.getElementById('boardroom-shell');
+  if(el)setTimeout(()=>fitBoardroomToViewport(el),50);
   if(!document.fullscreenElement&&!B.mobilePresentation&&B.wakeLock){try{B.wakeLock.release()}catch(_e){}B.wakeLock=null}
+});
+
+window.addEventListener('resize',()=>{
+  if(state.admin&&state.admin.tab===TAB){
+    const el=document.getElementById('boardroom-shell');
+    if(el)setTimeout(()=>fitBoardroomToViewport(el),50);
+  }
 });
 
 window.addEventListener('pagehide',()=>{

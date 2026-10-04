@@ -29,14 +29,16 @@ function isTony(){try{return typeof isTonyLogin==='function'&&isTonyLogin()}catc
 
 function directBoardroomUrl(){
   const u=new URL(location.href);
-  u.searchParams.set('boardroom','1');
+  u.pathname='/boardroom';
+  u.search='';
   u.hash='';
   return u.toString();
 }
 function directRequested(){
   try{
     const q=new URLSearchParams(location.search);
-    return q.get('boardroom')==='1'||String(location.hash||'').toLowerCase()==='#boardroom';
+    const path=String(location.pathname||'').replace(/\/+$/,'').toLowerCase();
+    return path==='/boardroom'||q.get('boardroom')==='1'||String(location.hash||'').toLowerCase()==='#boardroom';
   }catch(_e){return false}
 }
 B.directRequested=directRequested();

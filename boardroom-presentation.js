@@ -202,7 +202,8 @@ function renderSlide(model){
 function renderPanel(){
   if(!isTony())return '<div class="card" style="color:var(--red);">Boardroom Presentation is currently available to Tony only.</div>';
   ensureState();
-  const model=currentModel();
+  const desired=['day',today(),today(),today().slice(0,7)].join('|');
+  const model=(R.cache&&R.cache.key===desired)?currentModel():null;
   const loading=R.cache&&R.cache.busy&&!model;
   const err=(R.cache&&R.cache.error)||B.lastError;
   const controls='<div class="card no-print" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:12px 14px;">'
@@ -217,6 +218,17 @@ function renderPanel(){
   return controls+renderSlide(model);
 }
 
+function refreshShell(){
+  if(state.admin.tab!==TAB)return;
+  const model=currentModel(),live=document.getElementById('boardroom-shell');
+  if(model&&live){
+    const wrap=document.createElement('div');wrap.innerHTML=renderSlide(model);
+    const fresh=wrap.querySelector('#boardroom-shell');
+    if(fresh){live.innerHTML=fresh.innerHTML;return}
+  }
+  if(typeof render==='function')render();
+}
+
 async function load(force){
   if(!isTony())return;
   state.admin.reportPeriodMode='day';
@@ -229,7 +241,7 @@ async function load(force){
   }catch(err){
     B.lastError=err&&err.message?err.message:String(err);
   }
-  if(state.admin.tab===TAB&&typeof render==='function')render();
+  if(state.admin.tab===TAB)refreshShell();
 }
 
 function clearTimers(){
@@ -248,7 +260,7 @@ function ensureTimers(){
     const model=currentModel();if(!model)return;
     const count=slidesFor(model).length;
     B.slide=(B.slide+1)%count;
-    if(typeof render==='function')render();
+    refreshShell();
   },speed);
   B.refreshTimer=setInterval(()=>{
     if(state.admin.tab!==TAB){clearTimers();return}
@@ -320,7 +332,7 @@ document.addEventListener('click',ev=>{
   else if(t.hasAttribute('data-boardroom-next'))B.slide=(B.slide+1)%count;
   else if(t.hasAttribute('data-boardroom-pause'))B.paused=!B.paused;
   else if(t.hasAttribute('data-boardroom-slide'))B.slide=Math.max(0,Math.min(count-1,Number(t.getAttribute('data-boardroom-slide'))||0));
-  if(typeof render==='function')render();
+  refreshShell();
   ensureTimers();
 },true);
 

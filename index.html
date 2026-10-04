@@ -863,7 +863,7 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
-  if(tab==='targetsetup'||tab==='fullreport') return isTonyLogin();
+  if(tab==='targetsetup'||tab==='fullreport'||tab==='boardroom') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
   // never see the Pay Rates tab, even if their general role is "super".
   if(tab==='payrates') return isPayRateLogin();
@@ -3252,7 +3252,7 @@ function renderAdminAccess(){
   state.admin.permissionEmail=String(chosen.email||'').toLowerCase();
   const overrides=(state.admin.permissionRows||[]).filter(p=>String(p.email||'').toLowerCase()===state.admin.permissionEmail);
   const setting=(key)=>overrides.find(p=>p.tab_key===key);
-  const permissionOptions=ADMIN_TAB_OPTIONS.filter(([key])=>!['targetsetup','fullreport'].includes(key));
+  const permissionOptions=ADMIN_TAB_OPTIONS.filter(([key])=>!['targetsetup','fullreport','boardroom'].includes(key));
   const grouped=[...new Set(permissionOptions.map(([, ,group])=>group))].map(group=>{
     const controls=permissionOptions.filter(([, ,g])=>g===group).map(([key,label])=>{
       const row=setting(key), on=row?row.allowed!==false:defaultTabAccessFor(chosen.role,chosen.siteId,chosen.email,key);

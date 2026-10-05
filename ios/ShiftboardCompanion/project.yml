@@ -1,0 +1,48 @@
+name: ShiftboardCompanion
+
+options:
+  bundleIdPrefix: com.neautoservices
+  deploymentTarget:
+    iOS: "18.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  ShiftboardCompanion:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: ShiftboardCompanion
+    info:
+      path: ShiftboardCompanion/Info.plist
+    entitlements:
+      path: ShiftboardCompanion/ShiftboardCompanion.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.neautoservices.shiftboard
+        PRODUCT_NAME: Shiftboard
+    dependencies:
+      - target: ShiftboardWidget
+        embed: true
+
+  ShiftboardWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: ShiftboardWidget
+    info:
+      path: ShiftboardWidget/Info.plist
+    entitlements:
+      path: ShiftboardWidget/ShiftboardWidget.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.neautoservices.shiftboard.widget
+        PRODUCT_NAME: ShiftboardWidget
+        SKIP_INSTALL: YES

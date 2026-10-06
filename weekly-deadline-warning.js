@@ -58,14 +58,12 @@
     const localDate=localDateUtc(p);
 
     if(dayIndex===1){
+      if(p.hour>=11)return null;
       const weekStart=addUtcDays(localDate,-7);
-      const beforeDeadline=p.hour<11;
       return {
-        tone:beforeDeadline?'urgent':'overdue',
-        title:beforeDeadline?'DUE BY 11:00 TODAY':'OVERDUE',
-        text:beforeDeadline
-          ? 'Last week\'s timesheets and weekly checks (week commencing '+fmtDate(weekStart)+') must be completed and checked before 11:00 today.'
-          : 'Last week\'s timesheets and weekly checks (week commencing '+fmtDate(weekStart)+') should have been completed and checked by 11:00 today.'
+        tone:'urgent',
+        title:'DUE BY 11:00 TODAY',
+        text:'All timesheets and weekly checks for the week commencing '+fmtDate(weekStart)+' must be completed and checked before 11:00am today.'
       };
     }
 
@@ -76,7 +74,7 @@
     return {
       tone:'due',
       title:'WEEKLY DEADLINE',
-      text:'All timesheets and weekly checks for the week commencing '+fmtDate(weekStart)+' must be completed and checked by 11:00 Monday '+fmtDate(deadline)+'.'
+      text:'All timesheets and weekly checks for the week commencing '+fmtDate(weekStart)+' must be completed and checked before 11:00am on Monday '+fmtDate(deadline)+'.'
     };
   }
 

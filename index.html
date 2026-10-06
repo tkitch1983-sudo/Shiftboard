@@ -5565,22 +5565,45 @@ function renderAdminBankHolidays(){
   </div>`;
 }
 
+function normaliseClockPhotoSrc(value){
+  let v=value;
+  if(v&&typeof v==='object') v=v.image||v.data||v.url||v.src||'';
+  if(typeof v!=='string') return '';
+  v=v.trim();
+  if(!v) return '';
+  if(/^data:image\/(?:jpeg|jpg|png|webp|gif);base64,/i.test(v)) return v;
+  if(/^(?:https?:|blob:)/i.test(v)) return v;
+  if(/^\/9j\//.test(v)) return 'data:image/jpeg;base64,'+v;
+  if(/^iVBOR/.test(v)) return 'data:image/png;base64,'+v;
+  if(/^UklGR/.test(v)) return 'data:image/webp;base64,'+v;
+  if(/^[A-Za-z0-9+/=\r\n]+$/.test(v)&&v.length>200) return 'data:image/jpeg;base64,'+v.replace(/\s+/g,'');
+  return '';
+}
+
 function renderClockPhotoModal(){
-  const eventId = state.admin.viewingClockPhoto;
-  if(!eventId || !state.admin.clockPhotos || !state.admin.clockPhotos[eventId]) return '';
-  const ev = state.events.find(x=>x && x.id===eventId);
-  const emp = ev ? employeeById(ev.employeeId) : null;
-  const evSite = ev ? (ev.siteId || (emp ? emp.siteId : null)) : null;
-  const isSuper = state.admin.role==='super';
-  return `<div class="modal-overlay" data-modal-overlay="1"><div class="modal" style="width:min(760px,96vw);">
-    <h3>Clock photo</h3>
-    <div style="color:var(--muted);font-size:13px;margin-bottom:12px;">${emp?emp.name:'Employee'}${ev?` · ${siteName(evSite)} · ${fmtTime(ev.timestamp)}`:''}</div>
-    <img src="${state.admin.clockPhotos[eventId]}" alt="clock-in photo" style="display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:4px;border:1px solid var(--line);">
-    <div class="modal-actions" style="justify-content:flex-end;">
-      ${isSuper ? `<button type="button" class="action-btn danger" data-action="delete-clock-photo" data-id="${eventId}" style="width:auto;margin:0;">Delete photo</button>` : ''}
-      <button type="button" class="action-btn secondary" data-action="close-clock-photo" style="width:auto;margin:0;">Close</button>
-    </div>
-  </div></div>`;
+  const eventId=state.admin.viewingClockPhoto;
+  if(!eventId||!state.admin.clockPhotos||!state.admin.clockPhotos[eventId]) return '';
+  const ev=(state.events||[]).find(x=>x&&String(x.id)===String(eventId))||null;
+  const emp=ev?employeeById(ev.employeeId):null;
+  const evSite=ev?(ev.siteId||(emp?emp.siteId:null)):null;
+  const parts=[emp&&emp.name?emp.name:'Employee'];
+  if(evSite) parts.push(siteName(evSite));
+  if(ev) parts.push(fmtTime(ev.timestamp));
+  const meta=parts.filter(Boolean).join(' · ');
+  const src=normaliseClockPhotoSrc(state.admin.clockPhotos[eventId]);
+  const media=src
+    ? '<img src="'+h(src)+'" alt="Clock photo" style="display:block;max-width:100%;max-height:70vh;margin:0 auto;border-radius:4px;border:1px solid var(--line);object-fit:contain;" onerror="this.style.display=\'none\';var n=this.nextElementSibling;if(n)n.style.display=\'block\';"><div style="display:none;padding:24px;text-align:center;border:1px solid var(--line);border-radius:4px;color:var(--muted);">This photo could not be displayed. The clock record is still intact.</div>'
+    : '<div style="padding:24px;text-align:center;border:1px solid var(--line);border-radius:4px;color:var(--muted);">This photo is no longer in a displayable format. The clock record is still intact.</div>';
+  const deleteBtn=state.admin.role==='super'
+    ? '<button type="button" class="action-btn danger" data-action="delete-clock-photo" data-id="'+h(eventId)+'" style="width:auto;margin:0;">Delete photo</button>'
+    : '';
+  return '<div class="modal-overlay" data-modal-overlay="1"><div class="modal" style="width:min(760px,96vw);">'
+    +'<h3>Clock photo</h3>'
+    +'<div style="color:var(--muted);font-size:13px;margin-bottom:12px;">'+h(meta)+'</div>'
+    +media
+    +'<div class="modal-actions" style="justify-content:flex-end;">'+deleteBtn
+    +'<button type="button" class="action-btn secondary" data-action="close-clock-photo" style="width:auto;margin:0;">Close</button></div>'
+    +'</div></div>';
 }
 
 /* When a leaver's retention period (set in Settings → Data protection) has

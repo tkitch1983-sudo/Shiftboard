@@ -863,7 +863,7 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
-  if(tab==='targetsetup'||tab==='fullreport'||tab==='boardroom') return isTonyLogin();
+  if(tab==='targetsetup'||tab==='fullreport'||tab==='boardroom'||tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
   // never see the Pay Rates tab, even if their general role is "super".
   if(tab==='payrates') return isPayRateLogin();
@@ -3939,7 +3939,7 @@ async function importPayRateCsv(file){
 }
 
 function renderAdminCameras(){
-  if(state.admin.role!=='super') return '<h2>Cameras</h2><div class="card">Upper Management only.</div>';
+  if(!isTonyLogin()) return '<h2>Cameras</h2><div class="card">Tony only.</div>';
   const physicalSites=(state.config.sites||[]).filter(function(site){
     const n=String(site&&site.name||'').toLowerCase();
     return n && !/upper management|floaters/.test(n);
@@ -3947,18 +3947,16 @@ function renderAdminCameras(){
   const cards=physicalSites.map(function(site){
     const name=String(site.name||'Site');
     const n=name.toLowerCase();
-    const hik=/lido|seaham/.test(n);
-    const provider=hik?'Hik-Connect':'XMEye';
-    const url=hik?'https://www.hik-connect.com/views/login/index.html':'https://www.xmeye.net/';
-    return '<div class="card" style="margin:0;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">'
-      +'<div><div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
-      +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+provider+'</div></div>'
-      +'<a class="btn-sm" href="'+url+'" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">📹 Open Cameras</a>'
-      +'</div>';
+    const provider=/lido|seaham/.test(n)?'Hik-Connect':'XMEye';
+    return '<div class="card" style="margin:0;padding:14px;">'
+      +'<div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;">'
+      +'<span style="font-size:12px;color:var(--muted);">'+provider+'</span>'
+      +'<span class="pill pill-pending">NOT LINKED YET</span>'
+      +'</div></div>';
   }).join('');
-  return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">'
-    +'<div><h2>Cameras</h2><div class="head-sub" style="margin-bottom:0;">Upper Management · camera system launchers by site</div></div></div>'
-    +'<div class="card" style="margin-top:14px;border-left:4px solid var(--amber);"><b>Camera logins stay with Hik-Connect / XMEye.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Shiftboard does not store camera usernames or passwords.</div></div>'
+  return '<div><h2>Cameras</h2><div class="head-sub" style="margin-bottom:0;">Tony only · camera overview</div></div>'
+    +'<div class="card" style="margin-top:14px;border-left:4px solid var(--amber);"><b>No app or web links are connected yet.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">This page is ready for direct Shiftboard camera integration later.</div></div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px;">'+(cards||'<div class="card">No sites available.</div>')+'</div>';
 }
 

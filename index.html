@@ -1964,6 +1964,11 @@ function firstInToday(empId, dateStr){
   if(!evs.length) return null;
   return evs.reduce((min,e)=> e.timestamp<min.timestamp?e:min, evs[0]);
 }
+function lastOutToday(empId, dateStr){
+  const evs = state.events.filter(e=>e.employeeId===empId && e.type==='out' && iso(new Date(e.timestamp))===dateStr);
+  if(!evs.length) return null;
+  return evs.reduce((max,e)=> e.timestamp>max.timestamp?e:max, evs[0]);
+}
 function findPinConflict(pin, excludeType, excludeId){
   const empConflict = state.config.employees.find(e=> e.pin===pin && !(excludeType==='employee' && e.id===excludeId));
   if(empConflict) return empConflict.name+' (employee)';
@@ -4306,6 +4311,7 @@ function renderAdminRegister(){
     const stale = isStaleOpenShift(emp.id);
     const staleDate = stale ? staleOpenShiftDate(emp.id) : null;
     const firstIn = firstInToday(emp.id, todayStr);
+    const lastOut = lastOutToday(emp.id, todayStr);
     const onHoliday = approvedDatesForEmployee(emp.id).has(todayStr);
     const holidayAmt = onHoliday ? approvedDatesForEmployee(emp.id).get(todayStr) : 0;
     const isVisitor = effectiveSite!=='all' && emp.siteId!==effectiveSite;
@@ -4360,6 +4366,7 @@ function renderAdminRegister(){
       <td>${statusBadge}</td>
       <td class="mono">
         ${firstIn ? timeOnly(firstIn.timestamp) : '<span style="color:var(--muted-2);">—</span>'}
+        ${status==='out' && lastOut ? `<div style="margin-top:3px;color:var(--muted);font-size:11px;">Out <b style="color:var(--text);">${timeOnly(lastOut.timestamp)}</b></div>` : ''}
         ${canEdit ? `<div class="reg-abs-actions">
           ${firstIn
             ? `<button type="button" class="reg-abs-btn" data-action="edit-clock-time" data-id="${emp.id}">✎ Edit time</button>`
@@ -4422,7 +4429,7 @@ function renderAdminRegister(){
   </div>
   <div class="card">
     <table>
-      <thead><tr><th>Employee</th><th>Site</th><th>Status</th><th>Signed in</th><th>Lateness</th></tr></thead>
+      <thead><tr><th>Employee</th><th>Site</th><th>Status</th><th>Signed in / out</th><th>Lateness</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="5" class="empty-state">No employees to show.</td></tr>`}</tbody>
     </table>
   </div>`;

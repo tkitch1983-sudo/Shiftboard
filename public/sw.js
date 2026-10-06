@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v85';
+const CACHE='neas-shift-board-shell-v80';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -19,14 +19,13 @@ const INJECT=[
   ['holiday-approval-snapshot.js','1'],
   ['all-print-branding.js','1'],
   ['manager-pin-reset.js','1'],
-  ['weekly-checks.js','2'],
+  ['weekly-checks.js','1'],
   ['weekly-checks-print.js','1'],
   ['weekly-checks-workshop.js','3'],
   ['weekly-checks-name-dropdowns.js','1'],
   ['weekly-checks-counter-fix.js','1'],
   ['weekly-checks-section-saves.js','1'],
   ['weekly-checks-save-feedback.js','1'],
-  ['weekly-deadline-warning.js','2'],
   ['monthly-hs.js','3'],
   ['mot-qc-register.js','1'],
   ['mot-followup.js','1'],
@@ -41,8 +40,6 @@ const INJECT=[
   ['bonus-prediction-lido.js','1'],
   ['floater-bonus.js','1'],
   ['bonus-excel-export.js','1'],
-  ['management-checks-summary.js','1'],
-  ['clock-photo-modal-fix.js','2'],
   ['auto-update.js','1']
 ];
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png',...INJECT.map(([f])=>'./'+f)];

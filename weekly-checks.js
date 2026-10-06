@@ -246,19 +246,7 @@
       +historyHtml(sid);
   }
 
-  function weeklyReminderWindowOpen(){
-    try{
-      const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',weekday:'long'}).formatToParts(new Date());
-      const weekday=(parts.find(function(p){return p.type==='weekday';})||{}).value||'';
-      return weekday==='Friday'||weekday==='Saturday'||weekday==='Sunday';
-    }catch(_e){
-      const day=new Date().getDay();
-      return day===5||day===6||day===0;
-    }
-  }
-
   function reminderHtml(){
-    if(!weeklyReminderWindowOpen()) return '';
     if(state.admin.role!=='site' || loading || loadError || loadedWeek!==currentWeekStart()) return '';
     const sid=String(state.admin.scopeSite||'');
     const rec=recordFor(sid), site=siteFor(sid);
@@ -364,6 +352,8 @@
         main.innerHTML=(top?top.outerHTML:'')+renderWeekly();
       }else{
         const top=main.querySelector('.admin-topbar');
+        const reminder=reminderHtml();
+        if(top && reminder) top.insertAdjacentHTML('afterend',reminder);
       }
       return wrap.innerHTML;
     };

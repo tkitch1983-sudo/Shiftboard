@@ -319,8 +319,6 @@
         main.innerHTML=(top?top.outerHTML:'')+renderWeekly();
       }else{
         const top=main.querySelector('.admin-topbar');
-        const reminder=reminderHtml();
-        if(top && reminder) top.insertAdjacentHTML('afterend',reminder);
       }
       return wrap.innerHTML;
     };

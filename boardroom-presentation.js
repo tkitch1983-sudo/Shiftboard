@@ -195,9 +195,54 @@ function liveBoardroomRoster(model){
   return{events,latestByEmployee,employeeMap,records};
 }
 
+function mtdBoardroomMetrics(model){
+  const d=R.cache&&R.cache.data;
+  const month=today().slice(0,7);
+  const start=month+'-01';
+  const monthRows=d&&Array.isArray(d.sales)
+    ? d.sales.filter(x=>String(x.snapshot_date||'').slice(0,7)===month)
+    : [];
+  const latest=monthRows.map(x=>String(x.snapshot_date||'').slice(0,10)).filter(Boolean).sort().slice(-1)[0]||null;
+  const end=latest||today();
+  const p={mode:'mtd',start,end,month,label:'MTD'};
+  const rows=model.sites.map(site=>{
+    const key=R.key({name:site.name});
+    const salesRows=monthRows
+      .filter(x=>String(x.site_key)===String(key))
+      .sort((a,b)=>String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
+    const sales=latest?R.delta(salesRows,'total_current',start,end):0;
+    const prior=latest?R.delta(salesRows,'total_prior',start,end):0;
+    const targetInfo=R.target(String(site.id),p);
+    const target=latest&&targetInfo?targetInfo.target:0;
+    const variance=sales-target;
+    return{
+      id:String(site.id),
+      name:site.name,
+      sales,
+      prior,
+      target,
+      variance,
+      attainment:target?sales/target*100:null
+    };
+  });
+  const byId=new Map(rows.map(x=>[String(x.id),x]));
+  const groupSales=rows.reduce((a,x)=>a+n(x.sales),0);
+  const groupTarget=rows.reduce((a,x)=>a+n(x.target),0);
+  const groupPrior=rows.reduce((a,x)=>a+n(x.prior),0);
+  return{
+    start,end,latest,rows,byId,
+    groupSales,
+    groupTarget,
+    groupPrior,
+    groupVariance:groupSales-groupTarget,
+    groupVsPrior:groupSales-groupPrior
+  };
+}
+
 function pulseSlide(model){
   const sites=model.sites;
-  const sales=sites.reduce((a,s)=>a+n(s.sales),0),target=sites.reduce((a,s)=>a+n(s.target),0),variance=sales-target;
+  const mtd=mtdBoardroomMetrics(model);
+  const sales=mtd.groupSales,target=mtd.groupTarget,variance=mtd.groupVariance;
   const live=liveBoardroomRoster(model);
   const staffWorking=live.records.filter(x=>x.status==='on').length;
   const dinnerNow=live.records.filter(x=>x.status==='dinner').length;
@@ -208,11 +253,11 @@ function pulseSlide(model){
   const latest=latestSnapshotDate();
   return {
     title:'Business pulse',
-    kicker:'Today across the workshop group',
+    kicker:'Month-to-date sales + live workshop attendance',
     html:'<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;">'
-      +metric('Sales',money(sales),latest?'Sales data through '+fmt(latest):'No sales snapshot yet')
-      +metric('Target',target?money(target):'—','Today’s workshop target')
-      +metric('Variance',target?((variance>=0?'+':'')+money(variance)):'—',target?(sales>=target?'At or above target':'Behind target'):'No target set',target?statusTone(sales,target):'var(--muted)')
+      +metric('MTD sales',money(sales),mtd.latest?'Sales through '+fmt(mtd.latest):'No current-month sales snapshot yet')
+      +metric('MTD target',target?money(target):'—',mtd.latest?'Target through '+fmt(mtd.end):'Waiting for sales data')
+      +metric('MTD variance',target?((variance>=0?'+':'')+money(variance)):'—',target?(sales>=target?'At or above MTD target':'Behind MTD target'):'No MTD target set',target?statusTone(sales,target):'var(--muted)')
       +metric('People on site',String(staffWorking),dinnerNow+' dinner · '+travellingNow+' travelling',staffWorking?'var(--green)':'var(--muted)')
       +metric('Sickness',String(sick),'Workdays recorded',sick?'var(--amber)':'var(--green)')
       +metric('Holiday',dec(holidays,1),'Approved days today')
@@ -223,44 +268,30 @@ function pulseSlide(model){
 }
 
 function performanceSlide(model){
+  const mtd=mtdBoardroomMetrics(model);
   const cards=model.sites.slice().sort((a,b)=>{
-    const av=a.target?((a.sales-a.target)/a.target):0,bv=b.target?((b.sales-b.target)/b.target):0;
+    const am=mtd.byId.get(String(a.id))||{target:0,sales:0};
+    const bm=mtd.byId.get(String(b.id))||{target:0,sales:0};
+    const av=am.target?((am.sales-am.target)/am.target):0,bv=bm.target?((bm.sales-bm.target)/bm.target):0;
     return av-bv;
   }).map(s=>{
-    const v=n(s.sales)-n(s.target),att=s.target?s.sales/s.target*100:null,issues=siteIssues(s,model.p).length;
+    const sm=mtd.byId.get(String(s.id))||{sales:0,target:0,variance:0,attainment:null};
+    const v=n(sm.variance),att=sm.attainment,issues=siteIssues(s,model.p).length;
     return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;grid-template-columns:1.4fr .9fr .9fr .8fr;align-items:center;gap:14px;">'
       +'<div><div style="font-size:19px;font-weight:900;">'+e(s.name)+'</div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">'+(att==null?pill('No target','var(--muted)'):pill(att.toFixed(1)+'% of target',att>=100?'var(--green)':'var(--red)'))+(issues?pill(issues+' issue'+(issues===1?'':'s'),'var(--red)'):pill('No issues','var(--green)'))+'</div></div>'
-      +'<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;">Sales</div><div class="mono" style="font-size:24px;font-weight:900;">'+money(s.sales)+'</div></div>'
-      +'<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;">Variance</div><div class="mono" style="font-size:24px;font-weight:900;color:'+(s.target?(v<0?'var(--red)':'var(--green)'):'var(--muted)')+';">'+(s.target?((v>=0?'+':'')+money(v)):'—')+'</div></div>'
+      +'<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;">MTD sales</div><div class="mono" style="font-size:24px;font-weight:900;">'+money(sm.sales)+'</div></div>'
+      +'<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;">MTD variance</div><div class="mono" style="font-size:24px;font-weight:900;color:'+(sm.target?(v<0?'var(--red)':'var(--green)'):'var(--muted)')+';">'+(sm.target?((v>=0?'+':'')+money(v)):'—')+'</div></div>'
       +'<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:800;">Margin</div><div class="mono" style="font-size:22px;font-weight:900;">'+pct(s.margin)+'</div></div>'
       +'</div>';
   }).join('');
-  return {title:'Workshop performance',kicker:'Sales, target and margin by site',html:'<div style="display:grid;gap:10px;">'+cards+'</div>'};
+  return {title:'Workshop performance',kicker:'Month-to-date sales and target by site'+(mtd.latest?' · through '+fmt(mtd.latest):''),html:'<div style="display:grid;gap:10px;">'+cards+'</div>'};
 }
 
 function monthToDateSlide(model){
-  const d=R.cache&&R.cache.data;
-  const end=today(),month=end.slice(0,7),start=month+'-01';
-  const p={mode:'mtd',start,end,month,label:'MTD'};
-  if(!d||!Array.isArray(d.sales))return{title:'Month to date sales',kicker:'Workshop sales against month-to-date targets',html:'<div style="font-size:24px;color:var(--muted);padding:40px 0;">Sales data is still loading.</div>'};
+  const mtd=mtdBoardroomMetrics(model);
+  if(!mtd.latest)return{title:'Month to date sales',kicker:'Workshop sales against month-to-date targets',html:'<div style="font-size:24px;color:var(--muted);padding:40px 0;">No current-month sales snapshot is available yet.</div>'};
 
-  const rows=model.sites.map(site=>{
-    const key=R.key({name:site.name});
-    const salesRows=d.sales.filter(x=>String(x.site_key)===String(key)).sort((a,b)=>String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
-    const sales=R.delta(salesRows,'total_current',start,end);
-    const prior=R.delta(salesRows,'total_prior',start,end);
-    const targetInfo=R.target(String(site.id),p);
-    const target=targetInfo?targetInfo.target:0;
-    const variance=sales-target;
-    return{id:site.id,name:site.name,sales,prior,target,variance,attainment:target?sales/target*100:null};
-  }).sort((a,b)=>n(b.variance)-n(a.variance));
-
-  const groupSales=rows.reduce((a,x)=>a+n(x.sales),0);
-  const groupTarget=rows.reduce((a,x)=>a+n(x.target),0);
-  const groupPrior=rows.reduce((a,x)=>a+n(x.prior),0);
-  const groupVariance=groupSales-groupTarget;
-  const groupVsPrior=groupSales-groupPrior;
-
+  const rows=mtd.rows.slice().sort((a,b)=>n(b.variance)-n(a.variance));
   const cards=rows.map(x=>
     '<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;display:grid;grid-template-columns:1.35fr .9fr .9fr .7fr;gap:12px;align-items:center;">'
     +'<div><b style="font-size:17px;">'+e(x.name)+'</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(x.attainment==null?'No MTD target':x.attainment.toFixed(1)+'% of MTD target')+'</div></div>'
@@ -270,12 +301,12 @@ function monthToDateSlide(model){
     +'</div>'
   ).join('');
 
-  return {title:'Month to date sales',kicker:'Workshop group · '+fmt(start)+' to '+fmt(end),html:
+  return {title:'Month to date sales',kicker:'Workshop group · '+fmt(mtd.start)+' to '+fmt(mtd.end)+' · aligned to latest saved sales snapshot',html:
     '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;">'
-    +metric('MTD sales',money(groupSales),'Workshop group')
-    +metric('MTD target',groupTarget?money(groupTarget):'—','Target through today')
-    +metric('MTD variance',groupTarget?((groupVariance>=0?'+':'')+money(groupVariance)):'—',groupTarget?(groupVariance>=0?'Ahead of target':'Behind target'):'No target set',groupTarget?(groupVariance>=0?'var(--green)':'var(--red)'):'var(--muted)')
-    +metric('Vs prior year',((groupVsPrior>=0?'+':'')+money(groupVsPrior)),'Same month-to-date',groupVsPrior>=0?'var(--green)':'var(--red)')
+    +metric('MTD sales',money(mtd.groupSales),'Workshop group')
+    +metric('MTD target',mtd.groupTarget?money(mtd.groupTarget):'—','Target through '+fmt(mtd.end))
+    +metric('MTD variance',mtd.groupTarget?((mtd.groupVariance>=0?'+':'')+money(mtd.groupVariance)):'—',mtd.groupTarget?(mtd.groupVariance>=0?'Ahead of target':'Behind target'):'No target set',mtd.groupTarget?(mtd.groupVariance>=0?'var(--green)':'var(--red)'):'var(--muted)')
+    +metric('Vs prior year',((mtd.groupVsPrior>=0?'+':'')+money(mtd.groupVsPrior)),'Same month-to-date',mtd.groupVsPrior>=0?'var(--green)':'var(--red)')
     +'</div><div style="display:grid;gap:8px;">'+cards+'</div>'};
 }
 
@@ -500,6 +531,10 @@ function renderSlide(model){
   const slides=slidesFor(model);
   if(B.slide>=slides.length)B.slide=0;
   const s=slides[B.slide],latest=latestSnapshotDate();
+  const liveSlide=['people','attendance','status'].includes(s.key);
+  const salesSlide=['pulse','performance','mtd','trend'].includes(s.key);
+  const boardroomBadge=liveSlide?'LIVE':(salesSlide?'MTD SALES':'BOARDROOM');
+  const boardroomBadgeTone=liveSlide?'var(--green)':(salesSlide?'var(--amber)':'var(--muted)');
   const dots=slides.map((_,i)=>'<button type="button" data-boardroom-slide="'+i+'" aria-label="Slide '+(i+1)+'" style="width:'+(i===B.slide?'30':'9')+'px;height:9px;border:0;border-radius:999px;padding:0;cursor:pointer;background:'+(i===B.slide?'var(--amber)':'var(--line)')+';"></button>').join('');
   return '<style>'
     +'#boardroom-shell{min-height:calc(100vh - 80px);background:var(--bg);color:var(--text);border-radius:14px;padding:18px;position:relative;overflow:hidden;box-sizing:border-box;}'
@@ -514,8 +549,8 @@ function renderSlide(model){
     +'</style>'
     +'<div id="boardroom-shell"><div class="boardroom-stage">'
     +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:18px;">'
-      +'<div><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;">'+pill('LIVE','var(--green)')+'<span style="font-size:12px;color:var(--muted);">North East Auto Services · Boardroom</span></div><div class="boardroom-title">'+e(s.title)+'</div><div style="font-size:14px;color:var(--muted);margin-top:6px;">'+e(s.kicker)+'</div></div>'
-      +'<div style="text-align:right;"><div id="boardroom-clock" class="mono" style="font-size:26px;font-weight:900;">'+e(new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+e(new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</div><div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+(latest?'Sales data through '+e(fmt(latest)):'Waiting for sales data')+'</div></div>'
+      +'<div><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;">'+pill(boardroomBadge,boardroomBadgeTone)+'<span style="font-size:12px;color:var(--muted);">North East Auto Services · Boardroom</span></div><div class="boardroom-title">'+e(s.title)+'</div><div style="font-size:14px;color:var(--muted);margin-top:6px;">'+e(s.kicker)+'</div></div>'
+      +'<div style="text-align:right;"><div id="boardroom-clock" class="mono" style="font-size:26px;font-weight:900;">'+e(new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+e(new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))+'</div><div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+(latest?'MTD sales through '+e(fmt(latest)):'Waiting for sales data')+'</div></div>'
     +'</div>'
     +'<div class="boardroom-content">'+s.html+'</div>'
     +'<div class="no-print" style="display:flex;align-items:center;gap:10px;margin-top:18px;padding-top:12px;border-top:1px solid var(--line);">'
@@ -544,7 +579,7 @@ function renderPanel(){
     +'<button type="button" class="add-btn" data-boardroom-refresh>Refresh now</button>'
     +'<button type="button" class="add-btn" data-boardroom-fullscreen>⛶ Start presentation</button>'
     +'</div>';
-  if(loading)return controls+'<div class="card">Loading today’s boardroom data…</div>';
+  if(loading)return controls+'<div class="card">Loading Boardroom data…</div>';
   if(err&&!model)return controls+'<div class="card" style="color:var(--red);"><b>Presentation data could not load</b><div style="margin-top:6px;">'+e(err)+'</div></div>';
   if(!model)return controls+'<div class="card">Preparing presentation…</div>';
   return controls+renderSlide(model);

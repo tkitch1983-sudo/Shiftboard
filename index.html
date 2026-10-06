@@ -831,7 +831,7 @@ const ADMIN_TAB_OPTIONS=[
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
-  ['sites','Sites','System'],['settings','Settings / My account','System']
+  ['cameras','Cameras','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
 const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','settings']);
@@ -3938,6 +3938,30 @@ async function importPayRateCsv(file){
   await loadPayRates(); showToast(parsed.length+' pay rates imported.'); render();
 }
 
+function renderAdminCameras(){
+  if(state.admin.role!=='super') return '<h2>Cameras</h2><div class="card">Upper Management only.</div>';
+  const physicalSites=(state.config.sites||[]).filter(function(site){
+    const n=String(site&&site.name||'').toLowerCase();
+    return n && !/upper management|floaters/.test(n);
+  }).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''));});
+  const cards=physicalSites.map(function(site){
+    const name=String(site.name||'Site');
+    const n=name.toLowerCase();
+    const hik=/lido|seaham/.test(n);
+    const provider=hik?'Hik-Connect':'XMEye';
+    const url=hik?'https://www.hik-connect.com/views/login/index.html':'https://www.xmeye.net/';
+    return '<div class="card" style="margin:0;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">'
+      +'<div><div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+provider+'</div></div>'
+      +'<a class="btn-sm" href="'+url+'" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;">📹 Open Cameras</a>'
+      +'</div>';
+  }).join('');
+  return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">'
+    +'<div><h2>Cameras</h2><div class="head-sub" style="margin-bottom:0;">Upper Management · camera system launchers by site</div></div></div>'
+    +'<div class="card" style="margin-top:14px;border-left:4px solid var(--amber);"><b>Camera logins stay with Hik-Connect / XMEye.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">Shiftboard does not store camera usernames or passwords.</div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px;">'+(cards||'<div class="card">No sites available.</div>')+'</div>';
+}
+
 function renderAdmin(){
   const isSuper = state.admin.role==='super';
   const requestNoticeCount = holidayRequestsNeedingAttention().length;
@@ -4065,6 +4089,7 @@ function renderAdmin(){
       });
     }
   }
+  else if(state.admin.tab==='cameras') body = renderAdminCameras();
   else if(state.admin.tab==='sites') body = renderAdminSites();
   else if(state.admin.tab==='bankholidays') body = renderAdminBankHolidays();
   else if(state.admin.tab==='clocklog'){

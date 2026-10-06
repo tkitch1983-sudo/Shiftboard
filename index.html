@@ -1408,7 +1408,8 @@ function sicknessPrintHtml(g){
     <ul>${dates || '<li>None</li>'}</ul>
     <div class="foot">Printed by Upper Management on ${h(generated)}. This record contains confidential employee health information and should be handled accordingly.</div>
     <div class="no-print"><button onclick="window.print()">Print</button></div>
-  </body></html>`;
+  <script src="./management-checks-summary.js?v=1"></script>
+</body></html>`;
 }
 function printSicknessRecord(key){
   if(state.admin.role!=='super'){ showToast('Upper Management only.',true); return; }

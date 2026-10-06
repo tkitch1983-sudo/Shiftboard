@@ -10,8 +10,12 @@ const B=window.NEASBoardroom=window.NEASBoardroom||{
   paused:false,
   timer:null,
   refreshTimer:null,
+  attendanceTimer:null,
   clockTimer:null,
   wakeLock:null,
+  attendanceBusy:false,
+  attendanceLoadedAt:'',
+  prefsLoaded:false,
   mobilePresentation:false,
   directRequested:false,
   lastLoaded:'',
@@ -55,9 +59,55 @@ async function copyBoardroomLink(){
   try{window.prompt('Copy this Boardroom link',url)}catch(_e){}
 }
 
+const BOARDROOM_PREFS_KEY='neas_boardroom_prefs_v1';
+const BOARDROOM_SLIDE_LABELS={
+  pulse:'Business pulse',
+  performance:'Workshop performance',
+  trend:'Recent sales trend',
+  people:'People today',
+  attendance:'Live attendance',
+  actions:'Actions & compliance',
+  stock:'Stock overview'
+};
+
 function ensureState(){
   if(!state.admin.boardroomSpeed)state.admin.boardroomSpeed=20;
   if(state.admin.boardroomShowStock===undefined)state.admin.boardroomShowStock=true;
+  if(!B.prefsLoaded){
+    B.prefsLoaded=true;
+    let saved=null;
+    try{saved=JSON.parse(localStorage.getItem(BOARDROOM_PREFS_KEY)||'null')}catch(_e){}
+    if(saved&&Number(saved.speed)>=10)state.admin.boardroomSpeed=Number(saved.speed);
+    const defaults={pulse:true,performance:true,trend:true,people:true,attendance:true,actions:true,stock:state.admin.boardroomShowStock!==false};
+    const incoming=saved&&saved.slides&&typeof saved.slides==='object'?saved.slides:{};
+    state.admin.boardroomSlides=Object.assign(defaults,incoming);
+    state.admin.boardroomShowStock=state.admin.boardroomSlides.stock!==false;
+  }
+  if(!state.admin.boardroomSlides){
+    state.admin.boardroomSlides={pulse:true,performance:true,trend:true,people:true,attendance:true,actions:true,stock:state.admin.boardroomShowStock!==false};
+  }
+}
+
+function saveBoardroomPrefs(){
+  try{
+    localStorage.setItem(BOARDROOM_PREFS_KEY,JSON.stringify({
+      speed:Number(state.admin.boardroomSpeed)||20,
+      slides:state.admin.boardroomSlides||{}
+    }));
+  }catch(_e){}
+}
+
+function enabledSlideCount(){
+  ensureState();
+  return Object.keys(BOARDROOM_SLIDE_LABELS).filter(k=>state.admin.boardroomSlides[k]!==false).length;
+}
+
+function slidePickerHtml(){
+  ensureState();
+  const boxes=Object.entries(BOARDROOM_SLIDE_LABELS).map(([key,label])=>
+    '<label style="display:flex;gap:7px;align-items:center;font-size:12px;white-space:nowrap;"><input type="checkbox" data-boardroom-slide-toggle="'+key+'" '+(state.admin.boardroomSlides[key]!==false?'checked':'')+'> '+e(label)+'</label>'
+  ).join('');
+  return '<details style="position:relative;"><summary class="add-btn" style="list-style:none;cursor:pointer;">Choose slides</summary><div style="position:absolute;right:0;top:calc(100% + 6px);z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 14px 34px rgba(0,0,0,.28);display:grid;gap:8px;min-width:210px;">'+boxes+'</div></details>';
 }
 
 function statusTone(value,target){
@@ -168,6 +218,56 @@ function peopleSlide(model){
   return {title:'People today',kicker:'Workshop staffing and attendance — no individual employee details shown',html:'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">'+cards+'</div>'};
 }
 
+function liveAttendanceSlide(model){
+  const modelIds=new Set(model.sites.map(s=>String(s.id)));
+  const employees=(state.config&&Array.isArray(state.config.employees)?state.config.employees:[]).filter(emp=>emp&&emp.active!==false&&modelIds.has(String(emp.siteId||'')));
+  const todayIso=today();
+  const latestByEmployee=new Map();
+  (Array.isArray(state.events)?state.events:[]).forEach(ev=>{
+    if(!ev||!ev.employeeId||!ev.timestamp)return;
+    const d=new Date(Number(ev.timestamp));
+    if(Number.isNaN(d.getTime())||R.iso(d)!==todayIso)return;
+    const prev=latestByEmployee.get(String(ev.employeeId));
+    if(!prev||Number(ev.timestamp)>Number(prev.timestamp))latestByEmployee.set(String(ev.employeeId),ev);
+  });
+
+  const siteCards=model.sites.map(site=>{
+    const assigned=employees.filter(emp=>String(emp.siteId)===String(site.id));
+    const onSite=assigned.filter(emp=>{
+      const ev=latestByEmployee.get(String(emp.id));
+      return ev&&ev.type==='in';
+    }).length;
+    const clockedToday=assigned.filter(emp=>latestByEmployee.has(String(emp.id))).length;
+    const out=clockedToday-onSite;
+    const siteEvents=(Array.isArray(state.events)?state.events:[]).filter(ev=>{
+      if(!ev||!ev.timestamp)return false;
+      const d=new Date(Number(ev.timestamp));
+      if(Number.isNaN(d.getTime())||R.iso(d)!==todayIso)return false;
+      if(String(ev.siteId||'')===String(site.id))return true;
+      const emp=employees.find(x=>String(x.id)===String(ev.employeeId));
+      return emp&&String(emp.siteId)===String(site.id);
+    }).sort((a,b)=>Number(b.timestamp)-Number(a.timestamp));
+    const latest=siteEvents[0]||null;
+    const latestText=latest
+      ? (latest.type==='out'?'Clocked out':'Clocked in')+' '+new Date(Number(latest.timestamp)).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})
+      : 'No movement today';
+    return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;">'
+      +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><div style="font-size:18px;font-weight:900;">'+e(site.name)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+e(latestText)+'</div></div>'+pill(onSite+' on site',onSite?'var(--green)':'var(--muted)')+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;"><div><small style="color:var(--muted);">Assigned</small><div class="mono" style="font-size:21px;font-weight:800;">'+assigned.length+'</div></div><div><small style="color:var(--muted);">Clocked today</small><div class="mono" style="font-size:21px;font-weight:800;">'+clockedToday+'</div></div><div><small style="color:var(--muted);">Off site</small><div class="mono" style="font-size:21px;font-weight:800;">'+Math.max(0,out)+'</div></div></div>'
+      +'</div>';
+  }).join('');
+  const totalOnSite=[...latestByEmployee.entries()].filter(([id,ev])=>{
+    const emp=employees.find(x=>String(x.id)===String(id));
+    return !!emp&&ev&&ev.type==='in';
+  }).length;
+  const refreshed=B.attendanceLoadedAt?new Date(B.attendanceLoadedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'waiting';
+  return {title:'Live attendance',kicker:'Shiftboard clock status · refreshes every 5 seconds',html:
+    '<div style="display:grid;grid-template-columns:1fr 3fr;gap:16px;align-items:start;">'
+    +metric('On site now',String(totalOnSite),'Across workshop staff','var(--green)')
+    +'<div style="font-size:12px;color:var(--muted);padding:4px 0 0;">Last attendance refresh: <b>'+e(refreshed)+'</b><br>When somebody clocks in or out on Shiftboard, this screen updates automatically. Individual employee names are not shown on the Boardroom display.</div>'
+    +'</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">'+siteCards+'</div>'};
+}
+
 function actionsSlide(model){
   const items=[];
   model.sites.forEach(s=>{
@@ -193,8 +293,21 @@ function stockSlide(model){
 }
 
 function slidesFor(model){
-  const arr=[pulseSlide(model),performanceSlide(model),trendSlide(model),peopleSlide(model),actionsSlide(model)];
-  if(state.admin.boardroomShowStock!==false)arr.push(stockSlide(model));
+  ensureState();
+  const defs=[
+    ['pulse',pulseSlide],
+    ['performance',performanceSlide],
+    ['trend',trendSlide],
+    ['people',peopleSlide],
+    ['attendance',liveAttendanceSlide],
+    ['actions',actionsSlide],
+    ['stock',stockSlide]
+  ];
+  let arr=defs.filter(([key])=>state.admin.boardroomSlides[key]!==false).map(([key,build])=>Object.assign({key},build(model)));
+  if(!arr.length){
+    state.admin.boardroomSlides.pulse=true;
+    arr=[Object.assign({key:'pulse'},pulseSlide(model))];
+  }
   return arr;
 }
 
@@ -242,6 +355,7 @@ function renderPanel(){
   const controls='<div class="card no-print" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:12px 14px;">'
     +'<div style="margin-right:auto;"><b>Boardroom Presentation</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">Live workshop overview. Sensitive employee-level and pay-rate details are not shown.</div></div>'
     +'<label style="font-size:11px;color:var(--muted);">Change slide every<select id="boardroom-speed" style="min-width:110px;"><option value="15" '+(state.admin.boardroomSpeed==15?'selected':'')+'>15 sec</option><option value="20" '+(state.admin.boardroomSpeed==20?'selected':'')+'>20 sec</option><option value="30" '+(state.admin.boardroomSpeed==30?'selected':'')+'>30 sec</option><option value="60" '+(state.admin.boardroomSpeed==60?'selected':'')+'>60 sec</option></select></label>'
+    +slidePickerHtml()
     +'<button type="button" class="add-btn" data-boardroom-copy-link>Copy direct link</button>'
     +'<button type="button" class="add-btn" data-boardroom-refresh>Refresh now</button>'
     +'<button type="button" class="add-btn" data-boardroom-fullscreen>⛶ Start presentation</button>'
@@ -307,6 +421,7 @@ async function load(force){
 function clearTimers(){
   if(B.timer){clearInterval(B.timer);B.timer=null}
   if(B.refreshTimer){clearInterval(B.refreshTimer);B.refreshTimer=null}
+  if(B.attendanceTimer){clearInterval(B.attendanceTimer);B.attendanceTimer=null}
   if(B.clockTimer){clearInterval(B.clockTimer);B.clockTimer=null}
 }
 
@@ -326,11 +441,37 @@ function ensureTimers(){
     if(state.admin.tab!==TAB){clearTimers();return}
     load(true);
   },300000);
+  B.attendanceTimer=setInterval(()=>{
+    if(state.admin.tab!==TAB){clearTimers();return}
+    loadAttendance();
+  },5000);
   B.clockTimer=setInterval(()=>{
     if(state.admin.tab!==TAB){clearTimers();return}
     const el=document.getElementById('boardroom-clock');
     if(el)el.textContent=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   },1000);
+}
+
+async function loadAttendance(){
+  if(!isTony()||B.attendanceBusy)return;
+  B.attendanceBusy=true;
+  try{
+    const fresh=await storageGet('clockEvents',Array.isArray(state.events)?state.events:[]);
+    if(Array.isArray(fresh))state.events=fresh;
+    B.attendanceLoadedAt=new Date().toISOString();
+    if(state.admin.tab===TAB){
+      const model=currentModel();
+      if(model){
+        const slides=slidesFor(model);
+        const current=slides[B.slide];
+        if(current&&current.key==='attendance')refreshShell();
+      }
+    }
+  }catch(err){
+    console.error('Boardroom attendance refresh failed',err);
+  }finally{
+    B.attendanceBusy=false;
+  }
 }
 
 async function requestWakeLock(){
@@ -390,6 +531,7 @@ try{
         if(state.admin.tab!==TAB)return;
         const key=[state.admin.reportPeriodMode,state.admin.reportPeriodDate].join('|');
         if(!R.cache.data||R.cache.key!==['day',today(),today(),today().slice(0,7)].join('|'))load(false);
+        loadAttendance();
         ensureTimers();
       },0);
       return wrap.innerHTML;
@@ -401,6 +543,24 @@ document.addEventListener('change',ev=>{
   const t=ev.target;if(!t||state.admin.tab!==TAB)return;
   if(t.id==='boardroom-speed'){
     state.admin.boardroomSpeed=Math.max(10,Number(t.value)||20);
+    saveBoardroomPrefs();
+    ensureTimers();
+    return;
+  }
+  if(t.hasAttribute('data-boardroom-slide-toggle')){
+    const key=String(t.getAttribute('data-boardroom-slide-toggle')||'');
+    if(!BOARDROOM_SLIDE_LABELS[key])return;
+    state.admin.boardroomSlides[key]=!!t.checked;
+    if(enabledSlideCount()===0){
+      state.admin.boardroomSlides[key]=true;
+      t.checked=true;
+      try{showToast('Keep at least one Boardroom slide selected.',true)}catch(_e){}
+      return;
+    }
+    if(key==='stock')state.admin.boardroomShowStock=state.admin.boardroomSlides.stock!==false;
+    saveBoardroomPrefs();
+    B.slide=0;
+    refreshShell();
     ensureTimers();
   }
 },true);

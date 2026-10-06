@@ -6609,7 +6609,9 @@ async function onAction(e){
       render();
       // The clock-in is already saved. The photo is attached afterwards so a
       // slow or broken camera can never stop someone clocking in.
-      if(state.config.settings.clockPhotos && res.id){
+      // Emergency reliability mode: clocking must never wait on camera/photo handling.
+      // Photos are temporarily suspended while the viewer issue is being corrected.
+      if(false && state.config.settings.clockPhotos && res.id){
         const img = await captureClockPhoto();
         if(img){
           try{ await callRpc('staff_clock_photo', { p_pin: pin, p_event_id: res.id, p_image: img }); }
@@ -6738,7 +6740,8 @@ async function onAction(e){
   else if(action==='view-clock-photo'){
     if(!state.admin.authed) return;
     if(!state.admin.clockPhotos || !state.admin.clockPhotos[id]){ showToast('Photo is no longer available.', true); return render(); }
-    state.admin.viewingClockPhoto = id;
+    state.admin.viewingClockPhoto = null;
+    showToast('Clock photos are temporarily unavailable. Clocking in and out is unaffected.');
   }
   else if(action==='close-clock-photo'){
     state.admin.viewingClockPhoto = null;

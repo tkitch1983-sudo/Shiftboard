@@ -15,6 +15,7 @@ const B=window.NEASBoardroom=window.NEASBoardroom||{
   wakeLock:null,
   attendanceBusy:false,
   attendanceLoadedAt:'',
+  liveEvents:null,
   prefsLoaded:false,
   mobilePresentation:false,
   directRequested:false,
@@ -67,6 +68,7 @@ const BOARDROOM_SLIDE_LABELS={
   trend:'Recent sales trend',
   people:'People today',
   attendance:'Live attendance & dinner',
+  status:'Live site status (names)',
   weekly:'Weekly checks',
   safety:'H&S / MOT monthly',
   actions:'Actions & compliance',
@@ -81,13 +83,13 @@ function ensureState(){
     let saved=null;
     try{saved=JSON.parse(localStorage.getItem(BOARDROOM_PREFS_KEY)||'null')}catch(_e){}
     if(saved&&Number(saved.speed)>=10)state.admin.boardroomSpeed=Number(saved.speed);
-    const defaults={pulse:true,performance:true,mtd:true,trend:true,people:true,attendance:true,weekly:true,safety:true,actions:true,stock:state.admin.boardroomShowStock!==false};
+    const defaults={pulse:true,performance:true,mtd:true,trend:true,people:true,attendance:true,status:true,weekly:true,safety:true,actions:true,stock:state.admin.boardroomShowStock!==false};
     const incoming=saved&&saved.slides&&typeof saved.slides==='object'?saved.slides:{};
     state.admin.boardroomSlides=Object.assign(defaults,incoming);
     state.admin.boardroomShowStock=state.admin.boardroomSlides.stock!==false;
   }
   if(!state.admin.boardroomSlides){
-    state.admin.boardroomSlides={pulse:true,performance:true,mtd:true,trend:true,people:true,attendance:true,weekly:true,safety:true,actions:true,stock:state.admin.boardroomShowStock!==false};
+    state.admin.boardroomSlides={pulse:true,performance:true,mtd:true,trend:true,people:true,attendance:true,status:true,weekly:true,safety:true,actions:true,stock:state.admin.boardroomShowStock!==false};
   }
 }
 
@@ -158,11 +160,48 @@ function dailyTrend(model){
   return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-8).map(([date,value])=>({date,value}));
 }
 
+function liveBoardroomRoster(model){
+  const modelIds=new Set(model.sites.map(s=>String(s.id)));
+  const allEmployees=(state.config&&Array.isArray(state.config.employees)?state.config.employees:[]).filter(emp=>emp&&emp.active!==false);
+  const employeeMap=new Map(allEmployees.map(emp=>[String(emp.id),emp]));
+  const sourceEvents=Array.isArray(B.liveEvents)?B.liveEvents:(Array.isArray(state.events)?state.events:[]);
+  const todayIso=today();
+  const events=sourceEvents.filter(ev=>{
+    if(!ev||!ev.employeeId||!ev.timestamp)return false;
+    const d=new Date(Number(ev.timestamp));
+    return !Number.isNaN(d.getTime())&&R.iso(d)===todayIso;
+  }).sort((a,b)=>Number(a.timestamp)-Number(b.timestamp));
+  const latestByEmployee=new Map();
+  events.forEach(ev=>latestByEmployee.set(String(ev.employeeId),ev));
+
+  const records=[];
+  allEmployees.forEach(emp=>{
+    const id=String(emp.id),homeSite=String(emp.siteId||''),ev=latestByEmployee.get(id)||null;
+    const eventSite=ev?String(ev.siteId||''):'';
+    const siteId=ev&&modelIds.has(eventSite)?eventSite:(modelIds.has(homeSite)?homeSite:'');
+    if(!siteId)return;
+    let status='not_clocked';
+    if(ev&&ev.type==='in')status='on';
+    else if(ev&&ev.type==='out'&&String(ev.outReason||'')==='dinner')status='dinner';
+    else if(ev&&ev.type==='out'&&String(ev.outReason||'')==='travel')status='travel';
+    else if(ev&&ev.type==='out')status='off';
+    const time=ev?new Date(Number(ev.timestamp)).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';
+    records.push({
+      id,name:String(emp.name||'—'),homeSite,siteId,status,time,event:ev,
+      visitor:!!(ev&&eventSite&&eventSite!==homeSite)
+    });
+  });
+
+  return{events,latestByEmployee,employeeMap,records};
+}
+
 function pulseSlide(model){
   const sites=model.sites;
   const sales=sites.reduce((a,s)=>a+n(s.sales),0),target=sites.reduce((a,s)=>a+n(s.target),0),variance=sales-target;
-  const staffWorking=sites.reduce((a,s)=>a+s.people.filter(x=>n(x.hours)>0).length,0);
-  const hours=sites.reduce((a,s)=>a+n(s.hours),0);
+  const live=liveBoardroomRoster(model);
+  const staffWorking=live.records.filter(x=>x.status==='on').length;
+  const dinnerNow=live.records.filter(x=>x.status==='dinner').length;
+  const travellingNow=live.records.filter(x=>x.status==='travel').length;
   const sick=sites.reduce((a,s)=>a+n(s.sick),0);
   const holidays=sites.reduce((a,s)=>a+n(s.holiday),0);
   const issues=sites.reduce((a,s)=>a+siteIssues(s,model.p).length,0);
@@ -174,7 +213,7 @@ function pulseSlide(model){
       +metric('Sales',money(sales),latest?'Sales data through '+fmt(latest):'No sales snapshot yet')
       +metric('Target',target?money(target):'—','Today’s workshop target')
       +metric('Variance',target?((variance>=0?'+':'')+money(variance)):'—',target?(sales>=target?'At or above target':'Behind target'):'No target set',target?statusTone(sales,target):'var(--muted)')
-      +metric('People working',String(staffWorking),dec(hours,1)+' recorded paid hours')
+      +metric('People on site',String(staffWorking),dinnerNow+' dinner · '+travellingNow+' travelling',staffWorking?'var(--green)':'var(--muted)')
       +metric('Sickness',String(sick),'Workdays recorded',sick?'var(--amber)':'var(--green)')
       +metric('Holiday',dec(holidays,1),'Approved days today')
       +metric('Items to review',String(issues),'Operational / compliance',issues?'var(--red)':'var(--green)')
@@ -251,55 +290,34 @@ function trendSlide(model){
 }
 
 function peopleSlide(model){
+  const live=liveBoardroomRoster(model);
   const cards=model.sites.map(s=>{
-    const working=s.people.filter(x=>n(x.hours)>0).length,issues=n(s.auto),missing=s.people.filter(x=>x.payRate==null).length;
+    const here=live.records.filter(x=>x.siteId===String(s.id));
+    const onSite=here.filter(x=>x.status==='on').length;
+    const dinner=here.filter(x=>x.status==='dinner').length;
+    const travelling=here.filter(x=>x.status==='travel').length;
+    const clockedToday=here.filter(x=>x.status!=='not_clocked').length;
+    const issues=n(s.auto),missing=s.people.filter(x=>x.payRate==null).length;
     return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;">'
-      +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><div style="font-size:18px;font-weight:900;">'+e(s.name)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+s.people.length+' active staff assigned</div></div>'+pill(working+' working',working?'var(--green)':'var(--muted)')+'</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;"><div><small style="color:var(--muted);">Hours</small><div class="mono" style="font-size:21px;font-weight:800;">'+dec(s.hours,1)+'</div></div><div><small style="color:var(--muted);">Sick</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(s.sick?'var(--amber)':'var(--text)')+';">'+s.sick+'</div></div><div><small style="color:var(--muted);">Holiday</small><div class="mono" style="font-size:21px;font-weight:800;">'+dec(s.holiday,1)+'</div></div><div><small style="color:var(--muted);">Auto-close</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(issues?'var(--red)':'var(--text)')+';">'+issues+'</div></div></div>'
+      +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><div style="font-size:18px;font-weight:900;">'+e(s.name)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+s.people.length+' active staff assigned</div></div>'+pill(onSite+' on site',onSite?'var(--green)':'var(--muted)')+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;"><div><small style="color:var(--muted);">Clocked today</small><div class="mono" style="font-size:21px;font-weight:800;">'+clockedToday+'</div></div><div><small style="color:var(--muted);">Dinner</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(dinner?'var(--amber)':'var(--text)')+';">'+dinner+'</div></div><div><small style="color:var(--muted);">Travelling</small><div class="mono" style="font-size:21px;font-weight:800;">'+travelling+'</div></div><div><small style="color:var(--muted);">Auto-close</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(issues?'var(--red)':'var(--text)')+';">'+issues+'</div></div></div>'
       +(missing?'<div style="font-size:11px;color:var(--amber);margin-top:10px;">'+missing+' workshop pay rate'+(missing===1?'':'s')+' missing</div>':'')
       +'</div>';
   }).join('');
-  return {title:'People today',kicker:'Workshop staffing and attendance — no individual employee details shown',html:'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">'+cards+'</div>'};
+  return {title:'People today',kicker:'Live workshop staffing from clock events · refreshes every 5 seconds',html:'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">'+cards+'</div>'};
 }
 
 function liveAttendanceSlide(model){
-  const modelIds=new Set(model.sites.map(s=>String(s.id)));
-  const employees=(state.config&&Array.isArray(state.config.employees)?state.config.employees:[]).filter(emp=>emp&&emp.active!==false&&modelIds.has(String(emp.siteId||'')));
-  const employeeMap=new Map(employees.map(emp=>[String(emp.id),emp]));
-  const todayIso=today();
-  const todaysEvents=(Array.isArray(state.events)?state.events:[]).filter(ev=>{
-    if(!ev||!ev.employeeId||!ev.timestamp)return false;
-    const d=new Date(Number(ev.timestamp));
-    return !Number.isNaN(d.getTime())&&R.iso(d)===todayIso;
-  });
-  const latestByEmployee=new Map();
-  todaysEvents.forEach(ev=>{
-    const prev=latestByEmployee.get(String(ev.employeeId));
-    if(!prev||Number(ev.timestamp)>Number(prev.timestamp))latestByEmployee.set(String(ev.employeeId),ev);
-  });
-
+  const live=liveBoardroomRoster(model);
   const siteCards=model.sites.map(site=>{
-    const assigned=employees.filter(emp=>String(emp.siteId)===String(site.id));
-    const onSite=assigned.filter(emp=>{
-      const ev=latestByEmployee.get(String(emp.id));
-      return ev&&ev.type==='in';
-    }).length;
-    const dinner=assigned.filter(emp=>{
-      const ev=latestByEmployee.get(String(emp.id));
-      return ev&&ev.type==='out'&&String(ev.outReason||'')==='dinner';
-    }).length;
-    const travelling=assigned.filter(emp=>{
-      const ev=latestByEmployee.get(String(emp.id));
-      return ev&&ev.type==='out'&&String(ev.outReason||'')==='travel';
-    }).length;
-    const clockedToday=assigned.filter(emp=>latestByEmployee.has(String(emp.id))).length;
-    const offShift=Math.max(0,clockedToday-onSite-dinner-travelling);
+    const here=live.records.filter(x=>x.siteId===String(site.id));
+    const onSite=here.filter(x=>x.status==='on').length;
+    const dinner=here.filter(x=>x.status==='dinner').length;
+    const travelling=here.filter(x=>x.status==='travel').length;
+    const clockedToday=here.filter(x=>x.status!=='not_clocked').length;
+    const offShift=here.filter(x=>x.status==='off').length;
 
-    const siteEvents=todaysEvents.filter(ev=>{
-      if(String(ev.siteId||'')===String(site.id))return true;
-      const emp=employeeMap.get(String(ev.employeeId));
-      return emp&&String(emp.siteId)===String(site.id);
-    }).sort((a,b)=>Number(b.timestamp)-Number(a.timestamp));
+    const siteEvents=live.events.filter(ev=>String(ev.siteId||'')===String(site.id)).sort((a,b)=>Number(b.timestamp)-Number(a.timestamp));
     const latest=siteEvents[0]||null;
     const time=latest?new Date(Number(latest.timestamp)).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';
     const latestText=!latest?'No movement today'
@@ -314,31 +332,66 @@ function liveAttendanceSlide(model){
         +'<div><small style="color:var(--muted);">Clocked today</small><div class="mono" style="font-size:21px;font-weight:800;">'+clockedToday+'</div></div>'
         +'<div><small style="color:var(--muted);">Dinner now</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(dinner?'var(--amber)':'var(--text)')+';">'+dinner+'</div></div>'
         +'<div><small style="color:var(--muted);">Travelling</small><div class="mono" style="font-size:21px;font-weight:800;">'+travelling+'</div></div>'
-        +'<div><small style="color:var(--muted);">Off shift</small><div class="mono" style="font-size:21px;font-weight:800;">'+offShift+'</div></div>'
+        +'<div><small style="color:var(--muted);">Clocked off</small><div class="mono" style="font-size:21px;font-weight:800;">'+offShift+'</div></div>'
       +'</div>'
       +'</div>';
   }).join('');
 
-  const totals=[...latestByEmployee.entries()].reduce((acc,[id,ev])=>{
-    if(!employeeMap.has(String(id)))return acc;
-    if(ev&&ev.type==='in')acc.onSite++;
-    else if(ev&&ev.type==='out'&&String(ev.outReason||'')==='dinner')acc.dinner++;
-    else if(ev&&ev.type==='out'&&String(ev.outReason||'')==='travel')acc.travelling++;
-    else if(ev&&ev.type==='out')acc.offShift++;
+  const totals=live.records.reduce((acc,row)=>{
+    if(row.status==='on')acc.onSite++;
+    else if(row.status==='dinner')acc.dinner++;
+    else if(row.status==='travel')acc.travelling++;
+    else if(row.status==='off')acc.offShift++;
     return acc;
   },{onSite:0,dinner:0,travelling:0,offShift:0});
 
   const refreshed=B.attendanceLoadedAt?new Date(B.attendanceLoadedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'waiting';
   return {title:'Live attendance & dinner',kicker:'Shiftboard clock status · refreshes every 5 seconds',html:
     '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;">'
-      +metric('On site now',String(totals.onSite),'Workshop staff','var(--green)')
+      +metric('On site now',String(totals.onSite),'Actual clocked location','var(--green)')
       +metric('On dinner',String(totals.dinner),'Clocked out for dinner',totals.dinner?'var(--amber)':'var(--text)')
       +metric('Travelling',String(totals.travelling),'Between sites')
-      +metric('Off shift',String(totals.offShift),'Clocked out')
+      +metric('Clocked off',String(totals.offShift),'Finished / off site')
     +'</div>'
-    +'<div style="font-size:11px;color:var(--muted);margin:-4px 0 12px;">Last attendance refresh: <b>'+e(refreshed)+'</b> · Dinner changes as soon as the employee clocks out for Dinner, then clears when they clock back in.</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin:-4px 0 12px;">Last attendance refresh: <b>'+e(refreshed)+'</b> · Staff working at another workshop appear at the site where they last clocked.</div>'
     +'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">'+siteCards+'</div>'};
 }
+
+function liveSiteStatusSlide(model){
+  const live=liveBoardroomRoster(model);
+  const statusMeta={
+    on:['ON SITE','var(--green)'],
+    dinner:['DINNER','var(--amber)'],
+    travel:['TRAVEL','var(--amber)'],
+    off:['CLOCKED OFF','var(--muted)'],
+    not_clocked:['NOT CLOCKED','var(--muted-2)']
+  };
+  const order={on:0,dinner:1,travel:2,off:3,not_clocked:4};
+  const cards=model.sites.map(site=>{
+    const rows=live.records.filter(x=>x.siteId===String(site.id)).sort((a,b)=>
+      (order[a.status]-order[b.status])||a.name.localeCompare(b.name)
+    );
+    const on=rows.filter(x=>x.status==='on').length;
+    const off=rows.filter(x=>x.status==='off').length;
+    const dinner=rows.filter(x=>x.status==='dinner').length;
+    const roster=rows.length?rows.map(row=>{
+      const meta=statusMeta[row.status]||statusMeta.not_clocked;
+      return '<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;align-items:center;padding:4px 0;border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent);">'
+        +'<div style="font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+e(row.name)+(row.visitor?' <span style="font-size:9px;color:var(--amber);">VISITOR</span>':'')+'</div>'
+        +'<span style="font-size:9px;font-weight:900;color:'+meta[1]+';">'+e(meta[0])+'</span>'
+        +'<span class="mono" style="font-size:10px;color:var(--muted);min-width:34px;text-align:right;">'+e(row.time||'—')+'</span>'
+        +'</div>';
+    }).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0;">No workshop staff listed.</div>';
+
+    return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px;min-width:0;">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;"><b style="font-size:15px;">'+e(site.name)+'</b>'+pill(on+' in','var(--green)')+'</div>'
+      +'<div style="font-size:9px;color:var(--muted);margin-bottom:5px;">'+dinner+' dinner · '+off+' clocked off</div>'
+      +roster+'</div>';
+  }).join('');
+  return {title:'Live site status',kicker:'Who is on site, at dinner, travelling or clocked off · live from Shiftboard',html:
+    '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;">'+cards+'</div>'};
+}
+
 function weeklyChecksSlide(model){
   const weekStart=R.mon(today());
   const cards=model.sites.map(site=>{
@@ -428,6 +481,7 @@ function slidesFor(model){
     ['trend',trendSlide],
     ['people',peopleSlide],
     ['attendance',liveAttendanceSlide],
+    ['status',liveSiteStatusSlide],
     ['weekly',weeklyChecksSlide],
     ['safety',safetyMotSlide],
     ['actions',actionsSlide],
@@ -483,7 +537,7 @@ function renderPanel(){
   const loading=R.cache&&R.cache.busy&&!model;
   const err=(R.cache&&R.cache.error)||B.lastError;
   const controls='<div class="card no-print" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:12px 14px;">'
-    +'<div style="margin-right:auto;"><b>Boardroom Presentation</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">Live workshop overview. Sensitive employee-level and pay-rate details are not shown.</div></div>'
+    +'<div style="margin-right:auto;"><b>Boardroom Presentation</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">Live workshop overview. The Live site status slide can show staff names and clock status; pay rates and sensitive HR details are never shown.</div></div>'
     +'<label style="font-size:11px;color:var(--muted);">Change slide every<select id="boardroom-speed" style="min-width:110px;"><option value="15" '+(state.admin.boardroomSpeed==15?'selected':'')+'>15 sec</option><option value="20" '+(state.admin.boardroomSpeed==20?'selected':'')+'>20 sec</option><option value="30" '+(state.admin.boardroomSpeed==30?'selected':'')+'>30 sec</option><option value="60" '+(state.admin.boardroomSpeed==60?'selected':'')+'>60 sec</option></select></label>'
     +slidePickerHtml()
     +'<button type="button" class="add-btn" data-boardroom-copy-link>Copy direct link</button>'
@@ -586,15 +640,22 @@ async function loadAttendance(){
   if(!isTony()||B.attendanceBusy)return;
   B.attendanceBusy=true;
   try{
-    const fresh=await storageGet('clockEvents',Array.isArray(state.events)?state.events:[]);
-    if(Array.isArray(fresh))state.events=fresh;
+    const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/manager_boardroom_clock_events',{
+      method:'POST',
+      headers:await authHeaders(),
+      body:'{}',
+      cache:'no-store'
+    });
+    if(!res.ok)throw new Error('Live attendance '+res.status);
+    const fresh=await res.json();
+    if(Array.isArray(fresh))B.liveEvents=fresh;
     B.attendanceLoadedAt=new Date().toISOString();
     if(state.admin.tab===TAB){
       const model=currentModel();
       if(model){
         const slides=slidesFor(model);
         const current=slides[B.slide];
-        if(current&&current.key==='attendance')refreshShell();
+        if(current&&['pulse','people','attendance','status'].includes(current.key))refreshShell();
       }
     }
   }catch(err){

@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v115';
+const CACHE='neas-shift-board-shell-v116';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -29,7 +29,7 @@ const INJECT=[
   ['weekly-checks-section-saves.js','1'],
   ['weekly-checks-save-feedback.js','1'],
   ['weekly-checks-autosave-all.js','2'],
-  ['weekly-deadline-warning.js','1'],
+  ['weekly-deadline-warning.js','2'],
   ['monthly-hs.js','7'],
   ['monthly-hs-kiosk-stable.js','2'],
   ['monthly-hs-autosave.js','1'],

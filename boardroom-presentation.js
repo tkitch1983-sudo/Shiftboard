@@ -63,9 +63,12 @@ const BOARDROOM_PREFS_KEY='neas_boardroom_prefs_v1';
 const BOARDROOM_SLIDE_LABELS={
   pulse:'Business pulse',
   performance:'Workshop performance',
+  mtd:'Month to date sales',
   trend:'Recent sales trend',
   people:'People today',
-  attendance:'Live attendance',
+  attendance:'Live attendance & dinner',
+  weekly:'Weekly checks',
+  safety:'H&S / MOT monthly',
   actions:'Actions & compliance',
   stock:'Stock overview'
 };
@@ -78,13 +81,13 @@ function ensureState(){
     let saved=null;
     try{saved=JSON.parse(localStorage.getItem(BOARDROOM_PREFS_KEY)||'null')}catch(_e){}
     if(saved&&Number(saved.speed)>=10)state.admin.boardroomSpeed=Number(saved.speed);
-    const defaults={pulse:true,performance:true,trend:true,people:true,attendance:true,actions:true,stock:state.admin.boardroomShowStock!==false};
+    const defaults={pulse:true,performance:true,mtd:true,trend:true,people:true,attendance:true,weekly:true,safety:true,actions:true,stock:state.admin.boardroomShowStock!==false};
     const incoming=saved&&saved.slides&&typeof saved.slides==='object'?saved.slides:{};
     state.admin.boardroomSlides=Object.assign(defaults,incoming);
     state.admin.boardroomShowStock=state.admin.boardroomSlides.stock!==false;
   }
   if(!state.admin.boardroomSlides){
-    state.admin.boardroomSlides={pulse:true,performance:true,trend:true,people:true,attendance:true,actions:true,stock:state.admin.boardroomShowStock!==false};
+    state.admin.boardroomSlides={pulse:true,performance:true,mtd:true,trend:true,people:true,attendance:true,weekly:true,safety:true,actions:true,stock:state.admin.boardroomShowStock!==false};
   }
 }
 
@@ -196,6 +199,47 @@ function performanceSlide(model){
   return {title:'Workshop performance',kicker:'Sales, target and margin by site',html:'<div style="display:grid;gap:10px;">'+cards+'</div>'};
 }
 
+function monthToDateSlide(model){
+  const d=R.cache&&R.cache.data;
+  const end=today(),month=end.slice(0,7),start=month+'-01';
+  const p={mode:'mtd',start,end,month,label:'MTD'};
+  if(!d||!Array.isArray(d.sales))return{title:'Month to date sales',kicker:'Workshop sales against month-to-date targets',html:'<div style="font-size:24px;color:var(--muted);padding:40px 0;">Sales data is still loading.</div>'};
+
+  const rows=model.sites.map(site=>{
+    const key=R.key({name:site.name});
+    const salesRows=d.sales.filter(x=>String(x.site_key)===String(key)).sort((a,b)=>String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
+    const sales=R.delta(salesRows,'total_current',start,end);
+    const prior=R.delta(salesRows,'total_prior',start,end);
+    const targetInfo=R.target(String(site.id),p);
+    const target=targetInfo?targetInfo.target:0;
+    const variance=sales-target;
+    return{id:site.id,name:site.name,sales,prior,target,variance,attainment:target?sales/target*100:null};
+  }).sort((a,b)=>n(b.variance)-n(a.variance));
+
+  const groupSales=rows.reduce((a,x)=>a+n(x.sales),0);
+  const groupTarget=rows.reduce((a,x)=>a+n(x.target),0);
+  const groupPrior=rows.reduce((a,x)=>a+n(x.prior),0);
+  const groupVariance=groupSales-groupTarget;
+  const groupVsPrior=groupSales-groupPrior;
+
+  const cards=rows.map(x=>
+    '<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;display:grid;grid-template-columns:1.35fr .9fr .9fr .7fr;gap:12px;align-items:center;">'
+    +'<div><b style="font-size:17px;">'+e(x.name)+'</b><div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(x.attainment==null?'No MTD target':x.attainment.toFixed(1)+'% of MTD target')+'</div></div>'
+    +'<div><small style="color:var(--muted);">MTD sales</small><div class="mono" style="font-size:21px;font-weight:900;">'+money(x.sales)+'</div></div>'
+    +'<div><small style="color:var(--muted);">Variance</small><div class="mono" style="font-size:21px;font-weight:900;color:'+(x.target?(x.variance>=0?'var(--green)':'var(--red)'):'var(--muted)')+';">'+(x.target?((x.variance>=0?'+':'')+money(x.variance)):'—')+'</div></div>'
+    +'<div><small style="color:var(--muted);">vs prior</small><div class="mono" style="font-size:18px;font-weight:800;color:'+(x.sales>=x.prior?'var(--green)':'var(--red)')+';">'+((x.sales-x.prior)>=0?'+':'')+money(x.sales-x.prior)+'</div></div>'
+    +'</div>'
+  ).join('');
+
+  return {title:'Month to date sales',kicker:'Workshop group · '+fmt(start)+' to '+fmt(end),html:
+    '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;">'
+    +metric('MTD sales',money(groupSales),'Workshop group')
+    +metric('MTD target',groupTarget?money(groupTarget):'—','Target through today')
+    +metric('MTD variance',groupTarget?((groupVariance>=0?'+':'')+money(groupVariance)):'—',groupTarget?(groupVariance>=0?'Ahead of target':'Behind target'):'No target set',groupTarget?(groupVariance>=0?'var(--green)':'var(--red)'):'var(--muted)')
+    +metric('Vs prior year',((groupVsPrior>=0?'+':'')+money(groupVsPrior)),'Same month-to-date',groupVsPrior>=0?'var(--green)':'var(--red)')
+    +'</div><div style="display:grid;gap:8px;">'+cards+'</div>'};
+}
+
 function trendSlide(model){
   const trend=dailyTrend(model),max=Math.max(1,...trend.map(x=>x.value));
   if(!trend.length)return{title:'Sales trend',kicker:'Recent trading days',html:'<div style="font-size:24px;color:var(--muted);padding:40px 0;">Not enough daily snapshot history yet.</div>'};
@@ -221,12 +265,15 @@ function peopleSlide(model){
 function liveAttendanceSlide(model){
   const modelIds=new Set(model.sites.map(s=>String(s.id)));
   const employees=(state.config&&Array.isArray(state.config.employees)?state.config.employees:[]).filter(emp=>emp&&emp.active!==false&&modelIds.has(String(emp.siteId||'')));
+  const employeeMap=new Map(employees.map(emp=>[String(emp.id),emp]));
   const todayIso=today();
-  const latestByEmployee=new Map();
-  (Array.isArray(state.events)?state.events:[]).forEach(ev=>{
-    if(!ev||!ev.employeeId||!ev.timestamp)return;
+  const todaysEvents=(Array.isArray(state.events)?state.events:[]).filter(ev=>{
+    if(!ev||!ev.employeeId||!ev.timestamp)return false;
     const d=new Date(Number(ev.timestamp));
-    if(Number.isNaN(d.getTime())||R.iso(d)!==todayIso)return;
+    return !Number.isNaN(d.getTime())&&R.iso(d)===todayIso;
+  });
+  const latestByEmployee=new Map();
+  todaysEvents.forEach(ev=>{
     const prev=latestByEmployee.get(String(ev.employeeId));
     if(!prev||Number(ev.timestamp)>Number(prev.timestamp))latestByEmployee.set(String(ev.employeeId),ev);
   });
@@ -237,35 +284,115 @@ function liveAttendanceSlide(model){
       const ev=latestByEmployee.get(String(emp.id));
       return ev&&ev.type==='in';
     }).length;
+    const dinner=assigned.filter(emp=>{
+      const ev=latestByEmployee.get(String(emp.id));
+      return ev&&ev.type==='out'&&String(ev.outReason||'')==='dinner';
+    }).length;
+    const travelling=assigned.filter(emp=>{
+      const ev=latestByEmployee.get(String(emp.id));
+      return ev&&ev.type==='out'&&String(ev.outReason||'')==='travel';
+    }).length;
     const clockedToday=assigned.filter(emp=>latestByEmployee.has(String(emp.id))).length;
-    const out=clockedToday-onSite;
-    const siteEvents=(Array.isArray(state.events)?state.events:[]).filter(ev=>{
-      if(!ev||!ev.timestamp)return false;
-      const d=new Date(Number(ev.timestamp));
-      if(Number.isNaN(d.getTime())||R.iso(d)!==todayIso)return false;
+    const offShift=Math.max(0,clockedToday-onSite-dinner-travelling);
+
+    const siteEvents=todaysEvents.filter(ev=>{
       if(String(ev.siteId||'')===String(site.id))return true;
-      const emp=employees.find(x=>String(x.id)===String(ev.employeeId));
+      const emp=employeeMap.get(String(ev.employeeId));
       return emp&&String(emp.siteId)===String(site.id);
     }).sort((a,b)=>Number(b.timestamp)-Number(a.timestamp));
     const latest=siteEvents[0]||null;
-    const latestText=latest
-      ? (latest.type==='out'?'Clocked out':'Clocked in')+' '+new Date(Number(latest.timestamp)).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})
-      : 'No movement today';
+    const time=latest?new Date(Number(latest.timestamp)).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';
+    const latestText=!latest?'No movement today'
+      : latest.type==='in'?'Clocked in '+time
+      : String(latest.outReason||'')==='dinner'?'Dinner '+time
+      : String(latest.outReason||'')==='travel'?'Travel '+time
+      : 'Clocked out '+time;
+
     return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;">'
       +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><div style="font-size:18px;font-weight:900;">'+e(site.name)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+e(latestText)+'</div></div>'+pill(onSite+' on site',onSite?'var(--green)':'var(--muted)')+'</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;"><div><small style="color:var(--muted);">Assigned</small><div class="mono" style="font-size:21px;font-weight:800;">'+assigned.length+'</div></div><div><small style="color:var(--muted);">Clocked today</small><div class="mono" style="font-size:21px;font-weight:800;">'+clockedToday+'</div></div><div><small style="color:var(--muted);">Off site</small><div class="mono" style="font-size:21px;font-weight:800;">'+Math.max(0,out)+'</div></div></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;">'
+        +'<div><small style="color:var(--muted);">Clocked today</small><div class="mono" style="font-size:21px;font-weight:800;">'+clockedToday+'</div></div>'
+        +'<div><small style="color:var(--muted);">Dinner now</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(dinner?'var(--amber)':'var(--text)')+';">'+dinner+'</div></div>'
+        +'<div><small style="color:var(--muted);">Travelling</small><div class="mono" style="font-size:21px;font-weight:800;">'+travelling+'</div></div>'
+        +'<div><small style="color:var(--muted);">Off shift</small><div class="mono" style="font-size:21px;font-weight:800;">'+offShift+'</div></div>'
+      +'</div>'
       +'</div>';
   }).join('');
-  const totalOnSite=[...latestByEmployee.entries()].filter(([id,ev])=>{
-    const emp=employees.find(x=>String(x.id)===String(id));
-    return !!emp&&ev&&ev.type==='in';
-  }).length;
+
+  const totals=[...latestByEmployee.entries()].reduce((acc,[id,ev])=>{
+    if(!employeeMap.has(String(id)))return acc;
+    if(ev&&ev.type==='in')acc.onSite++;
+    else if(ev&&ev.type==='out'&&String(ev.outReason||'')==='dinner')acc.dinner++;
+    else if(ev&&ev.type==='out'&&String(ev.outReason||'')==='travel')acc.travelling++;
+    else if(ev&&ev.type==='out')acc.offShift++;
+    return acc;
+  },{onSite:0,dinner:0,travelling:0,offShift:0});
+
   const refreshed=B.attendanceLoadedAt?new Date(B.attendanceLoadedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'waiting';
-  return {title:'Live attendance',kicker:'Shiftboard clock status · refreshes every 5 seconds',html:
-    '<div style="display:grid;grid-template-columns:1fr 3fr;gap:16px;align-items:start;">'
-    +metric('On site now',String(totalOnSite),'Across workshop staff','var(--green)')
-    +'<div style="font-size:12px;color:var(--muted);padding:4px 0 0;">Last attendance refresh: <b>'+e(refreshed)+'</b><br>When somebody clocks in or out on Shiftboard, this screen updates automatically. Individual employee names are not shown on the Boardroom display.</div>'
-    +'</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">'+siteCards+'</div>'};
+  return {title:'Live attendance & dinner',kicker:'Shiftboard clock status · refreshes every 5 seconds',html:
+    '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px;">'
+      +metric('On site now',String(totals.onSite),'Workshop staff','var(--green)')
+      +metric('On dinner',String(totals.dinner),'Clocked out for dinner',totals.dinner?'var(--amber)':'var(--text)')
+      +metric('Travelling',String(totals.travelling),'Between sites')
+      +metric('Off shift',String(totals.offShift),'Clocked out')
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin:-4px 0 12px;">Last attendance refresh: <b>'+e(refreshed)+'</b> · Dinner changes as soon as the employee clocks out for Dinner, then clears when they clock back in.</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">'+siteCards+'</div>'};
+}
+function weeklyChecksSlide(model){
+  const weekStart=R.mon(today());
+  const cards=model.sites.map(site=>{
+    const rows=(site.weekly||[]).filter(x=>String(x.week_start||'')===String(weekStart));
+    const row=rows.sort((a,b)=>String(b.updated_at||'').localeCompare(String(a.updated_at||'')))[0]||null;
+    const done=!!(row&&R.weekDone(row));
+    const completeBits=row?[
+      !!row.weekly_timesheet_done,
+      !!row.site_cleaning_done,
+      !!row.stock_take_done,
+      !!row.oxy_acetylene_done
+    ].filter(Boolean).length:0;
+    const flags=[];
+    if(row&&String(row.maintenance_status||'').toUpperCase()!=='OK')flags.push('Maintenance');
+    if(row&&String(row.mot_log_status||'').toLowerCase()!=='up_to_date')flags.push('MOT log');
+    return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;">'
+      +'<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><b style="font-size:18px;">'+e(site.name)+'</b>'+pill(row?(done?'Complete':'In progress'):'Not started',done?'var(--green)':(row?'var(--amber)':'var(--red)'))+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-top:8px;">'+(row?(completeBits+'/4 core checks complete'):'No weekly record yet')+(flags.length?' · '+e(flags.join(', '))+' needs review':'')+'</div>'
+      +'</div>';
+  }).join('');
+  const complete=model.sites.filter(site=>{
+    const row=(site.weekly||[]).find(x=>String(x.week_start||'')===String(weekStart));
+    return !!(row&&R.weekDone(row));
+  }).length;
+  return {title:'Weekly checks',kicker:'Week beginning '+fmt(weekStart),html:
+    '<div style="display:grid;grid-template-columns:1fr 3fr;gap:16px;align-items:start;margin-bottom:14px;">'
+      +metric('Sites complete',complete+' / '+model.sites.length,'Weekly digital checks',complete===model.sites.length?'var(--green)':'var(--amber)')
+      +'<div style="font-size:13px;color:var(--muted);padding-top:7px;">Tracks the weekly timesheet, site cleaning, stock take and oxy-acetylene checks already recorded in Shiftboard.</div>'
+    +'</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">'+cards+'</div>'};
+}
+
+function safetyMotSlide(model){
+  const cards=model.sites.map(site=>{
+    const hs=site.hs||null,mot=site.mot||null,issues=Array.isArray(site.hsIssues)?site.hsIssues:[];
+    const hsPublished=!!(hs&&(hs.published_at||String(hs.status||'').toLowerCase()==='published'));
+    const hsStatus=!hs?'Not started':issues.length?(issues.length+' issue'+(issues.length===1?'':'s')):(hsPublished?'Published':'In progress');
+    const hsTone=!hs?'var(--red)':issues.length?'var(--red)':hsPublished?'var(--green)':'var(--amber)';
+    const motComplete=!!(mot&&mot.completed);
+    const motStatus=!mot?'Not started':motComplete?'Complete':(mot.checked_through?'Checked to '+fmt(mot.checked_through):'In progress');
+    return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;">'
+      +'<div style="font-size:18px;font-weight:900;margin-bottom:10px;">'+e(site.name)+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+        +'<div><small style="color:var(--muted);">H&S</small><div style="margin-top:4px;">'+pill(hsStatus,hsTone)+'</div></div>'
+        +'<div><small style="color:var(--muted);">MOT QC</small><div style="margin-top:4px;">'+pill(motStatus,motComplete?'var(--green)':(mot?'var(--amber)':'var(--red)'))+'</div></div>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+  const hsGood=model.sites.filter(s=>s.hs&&!((s.hsIssues||[]).length)&&(s.hs.published_at||String(s.hs.status||'').toLowerCase()==='published')).length;
+  const motGood=model.sites.filter(s=>s.mot&&s.mot.completed).length;
+  return {title:'H&S / MOT monthly',kicker:R.ml(today().slice(0,7)),html:
+    '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px;">'
+      +metric('H&S published',hsGood+' / '+model.sites.length,'No saved H&S issues','var(--green)')
+      +metric('MOT QC complete',motGood+' / '+model.sites.length,'Monthly MOT quality control',motGood===model.sites.length?'var(--green)':'var(--amber)')
+    +'</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">'+cards+'</div>'};
 }
 
 function actionsSlide(model){
@@ -297,9 +424,12 @@ function slidesFor(model){
   const defs=[
     ['pulse',pulseSlide],
     ['performance',performanceSlide],
+    ['mtd',monthToDateSlide],
     ['trend',trendSlide],
     ['people',peopleSlide],
     ['attendance',liveAttendanceSlide],
+    ['weekly',weeklyChecksSlide],
+    ['safety',safetyMotSlide],
     ['actions',actionsSlide],
     ['stock',stockSlide]
   ];

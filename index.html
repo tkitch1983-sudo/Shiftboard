@@ -823,7 +823,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', holidayAllowanceMonth:null, _ensuringHolidayHistory:false, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -864,7 +864,7 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
-  if(tab==='holidayallowance') return isTonyLogin();
+  if(tab==='holidayallowance') return state.admin.role==='super';
   if(tab==='targetsetup'||tab==='fullreport'||tab==='boardroom'||tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
   // never see the Pay Rates tab, even if their general role is "super".
@@ -4037,7 +4037,10 @@ function renderAdmin(){
   }
   else if(state.admin.tab==='requests') body = renderAdminRequests();
   else if(state.admin.tab==='calendar') body = renderAdminCalendar();
-  else if(state.admin.tab==='holidayallowance') body = renderAdminHolidayAllowance();
+  else if(state.admin.tab==='holidayallowance'){
+    body = renderAdminHolidayAllowance();
+    if(!state.admin._ensuringHolidayHistory) setTimeout(()=>ensurePreviousHolidayAllowanceSnapshot().then(()=>render()).catch(()=>{}),0);
+  }
   else if(state.admin.tab==='timesheets'){
     try{
       body = renderAdminTimesheets();
@@ -5338,75 +5341,166 @@ function renderHolidayAllowanceImportPreview(){
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"><button type="button" class="add-btn" data-action="apply-holiday-allowance-import" '+(ready?'':'disabled')+'>Apply '+ready+' update'+(ready===1?'':'s')+'</button><button type="button" class="btn-sm" data-action="cancel-holiday-allowance-import">Cancel</button></div>'
     +'</div>';
 }
-function renderAdminHolidayAllowance(){
-  if(!isTonyLogin()) return '<h2>Holiday Allowance</h2><div class="card">Tony only.</div>';
 
+function holidayMonthBounds(monthKey){
+  const m=/^(\d{4})-(\d{2})$/.exec(String(monthKey||''));
+  if(!m) return null;
+  const y=Number(m[1]), mo=Number(m[2]);
+  const start=m[1]+'-'+m[2]+'-01';
+  const next=mo===12?(y+1)+'-01-01':String(y).padStart(4,'0')+'-'+String(mo+1).padStart(2,'0')+'-01';
+  const end=addIsoDaysPure(next,-1);
+  return {year:y,month:mo,start,end};
+}
+function holidayMonthLabel(monthKey){
+  const b=holidayMonthBounds(monthKey);
+  if(!b) return String(monthKey||'');
+  return new Date(b.year,b.month-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+}
+function holidayAllowanceLiveRowsForMonth(monthKey,asOfOverride){
+  const b=holidayMonthBounds(monthKey);
+  if(!b) return [];
+  const today=iso(new Date());
+  const asOf=asOfOverride||((monthKey===today.slice(0,7))?today:b.end);
+  const yearEnd=String(b.year)+'-12-31';
+  const nextYear=String(b.year+1);
+  const nextYearStart=nextYear+'-01-01';
+  const nextYearEnd=nextYear+'-12-31';
+  return (state.config.employees||[]).filter(e=>e.active!==false).map(e=>{
+    const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
+    const u=unitLabel(e);
+    return {
+      employeeId:e.id,
+      name:e.name,
+      siteId:e.siteId,
+      siteName:siteName(e.siteId),
+      unit:u,
+      allowance,
+      monthlyRate:Number(e.monthlyRate!==undefined?e.monthlyRate:(state.config.settings.monthlyAccrualRate||1.66)),
+      taken:holidayBookedBetween(e,b.start,asOf),
+      monthStart:availableBalance(e,b.start),
+      currentBalance:availableBalance(e,asOf),
+      bookedToYearEnd:asOf<yearEnd?holidayBookedBetween(e,addIsoDaysPure(asOf,1),yearEnd):0,
+      projectedYearEnd:availableBalance(e,yearEnd),
+      nextYearBooked:holidayBookedBetween(e,nextYearStart,nextYearEnd)
+    };
+  });
+}
+function holidayAllowanceSnapshotForMonth(monthKey){
+  const hist=state.config.holidayAllowanceHistory||{};
+  const snap=hist[monthKey];
+  return snap&&Array.isArray(snap.rows)?snap:null;
+}
+async function ensurePreviousHolidayAllowanceSnapshot(){
+  if(state.admin.role!=='super'||state.admin._ensuringHolidayHistory) return;
+  const today=iso(new Date());
+  const current=today.slice(0,7);
+  const cb=holidayMonthBounds(current);
+  if(!cb) return;
+  const prevEnd=addIsoDaysPure(cb.start,-1);
+  const prevKey=prevEnd.slice(0,7);
+  state.config.holidayAllowanceHistory=state.config.holidayAllowanceHistory||{};
+  if(state.config.holidayAllowanceHistory[prevKey]) return;
+  state.admin._ensuringHolidayHistory=true;
+  try{
+    state.config.holidayAllowanceHistory[prevKey]={
+      month:prevKey,
+      savedAt:new Date().toISOString(),
+      rows:holidayAllowanceLiveRowsForMonth(prevKey,prevEnd)
+    };
+    const ok=await saveConfig();
+    if(!ok) delete state.config.holidayAllowanceHistory[prevKey];
+  }finally{
+    state.admin._ensuringHolidayHistory=false;
+  }
+}
+function renderAdminHolidayAllowance(){
+  if(state.admin.role!=='super') return '<h2>Holiday Allowance</h2><div class="card">Upper Management only.</div>';
+
+  const today=iso(new Date());
+  const currentMonth=today.slice(0,7);
+  if(!state.admin.holidayAllowanceMonth) state.admin.holidayAllowanceMonth=currentMonth;
+  const history=state.config.holidayAllowanceHistory||{};
+  const monthKeys=Array.from(new Set([currentMonth,...Object.keys(history).filter(k=>/^\d{4}-\d{2}$/.test(k))])).sort().reverse();
+  if(!monthKeys.includes(state.admin.holidayAllowanceMonth)) state.admin.holidayAllowanceMonth=currentMonth;
+  const selectedMonth=state.admin.holidayAllowanceMonth;
+  const isCurrent=selectedMonth===currentMonth;
+  const monthBounds=holidayMonthBounds(selectedMonth);
+  const snapshot=isCurrent?null:holidayAllowanceSnapshotForMonth(selectedMonth);
+  const sourceRows=isCurrent?holidayAllowanceLiveRowsForMonth(selectedMonth,today):(snapshot?snapshot.rows:[]);
   const allActive=(state.config.employees||[]).filter(e=>e.active!==false);
   const siteIds=(state.config.sites||[])
-    .filter(s=>allActive.some(e=>e.siteId===s.id))
+    .filter(s=>allActive.some(e=>e.siteId===s.id)||sourceRows.some(r=>String(r.siteId||'')===String(s.id)))
     .map(s=>s.id);
   let selected=state.admin.holidayAllowanceSite||'all';
   if(selected!=='all' && !siteIds.includes(selected)) selected='all';
   state.admin.holidayAllowanceSite=selected;
 
-  const tabHtml=[
+  const monthTabs=monthKeys.map(k=>
+    '<button type="button" class="btn-sm" data-action="holiday-allowance-month" data-id="'+k+'" style="'+(selectedMonth===k?'border-color:var(--amber);color:var(--amber);background:var(--amber-dim);':'')+'">'+holidayMonthLabel(k)+'</button>'
+  ).join('');
+
+  const siteTabs=[
     '<button type="button" class="btn-sm" data-action="holiday-allowance-site" data-id="all" style="'+(selected==='all'?'border-color:var(--amber);color:var(--amber);background:var(--amber-dim);':'')+'">All Sites</button>'
   ].concat(siteIds.map(siteId=>
     '<button type="button" class="btn-sm" data-action="holiday-allowance-site" data-id="'+siteId+'" style="'+(selected===siteId?'border-color:var(--amber);color:var(--amber);background:var(--amber-dim);':'')+'">'+salesHtml(siteName(siteId))+'</button>'
   )).join('');
 
-  const emps=allActive
-    .filter(e=>selected==='all'||e.siteId===selected)
+  const rows=sourceRows
+    .filter(r=>selected==='all'||String(r.siteId||'')===String(selected))
     .slice()
-    .sort((a,b)=>siteName(a.siteId).localeCompare(siteName(b.siteId))||String(a.name||'').localeCompare(String(b.name||'')));
+    .sort((a,b)=>String(a.siteName||siteName(a.siteId)).localeCompare(String(b.siteName||siteName(b.siteId)))||String(a.name||'').localeCompare(String(b.name||'')));
 
-  const today=iso(new Date());
-  const year=today.slice(0,4);
-  const monthStart=year+'-'+today.slice(5,7)+'-01';
-  const yearEnd=year+'-12-31';
-  const nextYear=String(Number(year)+1);
-  const nextYearStart=nextYear+'-01-01';
-  const nextYearEnd=nextYear+'-12-31';
   const siteLabel=selected==='all'?'All Sites':siteName(selected);
-
-  const rows=emps.map(e=>{
-    const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
-    const taken=holidayTrackerTaken(e);
-    const monthStartBalance=availableBalance(e,monthStart);
-    const balance=availableBalance(e);
-    const bookedToYearEnd=holidayBookedBetween(e,today,yearEnd);
-    const projectedYearEnd=availableBalance(e,yearEnd);
-    const nextYearBooked=holidayBookedBetween(e,nextYearStart,nextYearEnd);
-    const u=unitLabel(e);
-    return '<tr><td>'+salesHtml(e.name)+'</td>'
-      +(selected==='all'?'<td>'+salesHtml(siteName(e.siteId))+'</td>':'')
+  const tableRows=rows.map(r=>{
+    const u=r.unit||'days';
+    const allowance=Number(r.allowance||0);
+    const taken=Number(r.taken||0);
+    const monthStart=Number(r.monthStart||0);
+    const balance=Number(r.currentBalance||0);
+    const booked=Number(r.bookedToYearEnd||0);
+    const projected=Number(r.projectedYearEnd||0);
+    const nextBooked=Number(r.nextYearBooked||0);
+    return '<tr><td>'+salesHtml(r.name||'')+'</td>'
+      +(selected==='all'?'<td>'+salesHtml(r.siteName||siteName(r.siteId))+'</td>':'')
       +'<td class="mono">'+allowance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+taken.toFixed(2)+' '+u+'</td>'
-      +'<td class="mono" style="'+(monthStartBalance<0?'color:var(--red);':'')+'">'+monthStartBalance.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono" style="'+(monthStart<0?'color:var(--red);':'')+'">'+monthStart.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(balance<0?'color:var(--red);':'')+'">'+balance.toFixed(2)+' '+u+'</td>'
-      +'<td class="mono">'+bookedToYearEnd.toFixed(2)+' '+u+'</td>'
-      +'<td class="mono" style="'+(projectedYearEnd<0?'color:var(--red);':'')+'">'+projectedYearEnd.toFixed(2)+' '+u+'</td>'
-      +'<td class="mono">'+nextYearBooked.toFixed(2)+' '+u+'</td></tr>';
+      +'<td class="mono">'+booked.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono" style="'+(projected<0?'color:var(--red);':'')+'">'+projected.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono">'+nextBooked.toFixed(2)+' '+u+'</td></tr>';
   }).join('');
 
+  const importCard=isTonyLogin()
+    ? '<div class="card"><div class="field"><label>Excel or CSV file</label><input type="file" id="holiday-allowance-file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></div>'
+      +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Tony only: upload the monthly holiday spreadsheet, preview the matches, then apply the update.</div>'
+      +'<button type="button" class="add-btn" data-action="preview-holiday-allowance-import">Preview Excel update</button><div id="holiday-allowance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div></div>'
+      +renderHolidayAllowanceImportPreview()
+    : '';
+
+  const archivedNote=!isCurrent
+    ? '<div class="card" style="border-left:4px solid var(--amber);"><b>Saved monthly snapshot</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">This is the preserved '+holidayMonthLabel(selectedMonth)+' position and will not change when later holidays are updated.</div></div>'
+    : '';
+
   return '<h2>Holiday Allowance / Taken</h2>'
-    +'<div class="head-sub">Tony only. Choose a site to review, print or save its holiday position. Excel import remains available at the top for future updates.</div>'
-    +'<div class="card"><div class="field"><label>Excel or CSV file</label><input type="file" id="holiday-allowance-file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></div>'
-    +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Use <span class="mono">Name</span> or <span class="mono">PIN</span>, plus <span class="mono">Allowance</span> and/or <span class="mono">Taken</span>. Optional columns: <span class="mono">Site</span> and <span class="mono">Unit</span>.</div>'
-    +'<button type="button" class="add-btn" data-action="preview-holiday-allowance-import">Preview Excel update</button><div id="holiday-allowance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div></div>'
-    +renderHolidayAllowanceImportPreview()
-    +'<div style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 12px;">'+tabHtml+'</div>'
+    +'<div class="head-sub">Upper Management. Site-by-site holiday position with monthly history. Excel updates remain Tony-only.</div>'
+    +importCard
+    +'<div style="margin:14px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;">Month</div>'
+    +'<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;">'+monthTabs+'</div>'
+    +archivedNote
+    +'<div style="margin:14px 0 6px;font-size:11px;color:var(--muted);text-transform:uppercase;">Site</div>'
+    +'<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;">'+siteTabs+'</div>'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
-      +'<div><b style="font-size:16px;">'+salesHtml(siteLabel)+'</b><div style="font-size:12px;color:var(--muted);">'+emps.length+' active employee'+(emps.length===1?'':'s')+'</div></div>'
+      +'<div><b style="font-size:16px;">'+salesHtml(siteLabel)+' · '+holidayMonthLabel(selectedMonth)+'</b><div style="font-size:12px;color:var(--muted);">'+rows.length+' employee'+(rows.length===1?'':'s')+'</div></div>'
       +'<div style="display:flex;gap:8px;"><button type="button" class="add-btn" data-action="holiday-allowance-print">Print</button><button type="button" class="add-btn" data-action="holiday-allowance-save">Save</button></div>'
     +'</div>'
     +'<div id="holiday-allowance-site-output" class="card" style="margin-top:0;">'
       +'<div style="margin-bottom:12px;"><div style="font-family:Oswald,sans-serif;font-size:20px;font-weight:600;">Holiday Allowance / Taken — '+salesHtml(siteLabel)+'</div>'
-      +'<div style="font-size:12px;color:var(--muted);">Position as at '+fmtDate(today)+' · Month start '+fmtDate(monthStart)+' · Year end '+fmtDate(yearEnd)+'</div></div>'
-      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Taken / approved</th><th>Month start</th><th>Current balance</th><th>Booked to year end</th><th>Projected year end</th><th>'+nextYear+' booked</th></tr></thead>'
-      +'<tbody>'+(rows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No active employees at this site.</td></tr>')+'</tbody></table>'
+      +'<div style="font-size:12px;color:var(--muted);">'+holidayMonthLabel(selectedMonth)+(isCurrent?' · Live position as at '+fmtDate(today):' · Archived month')+'</div></div>'
+      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Taken / approved</th><th>Month start</th><th>Current / close</th><th>Booked to year end</th><th>Projected year end</th><th>Next year booked</th></tr></thead>'
+      +'<tbody>'+(tableRows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No saved holiday data for this selection.</td></tr>')+'</tbody></table>'
     +'</div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Current balance uses the same holiday calculation that was shown on Employees. Month start is the balance on the first day of this month; future bookings are approved holiday only.</div>';
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">The current month stays live. When a new month begins, Shiftboard preserves the previous month so Upper Management can return to it later. Print and Save use the site and month currently selected.</div>';
 }
 
 function renderAdminEmployees(){
@@ -5422,7 +5516,7 @@ function renderAdminEmployees(){
     </tr>`).join('');
   return `
   <h2>Employees</h2>
-  <div class="head-sub">${state.config.employees.length} people across ${state.config.sites.length} sites. Holiday balances and planning are now kept in the Tony-only Holiday Allowance tab.</div>
+  <div class="head-sub">${state.config.employees.length} people across ${state.config.sites.length} sites. Holiday balances and planning are now kept in the Upper Management Holiday Allowance tab.</div>
   <div class="card">
     <table>
       <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Status</th><th></th></tr></thead>
@@ -7280,22 +7374,29 @@ async function onAction(e){
     return;
   }
 
+  else if(action==='holiday-allowance-month'){
+    if(state.admin.role!=='super'){ showToast('Upper Management only.',true); return render(); }
+    state.admin.holidayAllowanceMonth=id||iso(new Date()).slice(0,7);
+    render(); return;
+  }
   else if(action==='holiday-allowance-site'){
-    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    if(state.admin.role!=='super'){ showToast('Upper Management only.',true); return render(); }
     state.admin.holidayAllowanceSite=id||'all';
     render(); return;
   }
   else if(action==='holiday-allowance-print'){
-    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    if(state.admin.role!=='super'){ showToast('Upper Management only.',true); return render(); }
     const siteId=state.admin.holidayAllowanceSite||'all';
+    const month=state.admin.holidayAllowanceMonth||iso(new Date()).slice(0,7);
     const label=siteId==='all'?'All Sites':siteName(siteId);
-    printSelectedReport('#holiday-allowance-site-output','Holiday Allowance - '+label,'landscape'); return;
+    printSelectedReport('#holiday-allowance-site-output','Holiday Allowance - '+label+' - '+holidayMonthLabel(month),'landscape'); return;
   }
   else if(action==='holiday-allowance-save'){
-    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    if(state.admin.role!=='super'){ showToast('Upper Management only.',true); return render(); }
     const siteId=state.admin.holidayAllowanceSite||'all';
+    const month=state.admin.holidayAllowanceMonth||iso(new Date()).slice(0,7);
     const label=siteId==='all'?'all-sites':safeReportFilename(siteName(siteId));
-    downloadSelectedReport('#holiday-allowance-site-output','Holiday Allowance',`holiday-allowance-${label}-${iso(new Date())}.html`,'landscape'); return;
+    downloadSelectedReport('#holiday-allowance-site-output','Holiday Allowance',`holiday-allowance-${label}-${month}.html`,'landscape'); return;
   }
 
   else if(action==='calendar-add-holiday'){

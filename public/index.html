@@ -5183,6 +5183,16 @@ function holidayTrackerTaken(emp, asOfDate){
   });
   return total;
 }
+function holidayBookedBetween(emp,startDate,endDate){
+  const map=approvedDatesForEmployee(emp.id);
+  let total=0;
+  map.forEach((amount,date)=>{
+    if(date>=startDate && date<=endDate){
+      total += isHourly(emp) ? Number(amount||0) : Math.min(1,Number(amount||0));
+    }
+  });
+  return total;
+}
 function holidayTrackerUpdatedLabel(emp){
   if(!emp.holidayTrackerUpdatedAt) return 'Live from approved holidays';
   try{return 'Imported '+fmtDate(String(emp.holidayTrackerUpdatedAt).slice(0,10));}
@@ -5276,15 +5286,30 @@ function renderHolidayAllowanceImportPreview(){
 function renderAdminHolidayAllowance(){
   if(!isTonyLogin()) return '<h2>Holiday Allowance</h2><div class="card">Tony only.</div>';
   const emps=(state.config.employees||[]).slice().sort((a,b)=>siteName(a.siteId).localeCompare(siteName(b.siteId))||String(a.name||'').localeCompare(String(b.name||'')));
+  const today=iso(new Date());
+  const year=today.slice(0,4);
+  const monthStart=year+'-'+today.slice(5,7)+'-01';
+  const yearEnd=year+'-12-31';
+  const nextYear=String(Number(year)+1);
+  const nextYearStart=nextYear+'-01-01';
+  const nextYearEnd=nextYear+'-12-31';
   const rows=emps.map(e=>{
     const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
     const taken=holidayTrackerTaken(e);
+    const monthStartBalance=availableBalance(e,monthStart);
     const balance=availableBalance(e);
+    const bookedToYearEnd=holidayBookedBetween(e,today,yearEnd);
+    const projectedYearEnd=availableBalance(e,yearEnd);
+    const nextYearBooked=holidayBookedBetween(e,nextYearStart,nextYearEnd);
     const u=unitLabel(e);
     return '<tr><td>'+salesHtml(e.name)+'</td><td>'+salesHtml(siteName(e.siteId))+'</td>'
       +'<td class="mono">'+allowance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+taken.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono" style="'+(monthStartBalance<0?'color:var(--red);':'')+'">'+monthStartBalance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(balance<0?'color:var(--red);':'')+'">'+balance.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono">'+bookedToYearEnd.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono" style="'+(projectedYearEnd<0?'color:var(--red);':'')+'">'+projectedYearEnd.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono">'+nextYearBooked.toFixed(2)+' '+u+'</td>'
       +'<td style="font-size:11px;color:var(--muted);">'+holidayTrackerUpdatedLabel(e)+'</td></tr>';
   }).join('');
   return '<h2>Holiday Allowance / Taken</h2>'
@@ -5293,8 +5318,8 @@ function renderAdminHolidayAllowance(){
     +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Use <span class="mono">Name</span> or <span class="mono">PIN</span>, plus <span class="mono">Allowance</span> and/or <span class="mono">Taken</span>. Optional columns: <span class="mono">Site</span> and <span class="mono">Unit</span>. Headers such as “Employee Name”, “Holiday Allowance” and “Holiday Taken” are accepted.</div>'
     +'<button type="button" class="add-btn" data-action="preview-holiday-allowance-import">Preview Excel update</button><div id="holiday-allowance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div></div>'
     +renderHolidayAllowanceImportPreview()
-    +'<div class="card" style="margin-top:14px;"><table><thead><tr><th>Name</th><th>Site</th><th>Allowance</th><th>Taken / approved</th><th>Current balance</th><th>Tracker source</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Current balance uses the exact same holiday calculation as the Employees tab, so the two screens stay in sync. Taken / approved is shown separately for reference. Existing holiday requests and dates are left untouched.</div>';
+    +'<div class="card" style="margin-top:14px;"><table><thead><tr><th>Name</th><th>Site</th><th>Allowance</th><th>Taken / approved</th><th>Month start</th><th>Current balance</th><th>Booked to year end</th><th>Projected year end</th><th>Next year booked</th><th>Tracker source</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start shows the balance at the first day of this month. Booked to year end totals approved future holiday from today through 31 December. Projected year end includes scheduled accrual and those approved bookings. Next year booked shows approved holiday already entered for the following calendar year. Current balance uses the exact same calculation as the Employees tab.</div>';
 }
 
 function renderAdminEmployees(){

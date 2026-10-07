@@ -14,6 +14,7 @@
 <link rel="apple-touch-icon" href="./icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#0b0b0c;
@@ -822,12 +823,12 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
-  ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['bankholidays','Bank Holidays','Holiday'],
+  ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['bankholidays','Bank Holidays','Holiday'],
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
@@ -863,6 +864,7 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
+  if(tab==='holidayallowance') return isTonyLogin();
   if(tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
   // never see the Pay Rates tab, even if their general role is "super".
@@ -3982,6 +3984,7 @@ function renderAdmin(){
   }
   else if(state.admin.tab==='requests') body = renderAdminRequests();
   else if(state.admin.tab==='calendar') body = renderAdminCalendar();
+  else if(state.admin.tab==='holidayallowance') body = renderAdminHolidayAllowance();
   else if(state.admin.tab==='timesheets'){
     try{
       body = renderAdminTimesheets();
@@ -5161,6 +5164,139 @@ function holidayStatusLabel(emp){
   if(upcoming.length) return 'Next: '+fmtDateShort(upcoming[0]);
   return '—';
 }
+
+function holidayTrackerTaken(emp, asOfDate){
+  const ref=asOfDate||iso(new Date());
+  const map=approvedDatesForEmployee(emp.id);
+  const imported=Number(emp.holidayTakenBase);
+  if(Number.isFinite(imported) && emp.holidayTakenBaseDate){
+    let total=imported;
+    map.forEach((amount,date)=>{
+      if(date>emp.holidayTakenBaseDate && date<=ref) total += isHourly(emp) ? Number(amount||0) : Math.min(1,Number(amount||0));
+    });
+    return total;
+  }
+  const yearStart=String(ref).slice(0,4)+'-01-01';
+  let total=0;
+  map.forEach((amount,date)=>{
+    if(date>=yearStart && date<=ref) total += isHourly(emp) ? Number(amount||0) : Math.min(1,Number(amount||0));
+  });
+  return total;
+}
+function holidayTrackerUpdatedLabel(emp){
+  if(!emp.holidayTrackerUpdatedAt) return 'Live from approved holidays';
+  try{return 'Imported '+fmtDate(String(emp.holidayTrackerUpdatedAt).slice(0,10));}
+  catch(_e){return 'Imported';}
+}
+function normalizeHolidaySheetKey(v){
+  return String(v==null?'':v).trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+function holidaySheetNumber(v){
+  if(v===null||v===undefined||String(v).trim()==='') return null;
+  const n=Number(String(v).replace(/[£,$\s]/g,''));
+  return Number.isFinite(n)?n:null;
+}
+async function readHolidayAllowanceSheet(file){
+  const name=String(file&&file.name||'').toLowerCase();
+  let records=[];
+  if(name.endsWith('.csv')||name.endsWith('.txt')){
+    const lines=(await file.text()).replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim());
+    if(!lines.length) return [];
+    const headers=parseCsvLine(lines[0]).map(normalizeHolidaySheetKey);
+    records=lines.slice(1).map(line=>{
+      const vals=parseCsvLine(line), obj={};
+      headers.forEach((h,i)=>{ if(h) obj[h]=vals[i]??''; });
+      return obj;
+    });
+  }else{
+    if(!window.XLSX) throw new Error('Excel reader did not load. Check the internet connection and try again.');
+    const data=await file.arrayBuffer();
+    const wb=XLSX.read(data,{type:'array'});
+    const first=wb.SheetNames&&wb.SheetNames[0];
+    if(!first) throw new Error('The workbook has no worksheets.');
+    const raw=XLSX.utils.sheet_to_json(wb.Sheets[first],{defval:'',raw:false});
+    records=raw.map(row=>{
+      const obj={};
+      Object.keys(row||{}).forEach(k=>{obj[normalizeHolidaySheetKey(k)]=row[k];});
+      return obj;
+    });
+  }
+  const pick=(obj,keys)=>{
+    for(const k of keys){ const nk=normalizeHolidaySheetKey(k); if(Object.prototype.hasOwnProperty.call(obj,nk) && String(obj[nk]).trim()!=='') return obj[nk]; }
+    return '';
+  };
+  return records.map((obj,i)=>{
+    const pin=String(pick(obj,['pin','employee pin','staff pin'])).trim();
+    const nameVal=String(pick(obj,['name','employee','employee name','staff','staff name','pin_or_name'])).trim();
+    const site=String(pick(obj,['site','location','branch'])).trim();
+    const allowance=holidaySheetNumber(pick(obj,['allowance','holiday allowance','annual allowance','entitlement','annual entitlement','allowance days']));
+    const taken=holidaySheetNumber(pick(obj,['taken','holiday taken','days taken','hours taken','taken to date']));
+    const unitRaw=String(pick(obj,['unit','holiday unit'])).trim().toLowerCase();
+    const unit=unitRaw.startsWith('hour')?'hours':(unitRaw.startsWith('day')?'days':'');
+    return {row:i+2,pin,name:nameVal,site,allowance,taken,unit};
+  }).filter(r=>r.pin||r.name||r.allowance!==null||r.taken!==null);
+}
+function matchHolidayAllowanceRow(row){
+  const employees=state.config.employees||[];
+  if(row.pin){
+    const byPin=employees.find(e=>String(e.pin||'').trim()===String(row.pin).trim());
+    if(byPin) return byPin;
+  }
+  const key=String(row.name||'').trim().toLowerCase();
+  if(!key) return null;
+  let matches=employees.filter(e=>String(e.name||'').trim().toLowerCase()===key);
+  if(matches.length===1) return matches[0];
+  if(matches.length>1 && row.site){
+    const siteKey=String(row.site).trim().toLowerCase();
+    const bySite=matches.find(e=>String(siteName(e.siteId)||'').trim().toLowerCase()===siteKey);
+    if(bySite) return bySite;
+  }
+  return null;
+}
+function renderHolidayAllowanceImportPreview(){
+  const p=state.admin.holidayAllowanceImportPreview;
+  if(!p) return '';
+  const rows=(p.rows||[]).map(r=>{
+    const ok=!!r.employeeId && (r.allowance!==null||r.taken!==null);
+    return '<tr>'
+      +'<td>'+r.row+'</td><td>'+salesHtml(r.inputName||r.pin||'—')+'</td>'
+      +'<td>'+(r.matchedName?salesHtml(r.matchedName):'<span style="color:var(--red);">Not matched</span>')+'</td>'
+      +'<td>'+(r.allowance===null?'—':r.allowance)+'</td>'
+      +'<td>'+(r.taken===null?'—':r.taken)+'</td>'
+      +'<td><span class="pill '+(ok?'pill-approved':'pill-rejected')+'">'+(ok?'READY':'CHECK')+'</span></td>'
+      +'</tr>';
+  }).join('');
+  const ready=(p.rows||[]).filter(r=>r.employeeId&&(r.allowance!==null||r.taken!==null)).length;
+  return '<div class="card" style="margin-top:12px;">'
+    +'<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;"><b>Import preview</b><span class="mono" style="font-size:12px;color:var(--muted);">'+ready+' ready</span></div>'
+    +'<div style="margin-top:10px;overflow-x:auto;"><table><thead><tr><th>Row</th><th>Spreadsheet</th><th>Matched employee</th><th>Allowance</th><th>Taken</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"><button type="button" class="add-btn" data-action="apply-holiday-allowance-import" '+(ready?'':'disabled')+'>Apply '+ready+' update'+(ready===1?'':'s')+'</button><button type="button" class="btn-sm" data-action="cancel-holiday-allowance-import">Cancel</button></div>'
+    +'</div>';
+}
+function renderAdminHolidayAllowance(){
+  if(!isTonyLogin()) return '<h2>Holiday Allowance</h2><div class="card">Tony only.</div>';
+  const emps=(state.config.employees||[]).slice().sort((a,b)=>siteName(a.siteId).localeCompare(siteName(b.siteId))||String(a.name||'').localeCompare(String(b.name||'')));
+  const rows=emps.map(e=>{
+    const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
+    const taken=holidayTrackerTaken(e);
+    const remaining=allowance-taken;
+    const u=unitLabel(e);
+    return '<tr><td>'+salesHtml(e.name)+'</td><td>'+salesHtml(siteName(e.siteId))+'</td>'
+      +'<td class="mono">'+allowance.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono">'+taken.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono" style="'+(remaining<0?'color:var(--red);':'')+'">'+remaining.toFixed(2)+' '+u+'</td>'
+      +'<td style="font-size:11px;color:var(--muted);">'+holidayTrackerUpdatedLabel(e)+'</td></tr>';
+  }).join('');
+  return '<h2>Holiday Allowance / Taken</h2>'
+    +'<div class="head-sub">Tony only. Upload an Excel sheet to update annual allowance and holiday taken for existing staff. The import previews first and never creates or deletes employees.</div>'
+    +'<div class="card"><div class="field"><label>Excel or CSV file</label><input type="file" id="holiday-allowance-file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></div>'
+    +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Use <span class="mono">Name</span> or <span class="mono">PIN</span>, plus <span class="mono">Allowance</span> and/or <span class="mono">Taken</span>. Optional columns: <span class="mono">Site</span> and <span class="mono">Unit</span>. Headers such as “Employee Name”, “Holiday Allowance” and “Holiday Taken” are accepted.</div>'
+    +'<button type="button" class="add-btn" data-action="preview-holiday-allowance-import">Preview Excel update</button><div id="holiday-allowance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div></div>'
+    +renderHolidayAllowanceImportPreview()
+    +'<div class="card" style="margin-top:14px;"><table><thead><tr><th>Name</th><th>Site</th><th>Allowance</th><th>Taken</th><th>Remaining</th><th>Tracker source</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Imported “Taken” is treated as the total taken up to the import date. Approved holiday that actually occurs after that date is then added automatically. Existing holiday requests and dates are left untouched.</div>';
+}
+
 function renderAdminEmployees(){
   const rows = state.config.employees.slice()
     .sort((a,b)=> siteName(a.siteId).localeCompare(siteName(b.siteId)) || a.name.localeCompare(b.name))
@@ -7646,6 +7782,65 @@ async function onAction(e){
       showToast('Could not save imported holidays.', true);
       render(); return;
     }
+  }
+
+  else if(action==='preview-holiday-allowance-import'){
+    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    const input=document.getElementById('holiday-allowance-file');
+    const result=document.getElementById('holiday-allowance-import-result');
+    if(!input||!input.files||!input.files[0]){ if(result) result.textContent='Choose an Excel or CSV file first.'; return; }
+    try{
+      const parsed=await readHolidayAllowanceSheet(input.files[0]);
+      const rows=parsed.map(r=>{
+        const emp=matchHolidayAllowanceRow(r);
+        return Object.assign({},r,{
+          employeeId:emp?emp.id:null,
+          matchedName:emp?emp.name:'',
+          inputName:r.name||'',
+          matchedSite:emp?siteName(emp.siteId):''
+        });
+      });
+      if(!rows.length) throw new Error('No usable staff rows were found in the first worksheet.');
+      state.admin.holidayAllowanceImportPreview={fileName:input.files[0].name,rows};
+      render();
+    }catch(err){
+      state.admin.holidayAllowanceImportPreview=null;
+      if(result) result.textContent=err.message||String(err);
+      showToast(err.message||String(err),true);
+    }
+    return;
+  }
+  else if(action==='cancel-holiday-allowance-import'){
+    state.admin.holidayAllowanceImportPreview=null; render(); return;
+  }
+  else if(action==='apply-holiday-allowance-import'){
+    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    const preview=state.admin.holidayAllowanceImportPreview;
+    if(!preview||!Array.isArray(preview.rows)){ showToast('Preview the spreadsheet first.',true); return; }
+    const today=iso(new Date()), now=new Date().toISOString();
+    let updated=0;
+    for(const row of preview.rows){
+      if(!row.employeeId || (row.allowance===null&&row.taken===null)) continue;
+      const emp=(state.config.employees||[]).find(e=>String(e.id)===String(row.employeeId));
+      if(!emp) continue;
+      if(row.allowance!==null) emp.allowanceDays=Number(row.allowance);
+      if(row.taken!==null){
+        emp.holidayTakenBase=Number(row.taken);
+        emp.holidayTakenBaseDate=today;
+      }
+      if(row.unit==='days'||row.unit==='hours') emp.holidayUnit=row.unit;
+      emp.holidayTrackerUpdatedAt=now;
+      emp.holidayTrackerUpdatedBy=String(_session&&_session.email||'Tony');
+      updated++;
+    }
+    if(!updated){ showToast('No matched rows to update.',true); return; }
+    const ok=await saveConfig();
+    if(ok){
+      state.admin.holidayAllowanceImportPreview=null;
+      showToast('Holiday allowance/taken updated for '+updated+' employee'+(updated===1?'':'s')+'.');
+      render();
+    }else showToast('Could not save holiday allowance updates.',true);
+    return;
   }
 
   else if(action==='import-balances'){

@@ -5334,12 +5334,12 @@ function renderAdminHolidayAllowance(){
   const rows=emps.map(e=>{
     const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
     const taken=holidayTrackerTaken(e);
-    const remaining=allowance-taken;
+    const balance=availableBalance(e);
     const u=unitLabel(e);
     return '<tr><td>'+salesHtml(e.name)+'</td><td>'+salesHtml(siteName(e.siteId))+'</td>'
       +'<td class="mono">'+allowance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+taken.toFixed(2)+' '+u+'</td>'
-      +'<td class="mono" style="'+(remaining<0?'color:var(--red);':'')+'">'+remaining.toFixed(2)+' '+u+'</td>'
+      +'<td class="mono" style="'+(balance<0?'color:var(--red);':'')+'">'+balance.toFixed(2)+' '+u+'</td>'
       +'<td style="font-size:11px;color:var(--muted);">'+holidayTrackerUpdatedLabel(e)+'</td></tr>';
   }).join('');
   return '<h2>Holiday Allowance / Taken</h2>'
@@ -5348,8 +5348,8 @@ function renderAdminHolidayAllowance(){
     +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Use <span class="mono">Name</span> or <span class="mono">PIN</span>, plus <span class="mono">Allowance</span> and/or <span class="mono">Taken</span>. Optional columns: <span class="mono">Site</span> and <span class="mono">Unit</span>. Headers such as “Employee Name”, “Holiday Allowance” and “Holiday Taken” are accepted.</div>'
     +'<button type="button" class="add-btn" data-action="preview-holiday-allowance-import">Preview Excel update</button><div id="holiday-allowance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div></div>'
     +renderHolidayAllowanceImportPreview()
-    +'<div class="card" style="margin-top:14px;"><table><thead><tr><th>Name</th><th>Site</th><th>Allowance</th><th>Taken</th><th>Remaining</th><th>Tracker source</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Imported “Taken” is treated as the total taken up to the import date. Approved holiday that actually occurs after that date is then added automatically. Existing holiday requests and dates are left untouched.</div>';
+    +'<div class="card" style="margin-top:14px;"><table><thead><tr><th>Name</th><th>Site</th><th>Allowance</th><th>Taken / approved</th><th>Current balance</th><th>Tracker source</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Current balance uses the exact same holiday calculation as the Employees tab, so the two screens stay in sync. Taken / approved is shown separately for reference. Existing holiday requests and dates are left untouched.</div>';
 }
 
 function renderAdminEmployees(){

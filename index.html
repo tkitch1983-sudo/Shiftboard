@@ -6987,7 +6987,7 @@ async function onAction(e){
     if(coverEmployee) dates=dates.map(d=>Object.assign({},d,{coverEmployeeId:String(coverEmployee.id)}));
     try{
       const res = await callRpc('staff_request_holiday', { p_pin: state.flow.verifiedPin, p_dates: dates });
-      if(!res || !res.ok){ showToast('Could not send the request.', true); return render(); }
+      if(!res || !res.ok){ showToast((res&&res.error)||'Could not send the request.', true); return render(); }
       state.flow.lastRequest = { employeeId: emp.id, dates, status:'pending', coverEmployeeId:coverEmployee?String(coverEmployee.id):null, coverEmployeeName:coverEmployee?coverEmployee.name:null };
       state.view='holiday-confirm';
     }catch(err){

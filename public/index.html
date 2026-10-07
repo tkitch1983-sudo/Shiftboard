@@ -823,7 +823,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -5285,7 +5285,26 @@ function renderHolidayAllowanceImportPreview(){
 }
 function renderAdminHolidayAllowance(){
   if(!isTonyLogin()) return '<h2>Holiday Allowance</h2><div class="card">Tony only.</div>';
-  const emps=(state.config.employees||[]).slice().sort((a,b)=>siteName(a.siteId).localeCompare(siteName(b.siteId))||String(a.name||'').localeCompare(String(b.name||'')));
+
+  const allActive=(state.config.employees||[]).filter(e=>e.active!==false);
+  const siteIds=(state.config.sites||[])
+    .filter(s=>allActive.some(e=>e.siteId===s.id))
+    .map(s=>s.id);
+  let selected=state.admin.holidayAllowanceSite||'all';
+  if(selected!=='all' && !siteIds.includes(selected)) selected='all';
+  state.admin.holidayAllowanceSite=selected;
+
+  const tabHtml=[
+    '<button type="button" class="btn-sm" data-action="holiday-allowance-site" data-id="all" style="'+(selected==='all'?'border-color:var(--amber);color:var(--amber);background:var(--amber-dim);':'')+'">All Sites</button>'
+  ].concat(siteIds.map(siteId=>
+    '<button type="button" class="btn-sm" data-action="holiday-allowance-site" data-id="'+siteId+'" style="'+(selected===siteId?'border-color:var(--amber);color:var(--amber);background:var(--amber-dim);':'')+'">'+salesHtml(siteName(siteId))+'</button>'
+  )).join('');
+
+  const emps=allActive
+    .filter(e=>selected==='all'||e.siteId===selected)
+    .slice()
+    .sort((a,b)=>siteName(a.siteId).localeCompare(siteName(b.siteId))||String(a.name||'').localeCompare(String(b.name||'')));
+
   const today=iso(new Date());
   const year=today.slice(0,4);
   const monthStart=year+'-'+today.slice(5,7)+'-01';
@@ -5293,6 +5312,8 @@ function renderAdminHolidayAllowance(){
   const nextYear=String(Number(year)+1);
   const nextYearStart=nextYear+'-01-01';
   const nextYearEnd=nextYear+'-12-31';
+  const siteLabel=selected==='all'?'All Sites':siteName(selected);
+
   const rows=emps.map(e=>{
     const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
     const taken=holidayTrackerTaken(e);
@@ -5302,63 +5323,58 @@ function renderAdminHolidayAllowance(){
     const projectedYearEnd=availableBalance(e,yearEnd);
     const nextYearBooked=holidayBookedBetween(e,nextYearStart,nextYearEnd);
     const u=unitLabel(e);
-    return '<tr><td>'+salesHtml(e.name)+'</td><td>'+salesHtml(siteName(e.siteId))+'</td>'
+    return '<tr><td>'+salesHtml(e.name)+'</td>'
+      +(selected==='all'?'<td>'+salesHtml(siteName(e.siteId))+'</td>':'')
       +'<td class="mono">'+allowance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+taken.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(monthStartBalance<0?'color:var(--red);':'')+'">'+monthStartBalance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(balance<0?'color:var(--red);':'')+'">'+balance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+bookedToYearEnd.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(projectedYearEnd<0?'color:var(--red);':'')+'">'+projectedYearEnd.toFixed(2)+' '+u+'</td>'
-      +'<td class="mono">'+nextYearBooked.toFixed(2)+' '+u+'</td>'
-      +'<td style="font-size:11px;color:var(--muted);">'+holidayTrackerUpdatedLabel(e)+'</td></tr>';
+      +'<td class="mono">'+nextYearBooked.toFixed(2)+' '+u+'</td></tr>';
   }).join('');
+
   return '<h2>Holiday Allowance / Taken</h2>'
-    +'<div class="head-sub">Tony only. Upload an Excel sheet to update annual allowance and holiday taken for existing staff. The import previews first and never creates or deletes employees.</div>'
+    +'<div class="head-sub">Tony only. Choose a site to review, print or save its holiday position. Excel import remains available at the top for future updates.</div>'
     +'<div class="card"><div class="field"><label>Excel or CSV file</label><input type="file" id="holiday-allowance-file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></div>'
-    +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Use <span class="mono">Name</span> or <span class="mono">PIN</span>, plus <span class="mono">Allowance</span> and/or <span class="mono">Taken</span>. Optional columns: <span class="mono">Site</span> and <span class="mono">Unit</span>. Headers such as “Employee Name”, “Holiday Allowance” and “Holiday Taken” are accepted.</div>'
+    +'<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px;">Use <span class="mono">Name</span> or <span class="mono">PIN</span>, plus <span class="mono">Allowance</span> and/or <span class="mono">Taken</span>. Optional columns: <span class="mono">Site</span> and <span class="mono">Unit</span>.</div>'
     +'<button type="button" class="add-btn" data-action="preview-holiday-allowance-import">Preview Excel update</button><div id="holiday-allowance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div></div>'
     +renderHolidayAllowanceImportPreview()
-    +'<div class="card" style="margin-top:14px;"><table><thead><tr><th>Name</th><th>Site</th><th>Allowance</th><th>Taken / approved</th><th>Month start</th><th>Current balance</th><th>Booked to year end</th><th>Projected year end</th><th>Next year booked</th><th>Tracker source</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start shows the balance at the first day of this month. Booked to year end totals approved future holiday from today through 31 December. Projected year end includes scheduled accrual and those approved bookings. Next year booked shows approved holiday already entered for the following calendar year. Current balance uses the exact same calculation as the Employees tab.</div>';
+    +'<div style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 12px;">'+tabHtml+'</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">'
+      +'<div><b style="font-size:16px;">'+salesHtml(siteLabel)+'</b><div style="font-size:12px;color:var(--muted);">'+emps.length+' active employee'+(emps.length===1?'':'s')+'</div></div>'
+      +'<div style="display:flex;gap:8px;"><button type="button" class="add-btn" data-action="holiday-allowance-print">Print</button><button type="button" class="add-btn" data-action="holiday-allowance-save">Save</button></div>'
+    +'</div>'
+    +'<div id="holiday-allowance-site-output" class="card" style="margin-top:0;">'
+      +'<div style="margin-bottom:12px;"><div style="font-family:Oswald,sans-serif;font-size:20px;font-weight:600;">Holiday Allowance / Taken — '+salesHtml(siteLabel)+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);">Position as at '+fmtDate(today)+' · Month start '+fmtDate(monthStart)+' · Year end '+fmtDate(yearEnd)+'</div></div>'
+      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Taken / approved</th><th>Month start</th><th>Current balance</th><th>Booked to year end</th><th>Projected year end</th><th>'+nextYear+' booked</th></tr></thead>'
+      +'<tbody>'+(rows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No active employees at this site.</td></tr>')+'</tbody></table>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Current balance uses the same holiday calculation that was shown on Employees. Month start is the balance on the first day of this month; future bookings are approved holiday only.</div>';
 }
 
 function renderAdminEmployees(){
   const rows = state.config.employees.slice()
     .sort((a,b)=> siteName(a.siteId).localeCompare(siteName(b.siteId)) || a.name.localeCompare(b.name))
-    .map(e=>{
-    const bal = availableBalance(e);
-    const u = unitLabel(e);
-    return `
+    .map(e=>\`
     <tr>
-      <td>${e.name}</td>
-      <td>${siteName(e.siteId)}</td>
-      <td class="mono">${e.pin}</td>
-      <td>${formatHolidayAmount(e,e.allowanceDays||20)} ${u}/yr</td>
-      <td class="mono">${e.monthlyRate!==undefined ? e.monthlyRate : (state.config.settings.monthlyAccrualRate||1.66)} ${u}</td>
-      <td class="mono" style="${bal<0?'color:var(--red);':''}">${bal.toFixed(2)} ${u}</td>
-      <td style="font-size:11px;color:var(--muted);">${holidayStatusLabel(e)}</td>
-      <td><span class="toggle ${e.active!==false?'on':'off'}" data-action="toggle-employee" data-id="${e.id}">${e.active!==false?'Active':'Inactive'}</span></td>
-      <td><button type="button" class="icon-btn" data-action="edit-employee" data-id="${e.id}">Edit</button>${e.active===false?` · <button type="button" class="icon-btn" data-action="delete-employee" data-id="${e.id}">Delete</button>`:''}</td>
-    </tr>`;
-  }).join('');
-  return `
+      <td>\${e.name}</td>
+      <td>\${siteName(e.siteId)}</td>
+      <td class="mono">\${e.pin}</td>
+      <td><span class="toggle \${e.active!==false?'on':'off'}" data-action="toggle-employee" data-id="\${e.id}">\${e.active!==false?'Active':'Inactive'}</span></td>
+      <td><button type="button" class="icon-btn" data-action="edit-employee" data-id="\${e.id}">Edit</button>\${e.active===false?\` · <button type="button" class="icon-btn" data-action="delete-employee" data-id="\${e.id}">Delete</button>\`:''}</td>
+    </tr>\`).join('');
+  return \`
   <h2>Employees</h2>
-  <div class="head-sub">${state.config.employees.length} people across ${state.config.sites.length} sites. Open Edit to record contact, emergency contact and medical information. Set someone Inactive first to reveal a Delete option for them.</div>
+  <div class="head-sub">\${state.config.employees.length} people across \${state.config.sites.length} sites. Holiday balances and planning are now kept in the Tony-only Holiday Allowance tab.</div>
   <div class="card">
     <table>
-      <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Entitlement</th><th>Rate/mo</th><th>Balance</th><th>Holiday</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="9" class="empty-state">No employees yet — add your first below.</td></tr>`}</tbody>
+      <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Status</th><th></th></tr></thead>
+      <tbody>\${rows || \`<tr><td colspan="5" class="empty-state">No employees yet — add your first below.</td></tr>\`}</tbody>
     </table>
   </div>
   <button type="button" class="add-btn" data-action="new-employee">+ Add employee</button>
-
-  <h2 style="font-size:16px;margin-top:28px;">Bulk import holiday balances</h2>
-  <div class="head-sub">Upload a CSV — one row per person, matched by PIN or exact name: <span class="mono">pin_or_name,balance,rate</span> (rate optional). Sets each matched person's balance — and rate, if given — as of today.</div>
-  <div class="card">
-    <div class="field"><label>CSV file</label><input type="file" id="balance-csv-input" accept=".csv,.txt"></div>
-    <button type="button" class="add-btn" data-action="import-balances">Import balances</button>
-    <div id="balance-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
-  </div>
 
   <h2 style="font-size:16px;margin-top:28px;">Bulk import new employees</h2>
   <div class="head-sub">For adding a whole new site's staff at once. Columns: <span class="mono">site,name,pin,entitlement,rate,balance,unit</span> — pin blank auto-assigns the next free one; unit is "days" or "hours" (blank = days); a site name that doesn't exist yet is created automatically.</div>
@@ -5366,7 +5382,7 @@ function renderAdminEmployees(){
     <div class="field"><label>CSV file</label><input type="file" id="newemp-csv-input" accept=".csv,.txt"></div>
     <button type="button" class="add-btn" data-action="import-new-employees">Import employees</button>
     <div id="newemp-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
-  </div>`;
+  </div>\`;
 }
 
 function renderAdminContacts(){
@@ -7203,6 +7219,24 @@ async function onAction(e){
     if(await savePasswordVault()){ delete state.admin.vaultReveal[id]; showToast('Password entry deleted.'); render(); }
     else { state.admin.vaultEntries=backup; showToast('Password could not be deleted.',true); }
     return;
+  }
+
+  else if(action==='holiday-allowance-site'){
+    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    state.admin.holidayAllowanceSite=id||'all';
+    render(); return;
+  }
+  else if(action==='holiday-allowance-print'){
+    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    const siteId=state.admin.holidayAllowanceSite||'all';
+    const label=siteId==='all'?'All Sites':siteName(siteId);
+    printSelectedReport('#holiday-allowance-site-output','Holiday Allowance - '+label,'landscape'); return;
+  }
+  else if(action==='holiday-allowance-save'){
+    if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
+    const siteId=state.admin.holidayAllowanceSite||'all';
+    const label=siteId==='all'?'all-sites':safeReportFilename(siteName(siteId));
+    downloadSelectedReport('#holiday-allowance-site-output','Holiday Allowance',\`holiday-allowance-\${label}-\${iso(new Date())}.html\`,'landscape'); return;
   }
 
   else if(action==='calendar-add-holiday'){

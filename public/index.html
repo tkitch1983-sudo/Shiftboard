@@ -5357,21 +5357,21 @@ function renderAdminHolidayAllowance(){
 function renderAdminEmployees(){
   const rows = state.config.employees.slice()
     .sort((a,b)=> siteName(a.siteId).localeCompare(siteName(b.siteId)) || a.name.localeCompare(b.name))
-    .map(e=>\`
+    .map(e=>`
     <tr>
-      <td>\${e.name}</td>
-      <td>\${siteName(e.siteId)}</td>
-      <td class="mono">\${e.pin}</td>
-      <td><span class="toggle \${e.active!==false?'on':'off'}" data-action="toggle-employee" data-id="\${e.id}">\${e.active!==false?'Active':'Inactive'}</span></td>
-      <td><button type="button" class="icon-btn" data-action="edit-employee" data-id="\${e.id}">Edit</button>\${e.active===false?\` · <button type="button" class="icon-btn" data-action="delete-employee" data-id="\${e.id}">Delete</button>\`:''}</td>
-    </tr>\`).join('');
-  return \`
+      <td>${e.name}</td>
+      <td>${siteName(e.siteId)}</td>
+      <td class="mono">${e.pin}</td>
+      <td><span class="toggle ${e.active!==false?'on':'off'}" data-action="toggle-employee" data-id="${e.id}">${e.active!==false?'Active':'Inactive'}</span></td>
+      <td><button type="button" class="icon-btn" data-action="edit-employee" data-id="${e.id}">Edit</button>${e.active===false?` · <button type="button" class="icon-btn" data-action="delete-employee" data-id="${e.id}">Delete</button>`:''}</td>
+    </tr>`).join('');
+  return `
   <h2>Employees</h2>
-  <div class="head-sub">\${state.config.employees.length} people across \${state.config.sites.length} sites. Holiday balances and planning are now kept in the Tony-only Holiday Allowance tab.</div>
+  <div class="head-sub">${state.config.employees.length} people across ${state.config.sites.length} sites. Holiday balances and planning are now kept in the Tony-only Holiday Allowance tab.</div>
   <div class="card">
     <table>
       <thead><tr><th>Name</th><th>Site</th><th>PIN</th><th>Status</th><th></th></tr></thead>
-      <tbody>\${rows || \`<tr><td colspan="5" class="empty-state">No employees yet — add your first below.</td></tr>\`}</tbody>
+      <tbody>${rows || `<tr><td colspan="5" class="empty-state">No employees yet — add your first below.</td></tr>`}</tbody>
     </table>
   </div>
   <button type="button" class="add-btn" data-action="new-employee">+ Add employee</button>
@@ -5382,7 +5382,7 @@ function renderAdminEmployees(){
     <div class="field"><label>CSV file</label><input type="file" id="newemp-csv-input" accept=".csv,.txt"></div>
     <button type="button" class="add-btn" data-action="import-new-employees">Import employees</button>
     <div id="newemp-import-result" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>
-  </div>\`;
+  </div>`;
 }
 
 function renderAdminContacts(){

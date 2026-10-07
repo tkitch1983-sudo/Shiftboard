@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v86';
+const CACHE='neas-shift-board-shell-v87';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],

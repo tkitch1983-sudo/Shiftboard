@@ -7295,7 +7295,7 @@ async function onAction(e){
     if(!isTonyLogin()){ showToast('Tony only.',true); return render(); }
     const siteId=state.admin.holidayAllowanceSite||'all';
     const label=siteId==='all'?'all-sites':safeReportFilename(siteName(siteId));
-    downloadSelectedReport('#holiday-allowance-site-output','Holiday Allowance',\`holiday-allowance-\${label}-\${iso(new Date())}.html\`,'landscape'); return;
+    downloadSelectedReport('#holiday-allowance-site-output','Holiday Allowance',`holiday-allowance-${label}-${iso(new Date())}.html`,'landscape'); return;
   }
 
   else if(action==='calendar-add-holiday'){

@@ -3986,7 +3986,7 @@ function renderAdmin(){
   else if(state.admin.tab==='calendar') body = renderAdminCalendar();
   else if(state.admin.tab==='holidayallowance'){
     body = renderAdminHolidayAllowance();
-    if(!state.admin._ensuringHolidayHistory) setTimeout(()=>ensurePreviousHolidayAllowanceSnapshot().then(()=>render()).catch(()=>{}),0);
+    if(!state.admin._ensuringHolidayHistory) setTimeout(()=>ensurePreviousHolidayAllowanceSnapshot().then(changed=>{if(changed) render();}).catch(()=>{}),0);
   }
   else if(state.admin.tab==='timesheets'){
     try{
@@ -5336,15 +5336,15 @@ function holidayAllowanceSnapshotForMonth(monthKey){
   return snap&&Array.isArray(snap.rows)?snap:null;
 }
 async function ensurePreviousHolidayAllowanceSnapshot(){
-  if(state.admin.role!=='super'||state.admin._ensuringHolidayHistory) return;
+  if(state.admin.role!=='super'||state.admin._ensuringHolidayHistory) return false;
   const today=iso(new Date());
   const current=today.slice(0,7);
   const cb=holidayMonthBounds(current);
-  if(!cb) return;
+  if(!cb) return false;
   const prevEnd=addIsoDaysPure(cb.start,-1);
   const prevKey=prevEnd.slice(0,7);
   state.config.holidayAllowanceHistory=state.config.holidayAllowanceHistory||{};
-  if(state.config.holidayAllowanceHistory[prevKey]) return;
+  if(state.config.holidayAllowanceHistory[prevKey]) return false;
   state.admin._ensuringHolidayHistory=true;
   try{
     state.config.holidayAllowanceHistory[prevKey]={
@@ -5353,7 +5353,11 @@ async function ensurePreviousHolidayAllowanceSnapshot(){
       rows:holidayAllowanceLiveRowsForMonth(prevKey,prevEnd)
     };
     const ok=await saveConfig();
-    if(!ok) delete state.config.holidayAllowanceHistory[prevKey];
+    if(!ok){
+      delete state.config.holidayAllowanceHistory[prevKey];
+      return false;
+    }
+    return true;
   }finally{
     state.admin._ensuringHolidayHistory=false;
   }

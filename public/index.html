@@ -832,10 +832,10 @@ const ADMIN_TAB_OPTIONS=[
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
-  ['cameras','Cameras','System'],['sites','Sites','System'],['settings','Settings / My account','System']
+  ['cameras','Cameras','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
-const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','settings']);
+const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','locations','settings']);
 
 function defaultTabAccessFor(role,siteId,email,tab){
   email=String(email||'').trim().toLowerCase();
@@ -3956,6 +3956,62 @@ function cameraBridgePlayerUrl(channel){
   return String(b.base_url).replace(/\/$/,'')+'/'+encodeURIComponent(String(b.path_token))+'/stream.html?src='+encodeURIComponent(src)+'&mode=mse,hls&background=true';
 }
 
+function renderAdminBranchLocations(){
+  const locations=[
+    {
+      name:'Chester le Street',
+      address:'Pelton Lane, Chester le Street, DH2 2LU',
+      phone:'0191 388 2119',
+      phoneHref:'01913882119',
+      email:'chesterlestreet@neautoservices.com',
+      manager:'Steve Jauncey'
+    },
+    {
+      name:'Fairfield',
+      address:'318 Bishopton Road West, Stockton on Tees, TS19 7LZ',
+      phone:'01642 582244',
+      phoneHref:'01642582244',
+      email:'fairfield@neautoservices.com',
+      manager:'Matthew McCormick'
+    },
+    {
+      name:'Gateshead',
+      address:'Bensham Road, Gateshead, NE8 1US',
+      phone:'0191 477 7705',
+      phoneHref:'01914777705',
+      email:'gateshead@neautoservices.com',
+      manager:'Steve Gibson'
+    },
+    {
+      name:'Hartlepool',
+      address:'72 Hart Lane, Hartlepool, TS26 0LB',
+      phone:'01429 234499',
+      phoneHref:'01429234499',
+      email:'hartlepool@neautoservices.com',
+      manager:'Matty Riley'
+    }
+  ];
+  const cards=locations.map(loc=>{
+    const mapUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(loc.address);
+    return '<div class="card" style="margin:0;padding:16px;border-left:4px solid var(--green);">'
+      +'<div style="font-size:18px;font-weight:800;">North East Auto Services – '+salesHtml(loc.name)+'</div>'
+      +'<div style="font-size:13px;color:var(--muted);margin-top:10px;line-height:1.65;">'
+      +'<div><b>Address:</b> '+salesHtml(loc.address)+'</div>'
+      +'<div><b>Telephone:</b> <a href="tel:'+salesHtml(loc.phoneHref)+'" style="color:inherit;">'+salesHtml(loc.phone)+'</a></div>'
+      +'<div><b>Email:</b> <a href="mailto:'+salesHtml(loc.email)+'" style="color:inherit;">'+salesHtml(loc.email)+'</a></div>'
+      +'<div><b>Manager:</b> '+salesHtml(loc.manager)+'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">'
+      +'<a class="action-btn secondary" href="'+cameraBridgeEsc(mapUrl)+'" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Open map</a>'
+      +'<a class="action-btn secondary" href="tel:'+salesHtml(loc.phoneHref)+'" style="text-decoration:none;">Call branch</a>'
+      +'<a class="action-btn secondary" href="mailto:'+salesHtml(loc.email)+'" style="text-decoration:none;">Email branch</a>'
+      +'</div>'
+      +'</div>';
+  }).join('');
+  return '<div><h2>Branch Locations</h2><div class="head-sub">North East Auto Services branch contact details</div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:10px;margin-top:12px;">'+cards+'</div>';
+}
+
 function renderAdminCameras(){
   if(!isTonyLogin()) return '<h2>Cameras</h2><div class="card">Tony only.</div>';
   const physicalSites=(state.config.sites||[]).filter(function(site){
@@ -4192,6 +4248,7 @@ function renderAdmin(){
       });
     }
   }
+  else if(state.admin.tab==='locations') body = renderAdminBranchLocations();
   else if(state.admin.tab==='cameras'){
     body = renderAdminCameras();
     if(state.admin.cameraBridge===null&&!state.admin._loadingCameraBridge){

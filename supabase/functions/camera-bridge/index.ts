@@ -57,11 +57,9 @@ Deno.serve(async (req) => {
     const action = String(body?.action || "");
     const siteId = String(body?.site_id || "chester").toLowerCase();
 
-    const adminHeaders = {
-      apikey: SERVICE_KEY,
-      Authorization: `Bearer ${SERVICE_KEY}`,
-      "Content-Type": "application/json",
-    };
+    const adminHeaders = SERVICE_KEY.startsWith("sb_secret_")
+      ? { apikey: SERVICE_KEY, "Content-Type": "application/json" }
+      : { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" };
 
     // Bridge-side registration: one-time pairing code, no user JWT.
     if (action === "register") {

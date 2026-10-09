@@ -4346,7 +4346,7 @@ function renderAdminCameras(){
             ? '<div style="margin-top:10px;"><b>Setup code</b><div class="mono" style="font-size:28px;letter-spacing:4px;margin:6px 0;">'+cameraBridgeEsc(state.admin.cameraPairingCode)+'</div><div style="font-size:11px;color:var(--muted-2);">Valid until '+cameraBridgeEsc(expiry)+'. Enter this code into the setup window on the Chester PC.</div></div>'
             : '<button type="button" class="add-btn" data-action="camera-pair" style="margin-top:10px;">Generate embedded-view setup code</button>')
           +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
-          +'<a class="action-btn secondary" href="/chester-camera-bridge-setup.cmd" download="Chester-Camera-Bridge-Setup.cmd" style="text-decoration:none;">Download Chester setup</a>'
+          +'<button type="button" class="action-btn secondary" data-action="camera-download-setup">Download Chester setup</button>'
           +'<button type="button" class="action-btn secondary" data-action="camera-refresh">Refresh embedded status</button>'
           +'</div>'
           +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;">The bridge opens no inbound router ports. It exposes only a token-protected MP4 endpoint through an outbound HTTPS tunnel.</div>'
@@ -6941,6 +6941,35 @@ async function onAction(e){
       }
       showToast('Chester serial copied.');
     }catch(_e){ showToast('Serial: 1504c51a88522add'); }
+    return;
+  }
+  else if(action==='camera-download-setup'){
+    const lines=[
+      '@echo off',
+      'setlocal',
+      'set "URL=https://raw.githubusercontent.com/tkitch1983-sudo/Shiftboard/216e2d120888cae5a75b05f82c45f40fb1cebbfb/public/chester-camera-bridge.ps1"',
+      'set "SCRIPT=%TEMP%\\chester-camera-bridge-%RANDOM%.ps1"',
+      'echo.',
+      'echo Shiftboard - Chester Camera Bridge',
+      'echo Downloading the setup script...',
+      'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference=\'SilentlyContinue\'; Invoke-WebRequest -UseBasicParsing -Uri \'%URL%\' -OutFile \'%SCRIPT%\'"',
+      'if errorlevel 1 (',
+      '  echo.',
+      '  echo Could not download the setup script.',
+      '  pause',
+      '  exit /b 1',
+      ')',
+      'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%"',
+      'set "RC=%ERRORLEVEL%"',
+      'del "%SCRIPT%" >nul 2>&1',
+      'exit /b %RC%'
+    ].join('\\r\\n');
+    const blob=new Blob([lines],{type:'application/octet-stream'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='Chester-Camera-Bridge-Setup.cmd';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    showToast('Chester setup downloaded.');
     return;
   }
   else if(action==='camera-pair'){

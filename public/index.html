@@ -3939,70 +3939,6 @@ function cameraBridgeEsc(v){
   return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function cameraBridgeViewerUrl(channel){
-  const b=state.admin.cameraBridge||{};
-  if(!b.online||!b.base_url||!b.path_token) return '';
-  const ch=Math.max(1,Math.min(Number(b.channels||16),Number(channel||1)));
-  return String(b.base_url).replace(/\/$/,'')+'/'+encodeURIComponent(String(b.path_token))+'/stream.html?src=cam'+String(ch).padStart(2,'0')+'&mode=mse';
-}
-
-function cameraBridgeAuthUrl(){
-  const b=state.admin.cameraBridge||{};
-  if(!b.base_url||!b.path_token) return '';
-  return String(b.base_url).replace(/\/$/,'')+'/'+encodeURIComponent(String(b.path_token))+'/';
-}
-
-let cameraBridgePollTimer=null;
-
-async function callCameraBridge(payload){
-  if(!_session) throw new Error('Not signed in');
-  const res=await fetch(SUPABASE_URL+'/functions/v1/camera-bridge',{
-    method:'POST',
-    headers:await authHeaders(),
-    body:JSON.stringify(payload||{})
-  });
-  const data=await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(data.error||data.message||('request failed ('+res.status+')'));
-  return data;
-}
-
-async function loadCameraBridgeStatus(silent){
-  if(!isTonyLogin()){ state.admin.cameraBridge=null; state.admin._loadingCameraBridge=false; return; }
-  state.admin._loadingCameraBridge=true;
-  try{
-    const data=await callCameraBridge({action:'status',site_id:'chester'});
-    const prev=state.admin.cameraBridge;
-    const changed=!prev
-      || !!prev.online!==!!data.online
-      || String(prev.base_url||'')!==String(data.base_url||'')
-      || String(prev.path_token||'')!==String(data.path_token||'')
-      || Number(prev.channels||0)!==Number(data.channels||0);
-    state.admin.cameraBridge=data;
-    state.admin._loadingCameraBridge=false;
-    if(!silent||changed) render();
-  }catch(err){
-    state.admin._loadingCameraBridge=false;
-    state.admin.cameraBridge={online:false,configured:false,error:err.message||String(err)};
-    if(!silent){ showToast('Could not check Chester camera bridge — '+(err.message||''),true); render(); }
-  }
-  clearTimeout(cameraBridgePollTimer);
-  if(state.admin.tab==='cameras'&&isTonyLogin()){
-    cameraBridgePollTimer=setTimeout(()=>loadCameraBridgeStatus(true),30000);
-  }
-}
-
-async function createCameraBridgePairing(){
-  if(!isTonyLogin()) throw new Error('Tony only');
-  const data=await callCameraBridge({action:'create_pairing',site_id:'chester'});
-  state.admin.cameraPairingCode=data.pairing_code||null;
-  state.admin.cameraPairingExpires=data.expires_at||null;
-  return data;
-}
-
-function cameraBridgeEsc(v){
-  return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
 function cameraBridgeStreamUrl(channel){
   const b=state.admin.cameraBridge||{};
   if(!b.online||!b.base_url||!b.path_token) return '';
@@ -6621,25 +6557,6 @@ async function onAction(e){
   const id = e.currentTarget.dataset.id;
 
   if(action==='camera-pair'){
-    if(!isTonyLogin()){ showToast('Tony only.',true); return; }
-    try{ await createCameraBridgePairing(); showToast('Chester setup code created.'); render(); }
-    catch(err){ showToast('Could not create setup code — '+(err.message||''),true); }
-    return;
-  }
-  else if(action==='camera-refresh'){
-    if(!isTonyLogin()) return;
-    await loadCameraBridgeStatus(false); return;
-  }
-  else if(action==='camera-channel'){
-    const ch=Math.max(1,Math.min(Number(state.admin.cameraBridge?.channels||16),Number(e.currentTarget.dataset.channel||1)));
-    state.admin.cameraChannel=ch; render(); return;
-  }
-  else if(action==='camera-authorize'){
-    const url=cameraBridgeAuthUrl();
-    if(!url){ showToast('Chester bridge is not online.',true); return; }
-    window.open(url,'_blank','noopener,noreferrer'); return;
-  }
-  else if(action==='camera-pair'){
     if(!isTonyLogin()){ showToast('Tony only.',true); return; }
     try{ await createCameraBridgePairing(); showToast('Chester setup code created.'); render(); }
     catch(err){ showToast('Could not create setup code — '+(err.message||''),true); }

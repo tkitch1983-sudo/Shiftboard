@@ -163,8 +163,10 @@ function Wait-ForTunnelUrl([Diagnostics.Process]$Process) {
     foreach ($LogPath in @($CloudflaredOut, $CloudflaredErr)) {
       if (Test-Path $LogPath) {
         $Text = Get-Content -Path $LogPath -Raw -ErrorAction SilentlyContinue
-        $Match = [regex]::Match($Text, 'https://[a-z0-9-]+\.trycloudflare\.com', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        if ($Match.Success) { return $Match.Value.TrimEnd('/') }
+        if (![string]::IsNullOrWhiteSpace($Text)) {
+          $Match = [regex]::Match($Text, 'https://[a-z0-9-]+\.trycloudflare\.com', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+          if ($Match.Success) { return $Match.Value.TrimEnd('/') }
+        }
       }
     }
     Start-Sleep -Milliseconds 750

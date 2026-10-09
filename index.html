@@ -4320,20 +4320,25 @@ function renderAdminCameras(){
     if(isChester){
       let embedded='';
       if(bridge?.online&&streamUrl){
-        const channelButtons=Array.from({length:Number(bridge.channels||16)},(_,i)=>{
+        const channelCount=Math.max(1,Math.min(16,Number(bridge.channels||16)));
+        const cameraGrid=Array.from({length:channelCount},(_,i)=>{
           const ch=i+1;
-          return '<button type="button" class="btn-sm '+(ch===selected?'approve':'')+'" data-action="camera-channel" data-channel="'+ch+'" style="margin:0 5px 5px 0;">CAM'+String(ch).padStart(2,'0')+'</button>';
+          const label='CAM'+String(ch).padStart(2,'0');
+          const url=cameraBridgeStreamUrl(ch);
+          return '<div style="min-width:0;background:#050505;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;">'
+            +'<div style="position:relative;aspect-ratio:16/9;background:#000;">'
+            +'<video src="'+cameraBridgeEsc(url)+'" autoplay muted playsinline preload="metadata" style="width:100%;height:100%;display:block;object-fit:contain;background:#000;"></video>'
+            +'<div style="position:absolute;left:7px;bottom:6px;padding:2px 6px;border-radius:5px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px;">'+label+'</div>'
+            +'</div>'
+            +'</div>';
         }).join('');
         embedded='<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);">'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-          +'<div><b>Embedded live view · CAM'+String(selected).padStart(2,'0')+'</b> <span class="pill pill-approved">ONLINE</span></div>'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
+          +'<div><b>Chester · 16-camera HD live view</b> <span class="pill pill-approved">ONLINE</span></div>'
           +'<button type="button" class="action-btn secondary" data-action="camera-refresh">Refresh</button>'
           +'</div>'
-          +'<div style="background:#000;border-radius:8px;overflow:hidden;aspect-ratio:16/9;min-height:240px;">'
-          +'<video src="'+cameraBridgeEsc(streamUrl)+'" autoplay muted controls playsinline style="width:100%;height:100%;object-fit:contain;background:#000;"></video>'
-          +'</div>'
-          +'<div style="font-size:11px;color:var(--muted-2);margin-top:7px;">Live H.264 feed relayed from the Chester PC. The DVR password remains encrypted on that PC.</div>'
-          +'<div style="margin-top:10px;">'+channelButtons+'</div>'
+          +'<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;width:100%;">'+cameraGrid+'</div>'
+          +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;line-height:1.5;">All 16 Chester cameras are shown at the same size using the DVR main/HD stream. The DVR password remains encrypted on the Chester PC. On a narrow screen the grid may scroll horizontally rather than shrinking the feeds too far.</div>'
           +'</div>';
       }else{
         const expiry=state.admin.cameraPairingExpires?new Date(state.admin.cameraPairingExpires).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
@@ -4353,7 +4358,7 @@ function renderAdminCameras(){
           +'</div>';
       }
 
-      return '<div class="card" style="margin:0;padding:14px;border-left:4px solid var(--green);">'
+      return '<div class="card" style="margin:0;padding:14px;border-left:4px solid var(--green);grid-column:1/-1;">'
         +'<div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;">'
         +'<span style="font-size:12px;color:var(--muted);">XMEye · VMS</span>'

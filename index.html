@@ -880,7 +880,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', holidayAllowanceMonth:null, _ensuringHolidayHistory:false, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false, cameraBridge:null, cameraPairingCode:null, cameraPairingExpires:null, cameraChannel:1, cameraHdChannel:null, _loadingCameraBridge:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', holidayAllowanceMonth:null, _ensuringHolidayHistory:false, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false, cameraBridge:null, cameraPairingCode:null, cameraPairingExpires:null, cameraChannel:1, cameraVisibleChannels:[], cameraHdChannel:null, _loadingCameraBridge:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -4322,36 +4322,58 @@ function renderAdminCameras(){
       let embedded='';
       if(bridge?.online&&streamUrl){
         const channelCount=Math.max(1,Math.min(16,Number(bridge.channels||16)));
-        const cameraGrid=Array.from({length:channelCount},(_,i)=>{
+        const visible=(Array.isArray(state.admin.cameraVisibleChannels)?state.admin.cameraVisibleChannels:[])
+          .map(Number).filter(ch=>Number.isFinite(ch)&&ch>=1&&ch<=channelCount).slice(0,4);
+        state.admin.cameraVisibleChannels=visible;
+
+        const selector=Array.from({length:channelCount},(_,i)=>{
           const ch=i+1;
+          const active=visible.includes(ch);
+          const label='CAM'+String(ch).padStart(2,'0');
+          return '<button type="button" class="btn-sm '+(active?'approve':'')+'" data-action="camera-toggle" data-channel="'+ch+'" style="margin:0 5px 5px 0;min-width:64px;">'+label+(active?' ✓':'')+'</button>';
+        }).join('');
+
+        const liveTiles=visible.map(ch=>{
           const label='CAM'+String(ch).padStart(2,'0');
           const url=cameraBridgeStreamUrl(ch,false);
-          return '<div data-action="camera-hd" data-channel="'+ch+'" role="button" tabindex="0" aria-label="Open '+label+' in HD" style="min-width:0;background:#050505;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;cursor:pointer;">'
+          return '<div style="min-width:0;background:#050505;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;">'
+            +'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 7px;background:#111;color:#fff;">'
+            +'<b style="font-size:12px;">'+label+'</b>'
+            +'<div style="display:flex;gap:5px;">'
+            +'<button type="button" class="btn-sm" data-action="camera-hd" data-channel="'+ch+'" style="padding:4px 8px;">HD</button>'
+            +'<button type="button" class="btn-sm" data-action="camera-toggle" data-channel="'+ch+'" style="padding:4px 8px;">Close</button>'
+            +'</div></div>'
             +'<div style="position:relative;aspect-ratio:16/9;background:#000;">'
-            +'<video src="'+cameraBridgeEsc(url)+'" autoplay muted playsinline preload="metadata" style="width:100%;height:100%;display:block;object-fit:contain;background:#000;pointer-events:none;"></video>'
-            +'<div style="position:absolute;left:7px;bottom:6px;padding:2px 6px;border-radius:5px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px;">'+label+'</div>'
-            +'<div style="position:absolute;right:7px;bottom:6px;padding:2px 6px;border-radius:5px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;font-weight:700;">Tap for HD</div>'
-            +'</div>'
-            +'</div>';
+            +'<video src="'+cameraBridgeEsc(url)+'" autoplay muted controls playsinline preload="metadata" style="width:100%;height:100%;display:block;object-fit:contain;background:#000;"></video>'
+            +'</div></div>';
         }).join('');
+
         const hdCh=state.admin.cameraHdChannel?Math.max(1,Math.min(channelCount,Number(state.admin.cameraHdChannel))):null;
         const hdLabel=hdCh?'CAM'+String(hdCh).padStart(2,'0'):'';
         const hdUrl=hdCh?cameraBridgeStreamUrl(hdCh,true):'';
         const hdModal=hdCh
-          ? '<div style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:12px;">'
+          ? '<div style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;padding:10px;">'
             +'<div style="width:min(1200px,100%);background:#0b0b0b;border:1px solid #333;border-radius:10px;padding:10px;">'
-            +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;color:#fff;"><b>'+hdLabel+' · HD</b><button type="button" class="action-btn secondary" data-action="camera-hd-close">Close</button></div>'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;color:#fff;"><b>'+hdLabel+' · HD</b><button type="button" class="action-btn secondary" data-action="camera-hd-close">Close HD</button></div>'
             +'<div style="aspect-ratio:16/9;background:#000;"><video src="'+cameraBridgeEsc(hdUrl)+'" autoplay muted controls playsinline style="width:100%;height:100%;object-fit:contain;background:#000;"></video></div>'
             +'</div></div>'
           : '';
-        embedded='<style>.chester-camera-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;width:100%}@media(max-width:700px){.chester-camera-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}}</style>'
+
+        const liveCols=visible.length<=1?'1':(visible.length===2?'2':'2');
+        embedded='<style>.chester-selected-grid{display:grid;grid-template-columns:repeat('+liveCols+',minmax(0,1fr));gap:7px;width:100%}@media(max-width:700px){.chester-selected-grid{grid-template-columns:1fr}}</style>'
           +'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);">'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
-          +'<div><b>Chester · 16-camera live grid</b> <span class="pill pill-approved">ONLINE</span></div>'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+          +'<div><b>Chester cameras</b> <span class="pill pill-approved">ONLINE</span></div>'
+          +'<div style="display:flex;gap:6px;flex-wrap:wrap;">'
+          +(visible.length?'<button type="button" class="action-btn secondary" data-action="camera-close-all">Close all</button>':'')
           +'<button type="button" class="action-btn secondary" data-action="camera-refresh">Refresh</button>'
-          +'</div>'
-          +'<div class="chester-camera-grid">'+cameraGrid+'</div>'
-          +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;line-height:1.5;">The 16-tile grid uses the lighter DVR stream for smoother viewing, including on iPhone. Tap any camera for its HD stream. On iPhone the grid automatically changes to two equal columns.</div>'
+          +'</div></div>'
+          +'<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Choose up to 4 cameras. Nothing streams until you select it, which keeps the page much faster on PC and iPhone.</div>'
+          +'<div style="margin-bottom:10px;">'+selector+'</div>'
+          +(visible.length
+            ? '<div class="chester-selected-grid">'+liveTiles+'</div>'
+            : '<div style="padding:22px 12px;text-align:center;border:1px dashed var(--line-soft);border-radius:8px;color:var(--muted);">All cameras are closed. Tap a CAM button above to start viewing.</div>')
+          +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;line-height:1.5;">For best performance, view only the cameras you need. Use HD on one camera when you need detail.</div>'
           +'</div>'+hdModal;
       }else{
         const expiry=state.admin.cameraPairingExpires?new Date(state.admin.cameraPairingExpires).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
@@ -7003,6 +7025,24 @@ async function onAction(e){
   else if(action==='camera-channel'){
     const ch=Math.max(1,Math.min(Number(state.admin.cameraBridge?.channels||16),Number(e.currentTarget.dataset.channel||1)));
     state.admin.cameraChannel=ch; render(); return;
+  }
+  else if(action==='camera-toggle'){
+    const ch=Math.max(1,Math.min(Number(state.admin.cameraBridge?.channels||16),Number(e.currentTarget.dataset.channel||1)));
+    const current=(Array.isArray(state.admin.cameraVisibleChannels)?state.admin.cameraVisibleChannels:[]).map(Number).filter(Number.isFinite);
+    if(current.includes(ch)){
+      state.admin.cameraVisibleChannels=current.filter(x=>x!==ch);
+      if(Number(state.admin.cameraHdChannel)===ch) state.admin.cameraHdChannel=null;
+    }else if(current.length<4){
+      state.admin.cameraVisibleChannels=current.concat(ch);
+    }else{
+      showToast('Choose up to 4 cameras at a time for smooth viewing.',true); return;
+    }
+    render(); return;
+  }
+  else if(action==='camera-close-all'){
+    state.admin.cameraVisibleChannels=[];
+    state.admin.cameraHdChannel=null;
+    render(); return;
   }
   else if(action==='camera-hd'){
     const ch=Math.max(1,Math.min(Number(state.admin.cameraBridge?.channels||16),Number(e.currentTarget.dataset.channel||1)));

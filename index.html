@@ -4344,6 +4344,38 @@ function renderAdminBranchLocations(){
       phoneHref:'01429234499',
       email:'hartlepool@neautoservices.com',
       manager:'Matty Riley'
+    },
+    {
+      name:'Lido',
+      address:'Lido Garage, Coast Road, Blackhall Rocks, Hartlepool, TS27 4BJ',
+      phone:'0191 586 3611',
+      phoneHref:'01915863611',
+      email:'lido@neautoservices.com',
+      manager:'Lee Dunn'
+    },
+    {
+      name:'Middlesbrough',
+      address:'Ormesby Road, Middlesbrough, TS3 0NB',
+      phone:'01642 316317',
+      phoneHref:'01642316317',
+      email:'middlesbrough@neautoservices.com',
+      manager:'Thomas Hope'
+    },
+    {
+      name:'Peterlee',
+      address:'Essington Way, Peterlee, SR8 5AZ',
+      phone:'0191 587 0004',
+      phoneHref:'01915870004',
+      email:'peterlee@neautoservices.com',
+      manager:'David Parker'
+    },
+    {
+      name:'Seaham',
+      address:'South Terrace, Seaham, SR7 7HN',
+      phone:'0191 581 1821',
+      phoneHref:'01915811821',
+      email:'seaham@neautoservices.com',
+      manager:'Michael Barnett'
     }
   ];
   const cards=locations.map(loc=>{
@@ -4363,8 +4395,15 @@ function renderAdminBranchLocations(){
       +'</div>'
       +'</div>';
   }).join('');
+  const otherContacts='<div class="card" style="margin-top:12px;border-left:4px solid var(--green);">'
+    +'<div style="font-size:17px;font-weight:800;margin-bottom:10px;">Other Contacts</div>'
+    +'<div style="font-size:13px;line-height:1.75;color:var(--muted);">'
+    +'<div><b>Tony Kitching</b> · General Manager · <a href="mailto:tony@neautoservices.com" style="color:inherit;">tony@neautoservices.com</a></div>'
+    +'<div><b>Neil Hutchinson</b> · Operations &amp; Audit Manager · <a href="mailto:neil@neautoservices.com" style="color:inherit;">neil@neautoservices.com</a></div>'
+    +'</div></div>';
   return '<div><h2>Branch Locations</h2><div class="head-sub">North East Auto Services branch contact details</div></div>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:10px;margin-top:12px;">'+cards+'</div>';
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:10px;margin-top:12px;">'+cards+'</div>'
+    +otherContacts;
 }
 
 function renderAdminCameras(){

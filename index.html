@@ -4323,58 +4323,40 @@ function renderAdminCameras(){
       if(bridge?.online&&streamUrl){
         const channelCount=Math.max(1,Math.min(16,Number(bridge.channels||16)));
         const visible=(Array.isArray(state.admin.cameraVisibleChannels)?state.admin.cameraVisibleChannels:[])
-          .map(Number).filter(ch=>Number.isFinite(ch)&&ch>=1&&ch<=channelCount).slice(0,4);
+          .map(Number).filter(ch=>Number.isFinite(ch)&&ch>=1&&ch<=channelCount).slice(0,1);
         state.admin.cameraVisibleChannels=visible;
 
         const selector=Array.from({length:channelCount},(_,i)=>{
           const ch=i+1;
-          const active=visible.includes(ch);
+          const active=visible[0]===ch;
           const label='CAM'+String(ch).padStart(2,'0');
           return '<button type="button" class="btn-sm '+(active?'approve':'')+'" data-action="camera-toggle" data-channel="'+ch+'" style="margin:0 5px 5px 0;min-width:64px;">'+label+(active?' ✓':'')+'</button>';
         }).join('');
 
-        const liveTiles=visible.map(ch=>{
-          const label='CAM'+String(ch).padStart(2,'0');
-          const url=cameraBridgeStreamUrl(ch,false);
-          return '<div style="min-width:0;background:#050505;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;">'
-            +'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 7px;background:#111;color:#fff;">'
-            +'<b style="font-size:12px;">'+label+'</b>'
-            +'<div style="display:flex;gap:5px;">'
-            +'<button type="button" class="btn-sm" data-action="camera-hd" data-channel="'+ch+'" style="padding:4px 8px;">HD</button>'
-            +'<button type="button" class="btn-sm" data-action="camera-toggle" data-channel="'+ch+'" style="padding:4px 8px;">Close</button>'
-            +'</div></div>'
-            +'<div style="position:relative;aspect-ratio:16/9;background:#000;">'
-            +'<video src="'+cameraBridgeEsc(url)+'" autoplay muted controls playsinline preload="metadata" style="width:100%;height:100%;display:block;object-fit:contain;background:#000;"></video>'
-            +'</div></div>';
-        }).join('');
+        const activeCh=visible.length?visible[0]:null;
+        const liveLabel=activeCh?'CAM'+String(activeCh).padStart(2,'0'):'';
+        const liveUrl=activeCh?cameraBridgeStreamUrl(activeCh,false):'';
 
-        const hdCh=state.admin.cameraHdChannel?Math.max(1,Math.min(channelCount,Number(state.admin.cameraHdChannel))):null;
-        const hdLabel=hdCh?'CAM'+String(hdCh).padStart(2,'0'):'';
-        const hdUrl=hdCh?cameraBridgeStreamUrl(hdCh,true):'';
-        const hdModal=hdCh
-          ? '<div style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;padding:10px;">'
-            +'<div style="width:min(1200px,100%);background:#0b0b0b;border:1px solid #333;border-radius:10px;padding:10px;">'
-            +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;color:#fff;"><b>'+hdLabel+' · HD</b><button type="button" class="action-btn secondary" data-action="camera-hd-close">Close HD</button></div>'
-            +'<div style="aspect-ratio:16/9;background:#000;"><video src="'+cameraBridgeEsc(hdUrl)+'" autoplay muted controls playsinline style="width:100%;height:100%;object-fit:contain;background:#000;"></video></div>'
-            +'</div></div>'
-          : '';
-
-        const liveCols=visible.length<=1?'1':(visible.length===2?'2':'2');
-        embedded='<style>.chester-selected-grid{display:grid;grid-template-columns:repeat('+liveCols+',minmax(0,1fr));gap:7px;width:100%}@media(max-width:700px){.chester-selected-grid{grid-template-columns:1fr}}</style>'
-          +'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);">'
+        embedded='<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);">'
           +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
           +'<div><b>Chester cameras</b> <span class="pill pill-approved">ONLINE</span></div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap;">'
-          +(visible.length?'<button type="button" class="action-btn secondary" data-action="camera-close-all">Close all</button>':'')
+          +(activeCh?'<button type="button" class="action-btn secondary" data-action="camera-close-all">Close camera</button>':'')
           +'<button type="button" class="action-btn secondary" data-action="camera-refresh">Refresh</button>'
           +'</div></div>'
-          +'<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Choose up to 4 cameras. Nothing streams until you select it, which keeps the page much faster on PC and iPhone.</div>'
+          +'<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Choose one camera to watch. Only that camera streams, so this is much faster and more reliable on the Chester PC and iPhone.</div>'
           +'<div style="margin-bottom:10px;">'+selector+'</div>'
-          +(visible.length
-            ? '<div class="chester-selected-grid">'+liveTiles+'</div>'
-            : '<div style="padding:22px 12px;text-align:center;border:1px dashed var(--line-soft);border-radius:8px;color:var(--muted);">All cameras are closed. Tap a CAM button above to start viewing.</div>')
-          +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;line-height:1.5;">For best performance, view only the cameras you need. Use HD on one camera when you need detail.</div>'
-          +'</div>'+hdModal;
+          +(activeCh
+            ? '<div style="max-width:900px;margin:0 auto;background:#050505;border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;">'
+              +'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 9px;background:#111;color:#fff;">'
+              +'<b>'+liveLabel+'</b><button type="button" class="btn-sm" data-action="camera-close-all">Close</button>'
+              +'</div>'
+              +'<div style="aspect-ratio:16/9;background:#000;">'
+              +'<video src="'+cameraBridgeEsc(liveUrl)+'" autoplay muted controls playsinline preload="metadata" style="width:100%;height:100%;display:block;object-fit:contain;background:#000;"></video>'
+              +'</div></div>'
+            : '<div style="padding:22px 12px;text-align:center;border:1px dashed var(--line-soft);border-radius:8px;color:var(--muted);">No camera is streaming. Tap CAM01–CAM16 above when you want to view one.</div>')
+          +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;line-height:1.5;">For the smoothest remote viewing, keep only one live camera open at a time. Use the XMEye fallback above if you need the recorder&apos;s full multi-camera interface.</div>'
+          +'</div>';
       }else{
         const expiry=state.admin.cameraPairingExpires?new Date(state.admin.cameraPairingExpires).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
         const statePill=bridge?.configured?'<span class="pill pill-rejected">BRIDGE OFFLINE</span>':(state.admin._loadingCameraBridge?'<span class="pill pill-pending">CHECKING…</span>':'<span class="pill pill-pending">OPTIONAL SETUP</span>');
@@ -7029,14 +7011,8 @@ async function onAction(e){
   else if(action==='camera-toggle'){
     const ch=Math.max(1,Math.min(Number(state.admin.cameraBridge?.channels||16),Number(e.currentTarget.dataset.channel||1)));
     const current=(Array.isArray(state.admin.cameraVisibleChannels)?state.admin.cameraVisibleChannels:[]).map(Number).filter(Number.isFinite);
-    if(current.includes(ch)){
-      state.admin.cameraVisibleChannels=current.filter(x=>x!==ch);
-      if(Number(state.admin.cameraHdChannel)===ch) state.admin.cameraHdChannel=null;
-    }else if(current.length<4){
-      state.admin.cameraVisibleChannels=current.concat(ch);
-    }else{
-      showToast('Choose up to 4 cameras at a time for smooth viewing.',true); return;
-    }
+    state.admin.cameraVisibleChannels=(current[0]===ch)?[]:[ch];
+    state.admin.cameraHdChannel=null;
     render(); return;
   }
   else if(action==='camera-close-all'){

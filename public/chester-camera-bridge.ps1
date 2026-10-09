@@ -56,7 +56,8 @@ function Unprotect-String([string]$Path) {
 
 function New-HexToken([int]$Bytes = 32) {
   $Buffer = New-Object byte[] $Bytes
-  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($Buffer)
+  $Rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $Rng.GetBytes($Buffer) } finally { $Rng.Dispose() }
   return -join ($Buffer | ForEach-Object { $_.ToString("x2") })
 }
 
@@ -211,7 +212,8 @@ function Run-Bridge {
     try {
       Remove-Item $Go2RtcOut, $Go2RtcErr, $CloudflaredOut, $CloudflaredErr -Force -ErrorAction SilentlyContinue
 
-      $GoProc = Start-Process -FilePath $Go2RtcExe -ArgumentList @("-config", $Go2RtcConfig) -WorkingDirectory $BaseDir -WindowStyle Hidden -RedirectStandardOutput $Go2RtcOut -RedirectStandardError $Go2RtcErr -PassThru
+      $GoArgs = '-config "' + $Go2RtcConfig + '"'
+      $GoProc = Start-Process -FilePath $Go2RtcExe -ArgumentList $GoArgs -WorkingDirectory $BaseDir -WindowStyle Hidden -RedirectStandardOutput $Go2RtcOut -RedirectStandardError $Go2RtcErr -PassThru
       Remove-Item Env:DVR_PASS_URI -ErrorAction SilentlyContinue
       Start-Sleep -Seconds 2
       if ($GoProc.HasExited) { throw "go2rtc stopped. Check $Go2RtcErr" }
@@ -311,7 +313,8 @@ function Run-Setup {
 
   Write-Host ""
   Write-Host "Starting the Chester bridge..." -ForegroundColor Green
-  Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $InstallScript, "-Run", "-PairingCode", $PairingCode) -WindowStyle Hidden
+  $ChildArgs = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $InstallScript + '" -Run -PairingCode ' + $PairingCode
+  Start-Process -FilePath "powershell.exe" -ArgumentList $ChildArgs -WindowStyle Hidden
 
   Write-Host ""
   Write-Host "Setup is installed." -ForegroundColor Green

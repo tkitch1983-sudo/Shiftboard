@@ -138,7 +138,7 @@ function Write-Go2RtcConfig([string]$PathToken) {
   $Lines.Add('webrtc:')
   $Lines.Add('  listen: ""')
   $Lines.Add('streams:')
-  $Template = '  {0}: dvrip://{1}:$' + '{DVR_PASS_URI}@{2}:{3}?channel={4}&subtype=1'
+  $Template = '  {0}: dvrip://{1}:${{DVR_PASS_URI}}@{2}:{3}?channel={4}&subtype=1'
   for ($i = 0; $i -lt $ChannelCount; $i++) {
     $Name = "cam{0:d2}" -f ($i + 1)
     $Lines.Add(($Template -f $Name, $DvrUser, $DvrHost, $DvrPort, $i))

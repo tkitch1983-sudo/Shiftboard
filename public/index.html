@@ -4023,20 +4023,27 @@ function renderAdminBranchLocations(){
       manager:'Michael Barnett'
     }
   ];
+  const mobileDevice=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'') || (navigator.maxTouchPoints||0)>1;
   const cards=locations.map(loc=>{
     const mapUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(loc.address);
+    const emailUrl=mobileDevice
+      ? 'mailto:'+loc.email
+      : 'https://outlook.office.com/mail/deeplink/compose?to='+encodeURIComponent(loc.email);
+    const phoneAction=mobileDevice
+      ? '<a class="action-btn secondary" href="tel:'+salesHtml(loc.phoneHref)+'" style="text-decoration:none;">Call branch</a>'
+      : '<button type="button" class="action-btn secondary" data-action="location-copy-phone" data-phone="'+salesHtml(loc.phoneHref)+'" data-phone-display="'+salesHtml(loc.phone)+'">Copy number</button>';
     return '<div class="card" style="margin:0;padding:16px;border-left:4px solid var(--green);">'
       +'<div style="font-size:18px;font-weight:800;">North East Auto Services – '+salesHtml(loc.name)+'</div>'
       +'<div style="font-size:13px;color:var(--muted);margin-top:10px;line-height:1.65;">'
       +'<div><b>Address:</b> '+salesHtml(loc.address)+'</div>'
-      +'<div><b>Telephone:</b> <a href="tel:'+salesHtml(loc.phoneHref)+'" style="color:inherit;">'+salesHtml(loc.phone)+'</a></div>'
-      +'<div><b>Email:</b> <a href="mailto:'+salesHtml(loc.email)+'" style="color:inherit;">'+salesHtml(loc.email)+'</a></div>'
+      +'<div><b>Telephone:</b> '+salesHtml(loc.phone)+'</div>'
+      +'<div><b>Email:</b> <a href="'+cameraBridgeEsc(emailUrl)+'" '+(mobileDevice?'':'target="_blank" rel="noopener noreferrer"')+' style="color:inherit;">'+salesHtml(loc.email)+'</a></div>'
       +'<div><b>Manager:</b> '+salesHtml(loc.manager)+'</div>'
       +'</div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">'
       +'<a class="action-btn secondary" href="'+cameraBridgeEsc(mapUrl)+'" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Open map</a>'
-      +'<a class="action-btn secondary" href="tel:'+salesHtml(loc.phoneHref)+'" style="text-decoration:none;">Call branch</a>'
-      +'<a class="action-btn secondary" href="mailto:'+salesHtml(loc.email)+'" style="text-decoration:none;">Email branch</a>'
+      +phoneAction
+      +'<a class="action-btn secondary" href="'+cameraBridgeEsc(emailUrl)+'" '+(mobileDevice?'':'target="_blank" rel="noopener noreferrer"')+' style="text-decoration:none;">Email branch</a>'
       +'</div>'
       +'</div>';
   }).join('');
@@ -4046,7 +4053,8 @@ function renderAdminBranchLocations(){
     +'<div><b>Tony Kitching</b> · General Manager · <a href="mailto:tony@neautoservices.com" style="color:inherit;">tony@neautoservices.com</a></div>'
     +'<div><b>Neil Hutchinson</b> · Operations &amp; Audit Manager · <a href="mailto:neil@neautoservices.com" style="color:inherit;">neil@neautoservices.com</a></div>'
     +'</div></div>';
-  return '<div><h2>Branch Locations</h2><div class="head-sub">North East Auto Services branch contact details</div></div>'
+  return '<div><h2>Branch Locations</h2><div class="head-sub">North East Auto Services branch contact details</div>'
+    +'<div style="font-size:11px;color:var(--muted-2);margin-top:5px;">On desktop: map opens in your browser, phone numbers copy ready to paste, and Email branch opens a new Outlook Web message. On mobile: Call branch and Email branch use your phone apps.</div></div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:10px;margin-top:12px;">'+cards+'</div>'
     +otherContacts;
 }
@@ -6688,7 +6696,20 @@ async function onAction(e){
   const action = e.currentTarget.dataset.action;
   const id = e.currentTarget.dataset.id;
 
-  if(action==='camera-copy-chester-serial'){
+  if(action==='location-copy-phone'){
+    const phone=String(e.currentTarget.dataset.phone||'').trim();
+    const display=String(e.currentTarget.dataset.phoneDisplay||phone).trim();
+    try{
+      if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(phone);
+      else{
+        const ta=document.createElement('textarea'); ta.value=phone; ta.style.position='fixed'; ta.style.opacity='0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      }
+      showToast('Phone number copied: '+display);
+    }catch(_e){ showToast('Phone number: '+display); }
+    return;
+  }
+  else if(action==='camera-copy-chester-serial'){
     try{
       if(navigator.clipboard?.writeText) await navigator.clipboard.writeText('1504c51a88522add');
       else{

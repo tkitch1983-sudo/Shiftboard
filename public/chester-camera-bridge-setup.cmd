@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "URL=https://northeastautoservices.pages.dev/chester-camera-bridge.ps1"
+set "URL=https://raw.githubusercontent.com/tkitch1983-sudo/Shiftboard/main/public/chester-camera-bridge.ps1"
 set "SCRIPT=%TEMP%\chester-camera-bridge-%RANDOM%.ps1"
 echo.
 echo Shiftboard - Chester Camera Bridge

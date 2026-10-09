@@ -823,7 +823,7 @@ const state = {
   portalPermissions: [],
   view: 'loading',
   flow: { mode:null, pin:'', employee:null, error:'' },
-  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', holidayAllowanceMonth:null, _ensuringHolidayHistory:false, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false },
+  admin: { authed:false, pin:'', error:'', tab:'register', calMonth:new Date(), calSite:'all', editingEmployee:null, pendingApprove:null, tsWeek:new Date(), tsSite:'all', regSite:'all', role:null, scopeSite:null, managerName:'', editingSiteManager:null, editingAdmin:null, reqSite:'all', clogSite:'all', bradSite:'all', holFrom:null, holTo:null, holSheetSite:'all', balAsOf:null, balSheetSite:'all', contactsSite:'all', managerList:null, permissionRows:null, permissionEmail:null, holidayImportPreview:null, holidayAllowanceImportPreview:null, holidayAllowanceSite:'all', holidayAllowanceMonth:null, _ensuringHolidayHistory:false, calendarAddDate:null, calendarDayDetail:null, vaultKey:null, vaultEntries:null, vaultReveal:{}, vaultEditingId:null, viewingClockPhoto:null, salesRows:null, salesHistory:null, salesRun:null, salesLoadedAt:null, salesRangeSite:'all', salesRangeFrom:null, salesRangeTo:null, salesPredictMode:false, _triggeringSalesImport:false, salesTriggerMessage:null, stockRows:null, stockHistory:null, stockError:null, stockLoadedAt:null, stockSite:'all', stockAsOfDate:null, stockAsOfRows:null, stockAsOfError:null, _loadingStockAsOf:false, analysisRows:null, analysisError:null, analysisMode:'month', analysisMonth:null, analysisYear:null, analysisSite:'all', analysisForecast:true, vsMode:'month', vsA:null, vsB:null, vsSite:'all', bonusMonth:new Date().toISOString().slice(0,7), bonusSite:'all', bonusPredictMode:false, targetMonth:new Date().toISOString().slice(0,7), targetSite:'all', motImports:null, motError:null, motMonth:null, motFilter:'attention', operationalAlerts:null, auditRows:null, _loadingSales:false, _loadingStock:false, _loadingAnalysis:false, _loadingMot:false, _loadingPermissions:false, _loadingAlerts:false, _loadingAudit:false, payRates:null, payRatesError:null, _loadingPayRates:false, cameraBridge:null, cameraPairingCode:null, cameraPairingExpires:null, cameraChannel:1, _loadingCameraBridge:false },
 };
 
 const ADMIN_TAB_OPTIONS=[
@@ -3888,18 +3888,116 @@ async function importPayRateCsv(file){
   await loadPayRates(); showToast(parsed.length+' pay rates imported.'); render();
 }
 
+let cameraBridgePollTimer=null;
+
+async function callCameraBridge(payload){
+  if(!_session) throw new Error('Not signed in');
+  const res=await fetch(SUPABASE_URL+'/functions/v1/camera-bridge',{
+    method:'POST',
+    headers:await authHeaders(),
+    body:JSON.stringify(payload||{})
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||data.message||('request failed ('+res.status+')'));
+  return data;
+}
+
+async function loadCameraBridgeStatus(silent){
+  if(!isTonyLogin()){ state.admin.cameraBridge=null; state.admin._loadingCameraBridge=false; return; }
+  state.admin._loadingCameraBridge=true;
+  try{
+    const data=await callCameraBridge({action:'status',site_id:'chester'});
+    const prev=state.admin.cameraBridge;
+    const changed=!prev
+      || !!prev.online!==!!data.online
+      || !!prev.configured!==!!data.configured
+      || String(prev.base_url||'')!==String(data.base_url||'')
+      || String(prev.path_token||'')!==String(data.path_token||'')
+      || Number(prev.channels||0)!==Number(data.channels||0);
+    state.admin.cameraBridge=data;
+    state.admin._loadingCameraBridge=false;
+    if(!silent||changed) render();
+  }catch(err){
+    state.admin._loadingCameraBridge=false;
+    state.admin.cameraBridge={online:false,configured:false,error:err.message||String(err)};
+    if(!silent){ showToast('Could not check Chester embedded cameras — '+(err.message||''),true); render(); }
+  }
+  clearTimeout(cameraBridgePollTimer);
+  if(state.admin.tab==='cameras'&&isTonyLogin()){
+    cameraBridgePollTimer=setTimeout(()=>loadCameraBridgeStatus(true),30000);
+  }
+}
+
+async function createCameraBridgePairing(){
+  if(!isTonyLogin()) throw new Error('Tony only');
+  const data=await callCameraBridge({action:'create_pairing',site_id:'chester'});
+  state.admin.cameraPairingCode=data.pairing_code||null;
+  state.admin.cameraPairingExpires=data.expires_at||null;
+  return data;
+}
+
+function cameraBridgeEsc(v){
+  return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function cameraBridgeStreamUrl(channel){
+  const b=state.admin.cameraBridge||{};
+  if(!b.online||!b.base_url||!b.path_token) return '';
+  const ch=Math.max(1,Math.min(Number(b.channels||16),Number(channel||1)));
+  return String(b.base_url).replace(/\/$/,'')+'/'+encodeURIComponent(String(b.path_token))+'/api/stream.mp4?src=cam'+String(ch).padStart(2,'0');
+}
+
 function renderAdminCameras(){
   if(!isTonyLogin()) return '<h2>Cameras</h2><div class="card">Tony only.</div>';
   const physicalSites=(state.config.sites||[]).filter(function(site){
     const n=String(site&&site.name||'').toLowerCase();
     return n && !/upper management|floaters/.test(n);
   }).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''));});
+  const bridge=state.admin.cameraBridge;
+  const selected=Math.max(1,Math.min(Number(bridge?.channels||16),Number(state.admin.cameraChannel||1)));
+  const streamUrl=cameraBridgeStreamUrl(selected);
+
   const cards=physicalSites.map(function(site){
     const name=String(site.name||'Site');
     const n=name.toLowerCase();
     const isChester=/chester/.test(n);
     const provider=/lido|seaham/.test(n)?'Hik-Connect':'XMEye';
     if(isChester){
+      let embedded='';
+      if(bridge?.online&&streamUrl){
+        const channelButtons=Array.from({length:Number(bridge.channels||16)},(_,i)=>{
+          const ch=i+1;
+          return '<button type="button" class="btn-sm '+(ch===selected?'approve':'')+'" data-action="camera-channel" data-channel="'+ch+'" style="margin:0 5px 5px 0;">CAM'+String(ch).padStart(2,'0')+'</button>';
+        }).join('');
+        embedded='<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);">'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
+          +'<div><b>Embedded live view · CAM'+String(selected).padStart(2,'0')+'</b> <span class="pill pill-approved">ONLINE</span></div>'
+          +'<button type="button" class="action-btn secondary" data-action="camera-refresh">Refresh</button>'
+          +'</div>'
+          +'<div style="background:#000;border-radius:8px;overflow:hidden;aspect-ratio:16/9;min-height:240px;">'
+          +'<video src="'+cameraBridgeEsc(streamUrl)+'" autoplay muted controls playsinline style="width:100%;height:100%;object-fit:contain;background:#000;"></video>'
+          +'</div>'
+          +'<div style="font-size:11px;color:var(--muted-2);margin-top:7px;">Live H.264 feed relayed from the Chester PC. The DVR password remains encrypted on that PC.</div>'
+          +'<div style="margin-top:10px;">'+channelButtons+'</div>'
+          +'</div>';
+      }else{
+        const expiry=state.admin.cameraPairingExpires?new Date(state.admin.cameraPairingExpires).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
+        const statePill=bridge?.configured?'<span class="pill pill-rejected">BRIDGE OFFLINE</span>':(state.admin._loadingCameraBridge?'<span class="pill pill-pending">CHECKING…</span>':'<span class="pill pill-pending">OPTIONAL SETUP</span>');
+        embedded='<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);">'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
+          +'<b>Embedded live view</b>'+statePill+'</div>'
+          +'<div style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.55;">The official XMEye link above already works. To watch the cameras directly inside Shiftboard, run the one-time Chester bridge setup on this PC.</div>'
+          +(state.admin.cameraPairingCode
+            ? '<div style="margin-top:10px;"><b>Setup code</b><div class="mono" style="font-size:28px;letter-spacing:4px;margin:6px 0;">'+cameraBridgeEsc(state.admin.cameraPairingCode)+'</div><div style="font-size:11px;color:var(--muted-2);">Valid until '+cameraBridgeEsc(expiry)+'. Enter this code into the setup window on the Chester PC.</div></div>'
+            : '<button type="button" class="add-btn" data-action="camera-pair" style="margin-top:10px;">Generate embedded-view setup code</button>')
+          +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
+          +'<a class="action-btn secondary" href="/chester-camera-bridge-setup.cmd" download="Chester-Camera-Bridge-Setup.cmd" style="text-decoration:none;">Download Chester setup</a>'
+          +'<button type="button" class="action-btn secondary" data-action="camera-refresh">Refresh embedded status</button>'
+          +'</div>'
+          +'<div style="font-size:11px;color:var(--muted-2);margin-top:8px;">The bridge opens no inbound router ports. It exposes only a token-protected MP4 endpoint through an outbound HTTPS tunnel.</div>'
+          +'</div>';
+      }
+
       return '<div class="card" style="margin:0;padding:14px;border-left:4px solid var(--green);">'
         +'<div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;">'
@@ -3911,11 +4009,11 @@ function renderAdminCameras(){
         +'<br>Cloud ID / Serial: <span class="mono" style="user-select:all;">1504c51a88522add</span>'
         +'</div>'
         +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">'
-        +'<a class="action-btn" href="https://www.xmeye.net/cloud_device_macLogin_main" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Open Chester cameras</a>'
+        +'<a class="action-btn" href="https://www.xmeye.net/cloud_device_macLogin_main" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Open Chester cameras in XMEye</a>'
         +'<button type="button" class="action-btn secondary" data-action="camera-copy-chester-serial">Copy serial</button>'
         +'</div>'
-        +'<div style="font-size:11px;color:var(--muted-2);margin-top:9px;">XMEye opens in a new tab. Choose <b>By Device</b>, use the serial above and username <b>admin</b>. The DVR password is not stored in Shiftboard.</div>'
-        +'</div>';
+        +'<div style="font-size:11px;color:var(--muted-2);margin-top:9px;">Official fallback: XMEye opens in a new tab. Choose <b>By Device</b>, use the serial above and username <b>admin</b>. The DVR password is not stored in Shiftboard.</div>'
+        +embedded+'</div>';
     }
     return '<div class="card" style="margin:0;padding:14px;">'
       +'<div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
@@ -3924,8 +4022,13 @@ function renderAdminCameras(){
       +'<span class="pill pill-pending">NOT LINKED YET</span>'
       +'</div></div>';
   }).join('');
+
+  const banner=bridge?.online
+    ? '<div class="card" style="margin-top:14px;border-left:4px solid var(--green);"><b>Chester is linked and embedded viewing is online.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">You can use either the live view below or the official XMEye fallback.</div></div>'
+    : '<div class="card" style="margin-top:14px;border-left:4px solid var(--green);"><b>Chester is linked through XMEye.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">VMS works locally. Embedded live viewing is available as an optional one-time setup on the Chester PC.</div></div>';
+
   return '<div><h2>Cameras</h2><div class="head-sub" style="margin-bottom:0;">Tony only · camera overview</div></div>'
-    +'<div class="card" style="margin-top:14px;border-left:4px solid var(--green);"><b>Chester is linked.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">VMS is working locally and Shiftboard now opens the official XMEye device login for Chester. Direct video embedded inside Shiftboard would still require a local gateway running on the Chester PC.</div></div>'
+    +banner
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:12px;">'+(cards||'<div class="card">No sites available.</div>')+'</div>';
 }
 
@@ -4059,7 +4162,13 @@ function renderAdmin(){
       });
     }
   }
-  else if(state.admin.tab==='cameras') body = renderAdminCameras();
+  else if(state.admin.tab==='cameras'){
+    body = renderAdminCameras();
+    if(state.admin.cameraBridge===null&&!state.admin._loadingCameraBridge){
+      state.admin._loadingCameraBridge=true;
+      setTimeout(()=>loadCameraBridgeStatus(false),0);
+    }
+  }
   else if(state.admin.tab==='sites') body = renderAdminSites();
   else if(state.admin.tab==='bankholidays') body = renderAdminBankHolidays();
   else if(state.admin.tab==='clocklog'){
@@ -6086,7 +6195,7 @@ function attachHandlers(){
       const tab=el.dataset.adminTab;
       if(tab!=='access'&&!canAccessAdminTab(tab)){ showToast('You do not have permission for this page.',true); return; }
       if(tab==='access'&&!isTonyLogin()){ showToast('Only Tony can manage permissions.',true); return; }
-      state.admin.tab=tab; render();
+      state.admin.tab=tab; if(tab==='cameras') state.admin.cameraBridge=null; render();
     });
   });
   app.querySelectorAll('[data-modal-overlay]').forEach(overlay=>{
@@ -6463,6 +6572,20 @@ async function onAction(e){
       showToast('Chester serial copied.');
     }catch(_e){ showToast('Serial: 1504c51a88522add'); }
     return;
+  }
+  else if(action==='camera-pair'){
+    if(!isTonyLogin()){ showToast('Tony only.',true); return; }
+    try{ await createCameraBridgePairing(); showToast('Chester embedded-view setup code created.'); render(); }
+    catch(err){ showToast('Could not create setup code — '+(err.message||''),true); }
+    return;
+  }
+  else if(action==='camera-refresh'){
+    if(!isTonyLogin()) return;
+    await loadCameraBridgeStatus(false); return;
+  }
+  else if(action==='camera-channel'){
+    const ch=Math.max(1,Math.min(Number(state.admin.cameraBridge?.channels||16),Number(e.currentTarget.dataset.channel||1)));
+    state.admin.cameraChannel=ch; render(); return;
   }
   else if(action==='payrates-save'){ await savePayRates(); render(); return; }
   else if(action==='payrates-upload'){ const input=document.getElementById('pay-rate-csv'); if(input) input.click(); return; }

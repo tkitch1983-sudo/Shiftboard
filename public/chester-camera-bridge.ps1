@@ -132,6 +132,8 @@ function Write-Go2RtcConfig([string]$PathToken) {
   $Lines.Add('  listen: "127.0.0.1:1984"')
   $Lines.Add(('  base_path: "/{0}"' -f $PathToken))
   $Lines.Add('  allow_paths:')
+  $Lines.Add(('    - "/{0}/"' -f $PathToken))
+  $Lines.Add(('    - "/{0}/api/ws"' -f $PathToken))
   $Lines.Add(('    - "/{0}/api/stream.mp4"' -f $PathToken))
   $Lines.Add('rtsp:')
   $Lines.Add('  listen: ""')

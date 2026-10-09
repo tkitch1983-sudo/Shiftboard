@@ -3897,7 +3897,20 @@ function renderAdminCameras(){
   const cards=physicalSites.map(function(site){
     const name=String(site.name||'Site');
     const n=name.toLowerCase();
+    const isChester=/chester/.test(n);
     const provider=/lido|seaham/.test(n)?'Hik-Connect':'XMEye';
+    if(isChester){
+      return '<div class="card" style="margin:0;padding:14px;border-left:4px solid var(--green);">'
+        +'<div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;">'
+        +'<span style="font-size:12px;color:var(--muted);">XMEye · VMS</span>'
+        +'<span class="pill pill-approved">VMS CONNECTED</span>'
+        +'</div>'
+        +'<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.55;">'
+        +'Live feed verified on the Chester PC · 16 channels · recorder 192.168.1.10:34567.'
+        +'<br>Direct in-page playback still needs a secure local stream bridge; no DVR password is stored in Shiftboard.'
+        +'</div></div>';
+    }
     return '<div class="card" style="margin:0;padding:14px;">'
       +'<div style="font-size:17px;font-weight:800;">'+salesHtml(name)+'</div>'
       +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap;">'
@@ -3906,7 +3919,7 @@ function renderAdminCameras(){
       +'</div></div>';
   }).join('');
   return '<div><h2>Cameras</h2><div class="head-sub" style="margin-bottom:0;">Tony only · camera overview</div></div>'
-    +'<div class="card" style="margin-top:14px;border-left:4px solid var(--amber);"><b>No app or web links are connected yet.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">This page is ready for direct Shiftboard camera integration later.</div></div>'
+    +'<div class="card" style="margin-top:14px;border-left:4px solid var(--green);"><b>Chester VMS is connected and live.</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">The Chester recorder is verified locally. Direct playback inside Shiftboard is the remaining step; other sites stay marked until individually connected.</div></div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:12px;">'+(cards||'<div class="card">No sites available.</div>')+'</div>';
 }
 

@@ -1067,7 +1067,7 @@ const TIMESHEET_EMPLOYEE_ORDER = {
   's7': ['S JAUNCEY','B SACCONE','G MCCULLAGH','M MCKECHNIE','E WAUGH'],
   's8': ['L DUNN','L NEWTON','C DOBSON','R JONES','J DOWSON'],
   'mtshgne7zriu4b': ['W HODGSON','D DIXON','N THOMPSON','T THOMPSON','L PRESTON','L STEVENS','F DAVIDSON','J FIRTH','GEMMA MARSAY'],
-  'mtslj2e8qsrmk2': ['SARAH CASSELDEN','B TAYLORSON','P HENDY','B JEPSON','S GRAHAM','M FLECK','S HODGKINSON','L SCOTT','D SMITH','K STOREY','J MALCOLM','C PARKIN'],
+  'mtslj2e8qsrmk2': ['SARAH CASSELDEN','P HENDY','B JEPSON','S GRAHAM','M FLECK','S HODGKINSON','L SCOTT','D SMITH','K STOREY','J MALCOLM'],
   'mtsojpx7bklqsf': ['T KITCHING','N HUTCHINSON']
 };
 function timesheetEmployeeCompare(siteId,a,b){
@@ -7616,7 +7616,12 @@ async function onAction(e){
     const emp = state.flow.employee;
     const pin = state.flow.verifiedPin;
     try{
-      const res = await callRpc('staff_clock', { p_pin: pin, p_site_id: getKioskSite() || emp.siteId });
+      // ETAC Petrol and Workshop share the same physical kiosk but are separate employers.
+      // Attribute petrol clock events to the petrol business so all Shiftboard reports agree.
+      const physicalKioskSite = getKioskSite();
+      const recordedBusinessSite = (physicalKioskSite==='s2' && emp.siteId==='mtslj2e8qsrmk2')
+        ? emp.siteId : (physicalKioskSite || emp.siteId);
+      const res = await callRpc('staff_clock', { p_pin: pin, p_site_id: recordedBusinessSite });
       if(!res){ showToast('PIN not recognised.', true); return render(); }
       state.flow.lastAction = { type: res.type, ts: Number(res.timestamp) };
       state.view='clock-confirm';

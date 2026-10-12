@@ -1588,7 +1588,10 @@ function siteHoursLabel(siteId){
    day including Sundays and bank holidays, so none of those are excluded
    for them — unlike the standard Mon–Sat-minus-bank-holidays sites. */
 function isWorkingHolidayDay(d, siteId){
-  if(isSevenDaySite(siteId)) return true;
+  // ETAC Petrol and Great Ayton operate seven days. Their employees can
+  // request holiday on Saturdays, Sundays and bank holidays, in hours.
+  // Keep this rule even if a station's trading pattern is accidentally changed.
+  if(isSevenDaySite(siteId) || isFillingStationSite(siteId)) return true;
   return !isSunday(d) && !isSaturday(d) && !isBankHoliday(iso(d));
 }
 function computeWorkingDays(startStr, endStr, siteId){
@@ -2318,6 +2321,7 @@ function renderHoliday(){
     <div class="allowance-line" style="color:var(--muted-2);font-size:12px;"><span>Your manager will check this against your balance.</span></div>
     <div class="field"><label>Start date</label><input type="date" id="hol-start" value="${start}"></div>
     <div class="field"><label>End date</label><input type="date" id="hol-end" value="${end}"></div>
+    ${fillingStation?'<div class="excl" style="margin-bottom:10px;">Saturday, Sunday and bank holidays can be requested. Enter your holiday hours for each selected day.</div>':''}
     ${extraControls}
     ${coverRequired?`<div class="field"><label>Who will cover your shift?</label><select id="hol-cover-employee" required><option value="">Choose cover person</option>${coverStaff.map(e=>`<option value="${salesHtml(e.id)}" ${String(e.id)===selectedCoverId?'selected':''}>${salesHtml(e.name)}</option>`).join('')}</select>${coverStaff.length?'':'<div class="excl" style="color:var(--red);margin-top:6px;">No other active staff are available at this station. Ask your manager to update the employee list.</div>'}</div>`:''}
     <div class="req-summary">

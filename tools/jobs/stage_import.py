@@ -39,6 +39,10 @@ def main():
     cli.add_argument("file")
     cli.add_argument("--site", required=True)
     cli.add_argument("--stage", action="store_true", help="Explicitly stage; never automatically verify")
+    cli.add_argument("--source-filename", help="Original Outlook attachment filename")
+    cli.add_argument("--message-id", help="Original Outlook Graph message ID")
+    cli.add_argument("--attachment-id", help="Original Outlook attachment ID")
+    cli.add_argument("--received-at", help="Original Outlook received timestamp")
     args = cli.parse_args()
     result = parse(args.file, args.site)
     print(json.dumps({k: v for k, v in result.items() if k not in ("jobs", "entries")}, indent=2))
@@ -59,7 +63,9 @@ def main():
         raise SystemExit("Existing verified import cannot be changed")
     record = {
         "site_key": result["site_key"], "report_date": result["report_date"],
-        "source_sha256": result["source_sha256"], "source_filename": result["source_file"],
+        "source_sha256": result["source_sha256"], "source_filename": args.source_filename or result["source_file"],
+        "source_message_id": args.message_id, "source_attachment_id": args.attachment_id,
+        "source_received_at": args.received_at,
         "status": "staged", "report_sales_ex_vat": result["report_sales_ex_vat"],
         "calculated_sales_ex_vat": result["calculated_sales_ex_vat"],
         "sales_reconciled": result["sales_reconciled"],

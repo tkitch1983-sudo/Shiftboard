@@ -52,3 +52,16 @@ Only the staging script, when explicitly supplied --stage with SUPABASE_URL and 
 Historical **bulk** backfill, secure Outlook Graph authentication, automatic scheduled ingestion, live dashboard test and management classification review are NOT complete. The database schema has been applied and five earliest reports staged, but no data is published. GitHub remains a draft development PR; the live Shiftboard web front end has not changed.
 
 **Folder confirmation (14 Oct 2026):** The connected Outlook mailbox has exactly one match for `day sheets `, containing **3,937 items**. Its first messages date from 12 October 2024. Recent Lido daily emails were confirmed in Inbox using a sender-filtered mail listing. Neither observation proves every workshop day is complete; the import must report coverage gaps.
+
+
+## iPhone Outlook connection (14 October 2026)
+
+Microsoft Entra app registration "Shiftboard jobs import" is single-tenant and uses delegated `Mail.Read` / `User.Read` permissions with public client (device code) flows enabled. No app client secret is needed.
+
+The hosted `shiftboard-outlook-connect` Supabase Edge Function serves a mobile page at `https://disgpocvqitpeceqhuim.supabase.co/functions/v1/shiftboard-outlook-connect`. It is **not a public connect URL without a separate, private one-use invitation**. Invites are 64-character random hex fragments stored as SHA-256 digests in `jobs_outlook_connect_invites`, expire after 48 hours, and are marked consumed on successful connection. The fragment is not transmitted with the initial GET request.
+
+When the invite holder taps Start, the service requests a Microsoft device sign-in code from the configured tenant/client application. The user signs in on `https://microsoft.com/devicelogin` and returns to the page. A server-side poll obtains the access/refresh tokens and verifies that Microsoft Graph `/me` matches Tony's exact mailbox. Tokens are never delivered to the browser. The server encrypts the refresh token using AES-GCM and a server-secret-derived key and stores it in the service-role-only `jobs_outlook_mailbox_connections` table.
+
+**Security restrictions:** Anonymous and authenticated users have no table permissions or RLS policies; only the Supabase server-side service role may access stored credentials. The function uses its own one-time invite checks and deliberately has `verify_jwt=false` so the page can be visited from an iPhone without first logging into Supabase. The page has a restrictive content security policy and no permissive cross-origin response headers. Rotate a key only after providing a reconnect flow; key rotation without re-encryption renders existing ciphertext unreadable.
+
+**Status:** The edge connection page and database tables have been deployed. The token exchange awaits an actual Tony sign-in, and no historical backfill is triggered simply by connecting. The secure Outlook/Graph history runner still needs to be wired up to consume the stored refresh token and scheduled securely. The user should not be told that historical import is running until it is.

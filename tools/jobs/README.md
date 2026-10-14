@@ -22,7 +22,7 @@ Manually retrieved and parsed the 13 October 2026 Profit Tracker PDFs for all ei
 
 - tools/jobs/import_profit_tracker.py: offline, read-only PDF parser. Captures invoice/job references, categories, source checksum and reconciliation status; rejects multi-day reports.
 - tools/jobs/stage_import.py: dry run by default. Explicit --stage uses a service-role secret on a trusted server to stage data. It does NOT verify or publish data.
-- tools/jobs/backfill_outlook_graph.py: resumable seven-day-window Microsoft Graph mailbox import; reads only trusted branch senders, checks every PDF's contents, stages reconciled reports only, and can resume from private checkpoint. Requires securely supplied `GRAPH_ACCESS_TOKEN`/`GRAPH_MAILBOX`; the ChatGPT Outlook connector's token is not exportable to this script.
+- tools/jobs/backfill_outlook_graph.py: resumable seven-day-window Microsoft Graph mailbox import. **Tony's `day sheets ` folder** (folder name includes trailing space in Outlook) is used for all allowed workshop senders **except Lido**; **Lido emails are read from Tony's Inbox only**. The runner locates Day Sheets by a whitespace-trimmed case-insensitive folder name or accepts `--day-sheets-folder-id`; checks PDF contents, stages reconciled reports, and resumes from a private checkpoint. Requires securely supplied `GRAPH_ACCESS_TOKEN`/`GRAPH_MAILBOX`; the ChatGPT Outlook connector's token is not exportable to this script.
 - database/034_jobs_per_day_history.sql: proposed RLS-protected import tables and a verified-only daily summary view.
 - jobs-per-day.js: read-only Jobs Per Day management tab, date/site controls and category/review totals.
 - index.html and sw.js: navigation and script installation.
@@ -50,3 +50,5 @@ Only the staging script, when explicitly supplied --stage with SUPABASE_URL and 
 ## Current limitations
 
 Historical **bulk** backfill, secure Outlook Graph authentication, automatic scheduled ingestion, live dashboard test and management classification review are NOT complete. The database schema has been applied and five earliest reports staged, but no data is published. GitHub remains a draft development PR; the live Shiftboard web front end has not changed.
+
+**Folder confirmation (14 Oct 2026):** The connected Outlook mailbox has exactly one match for `day sheets `, containing **3,937 items**. Its first messages date from 12 October 2024. Recent Lido daily emails were confirmed in Inbox using a sender-filtered mail listing. Neither observation proves every workshop day is complete; the import must report coverage gaps.

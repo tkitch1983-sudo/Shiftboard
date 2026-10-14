@@ -168,7 +168,7 @@ function progressSection(){
   ' A received date is not necessarily the invoice date. Missing reports are not zero jobs.</div></div>';
 }
 function renderJobs(){
- if(!canOpen()return '<div class="card">Please sign in through Management to view the Jobs Report.</div>';
+ if(!canOpen())return '<div class="card">Please sign in through Management to view the Jobs Report.</div>';
  if(!J.date)J.date=today();
  if(!J.rows&&!J.loading)setTimeout(()=>load(),0);
  const rows=selection(),current=counts(rows),prev=counts(previousRows());

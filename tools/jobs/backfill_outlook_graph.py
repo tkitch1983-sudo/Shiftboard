@@ -3,6 +3,8 @@
 
 Requires a Microsoft Graph Mail.Read access token supplied securely as
 GRAPH_ACCESS_TOKEN, and GRAPH_MAILBOX=me (delegated) or a permitted mailbox UPN.
+Reads seven workshop senders from the "Day Sheets" folder and only Lido
+from the Inbox. Discovers the folder by name (ignoring surrounding spaces).
 By default makes NO Supabase writes. Pass --stage to write *staged* batches only.
 The script never publishes or approves imported reports.
 
@@ -63,6 +65,11 @@ def resolve_site(message):
                .get("address") or "").strip().lower()
     return SENDERS.get(address)
 
+def source_matches(site, folder_kind):
+    """Lido belongs to Inbox; other workshop senders belong to Day Sheets."""
+    return (folder_kind == "inbox" and site == "lido") or (
+        folder_kind == "day_sheets" and site in SENDERS.values() and site != "lido")
+
 
 class Graph:
     def __init__(self, token, mailbox):
@@ -103,14 +110,39 @@ class Graph:
             yield from result.get("value", [])
             url = result.get("@odata.nextLink")
 
-    def messages(self, start, end):
+    def find_day_sheets_folder(self):
+        """Find exactly one visible Day Sheets folder in Tony's mailbox."""
+        queue = [None]
+        matching = []
+        visited = 0
+        while queue:
+            parent = queue.pop(0)
+            if visited > 150:
+                raise RuntimeError("Mail folder discovery limit exceeded")
+            path = (self.prefix + "/mailFolders" if parent is None else
+                    self.prefix + "/mailFolders/" + urllib.parse.quote(parent, safe="") + "/childFolders")
+            url = path + "?" + urllib.parse.urlencode({
+                "$select": "id,displayName,childFolderCount", "$top": "100"})
+            for folder in self.pages(url):
+                visited += 1
+                if str(folder.get("displayName") or "").strip().casefold() == "day sheets":
+                    matching.append(folder["id"])
+                if folder.get("childFolderCount"):
+                    queue.append(folder["id"])
+        if len(matching) != 1:
+            raise ValueError("Expected exactly one Day Sheets mail folder; found " +
+                             str(len(matching)) + ". Supply --day-sheets-folder-id.")
+        return matching[0]
+
+    def messages(self, start, end, folder_id):
         query = urllib.parse.urlencode({
             "$select": "id,subject,from,receivedDateTime,hasAttachments",
             "$filter": "receivedDateTime ge " + start + "T00:00:00Z and receivedDateTime lt " +
                        end + "T00:00:00Z",
             "$top": "100",
         })
-        yield from self.pages(self.prefix + "/messages?" + query)
+        folder_path = self.prefix + "/mailFolders/" + urllib.parse.quote(folder_id, safe="")
+        yield from self.pages(folder_path + "/messages?" + query)
 
     def attachments(self, message_id):
         path = self.prefix + "/messages/" + urllib.parse.quote(message_id, safe="")
@@ -146,6 +178,8 @@ def main():
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--start", default="2024-10-12", type=parse_iso)
     cli.add_argument("--end", default=date.today().isoformat(), type=parse_iso)
+    cli.add_argument("--day-sheets-folder-id",
+                     help="Optional exact Graph folder ID, instead of auto-discovering Day Sheets")
     cli.add_argument("--stage", action="store_true",
                      help="Staging-only Supabase import, with no automatic verification")
     cli.add_argument("--checkpoint", type=Path,
@@ -162,6 +196,8 @@ def main():
         cli.error("For --stage set secure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
     graph = Graph(os.environ.get("GRAPH_ACCESS_TOKEN", ""),
                   os.environ.get("GRAPH_MAILBOX", "me"))
+    days_folder = args.day_sheets_folder_id or graph.find_day_sheets_folder()
+    sources = [("day_sheets", days_folder), ("inbox", "inbox")]
     completed = load_checkpoint(args.checkpoint)
     counts = Counter()
     processed_windows = 0
@@ -173,65 +209,66 @@ def main():
         errors = []
         results = []
         seen = set()
-        for message in graph.messages(start, end):
+        for folder_kind, folder_id in sources:
+            for message in graph.messages(start, end, folder_id):
             site = resolve_site(message)
-            if not site or not message.get("hasAttachments") or not message.get("id"):
-                continue
-            msg_id = message["id"]
-            try:
-                for att in graph.attachments(msg_id):
-                    filename = str(att.get("name") or "")
-                    if not filename.lower().endswith(".pdf") or att.get("isInline"):
-                        continue
-                    if int(att.get("size") or 0) > MAX_PDF_SIZE:
-                        errors.append([site, "attachment exceeds size limit"])
-                        continue
-                    attachment_id = att.get("id")
-                    if not attachment_id:
-                        continue
-                    blob = graph.download(msg_id, attachment_id)
-                    if not blob.startswith(b"%PDF"):
-                        errors.append([site, "invalid PDF attachment"])
-                        continue
-                    with tempfile.TemporaryDirectory(prefix="shiftboard-jobs-") as temp:
-                        report_path = Path(temp) / "report.pdf"
-                        report_path.write_bytes(blob)
-                        try:
-                            rec = parse(report_path, site)
-                        except ValueError as exc:
-                            # Non-Profit-Tracker PDFs (e.g. payment sheets) are expected.
-                            if "not a Profit Tracker report" in str(exc):
+                if not site or not source_matches(site, folder_kind) or not message.get("hasAttachments") or not message.get("id"):
+                    continue
+                msg_id = message["id"]
+                try:
+                    for att in graph.attachments(msg_id):
+                        filename = str(att.get("name") or "")
+                        if not filename.lower().endswith(".pdf") or att.get("isInline"):
+                            continue
+                        if int(att.get("size") or 0) > MAX_PDF_SIZE:
+                            errors.append([site, "attachment exceeds size limit"])
+                            continue
+                        attachment_id = att.get("id")
+                        if not attachment_id:
+                            continue
+                        blob = graph.download(msg_id, attachment_id)
+                        if not blob.startswith(b"%PDF"):
+                            errors.append([site, "invalid PDF attachment"])
+                            continue
+                        with tempfile.TemporaryDirectory(prefix="shiftboard-jobs-") as temp:
+                            report_path = Path(temp) / "report.pdf"
+                            report_path.write_bytes(blob)
+                            try:
+                                rec = parse(report_path, site)
+                            except ValueError as exc:
+                                # Non-Profit-Tracker PDFs (e.g. payment sheets) are expected.
+                                if "not a Profit Tracker report" in str(exc):
+                                    continue
+                                errors.append([site, "PDF rejected: " + str(exc).split(":")[-1]])
                                 continue
-                            errors.append([site, "PDF rejected: " + str(exc).split(":")[-1]])
-                            continue
-                        # Forwarded or re-sent identical PDFs should not become repeat reports.
-                        dedupe = (site, rec["report_date"], rec["source_sha256"])
-                        if dedupe in seen:
-                            continue
-                        seen.add(dedupe)
-                        if not rec["sales_reconciled"] or rec["unknown_categories"]:
-                            errors.append([site, "unreconciled source or unknown category"])
-                            continue
-                        if args.stage:
-                            command = [sys.executable, str(Path(__file__).with_name("stage_import.py")),
-                                       str(report_path), "--site", site, "--stage",
-                                       "--source-filename", filename, "--message-id", msg_id,
-                                       "--attachment-id", attachment_id]
-                            if message.get("receivedDateTime"):
-                                command += ["--received-at", message["receivedDateTime"]]
-                            run = subprocess.run(command, text=True, capture_output=True)
-                            if run.returncode:
-                                errors.append([site, "staging failed: " + run.stderr[-200:]])
+                            # Forwarded or re-sent identical PDFs should not become repeat reports.
+                            dedupe = (site, rec["report_date"], rec["source_sha256"])
+                            if dedupe in seen:
                                 continue
-                        results.append({"site_key": site, "report_date": rec["report_date"],
-                                        "total_jobs": rec["total_jobs"],
-                                        "service_repair_candidates": rec["service_repair_confirmed"],
-                                        "review_jobs": rec["service_repair_to_review"],
-                                        "sales_reconciled": True,
-                                        "status": "staged" if args.stage else "dry_run"})
-                        counts[site] += 1
-            except Exception as exc:
-                errors.append([site, "attachment read failed: " + str(exc)[:160]])
+                            seen.add(dedupe)
+                            if not rec["sales_reconciled"] or rec["unknown_categories"]:
+                                errors.append([site, "unreconciled source or unknown category"])
+                                continue
+                            if args.stage:
+                                command = [sys.executable, str(Path(__file__).with_name("stage_import.py")),
+                                           str(report_path), "--site", site, "--stage",
+                                           "--source-filename", filename, "--message-id", msg_id,
+                                           "--attachment-id", attachment_id]
+                                if message.get("receivedDateTime"):
+                                    command += ["--received-at", message["receivedDateTime"]]
+                                run = subprocess.run(command, text=True, capture_output=True)
+                                if run.returncode:
+                                    errors.append([site, "staging failed: " + run.stderr[-200:]])
+                                    continue
+                            results.append({"site_key": site, "report_date": rec["report_date"],
+                                            "total_jobs": rec["total_jobs"],
+                                            "service_repair_candidates": rec["service_repair_confirmed"],
+                                            "review_jobs": rec["service_repair_to_review"],
+                                            "sales_reconciled": True,
+                                            "status": "staged" if args.stage else "dry_run"})
+                            counts[site] += 1
+                except Exception as exc:
+                    errors.append([site, "attachment read failed: " + str(exc)[:160]])
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
             with args.report.open("a", encoding="utf-8") as out:

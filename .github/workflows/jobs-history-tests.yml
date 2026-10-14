@@ -34,3 +34,7 @@ jobs:
           deno-version: v2.x
       - name: Type-check Outlook connection service
         run: deno check supabase/functions/shiftboard-outlook-connect/index.ts
+      - name: Test staged-only Graph PDF importer and validate types
+        run: |
+          deno check supabase/functions/shiftboard-jobs-backfill/index.ts
+          deno test supabase/functions/shiftboard-jobs-backfill/parser_test.ts

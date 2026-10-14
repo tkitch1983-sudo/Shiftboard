@@ -63,8 +63,11 @@ function render(){
  if(!J.date)J.date=ymd(new Date());
  if(!J.rows&&!J.loading)setTimeout(()=>ensureLoaded(false),0);
  const chosen=filtered(),s=summary(chosen);
- const sites=Object.entries(siteNames);
  const canGroup=state.admin.role==='super';
+ const siteIds={s1:'seaham',s2:'peterlee',s3:'middlesbrough',s4:'hartlepool',
+  s5:'gateshead',s6:'fairfield',s7:'chester-le-street',s8:'lido'};
+ if(!canGroup)J.site=siteIds[state.admin.scopeSite]||'__none__';
+ const sites=Object.entries(siteNames).filter(([k])=>canGroup||k===J.site);
  const sitePick='<select data-jobs-filter="site" aria-label="Workshop" style="padding:9px;background:var(--panel);color:var(--text);border:1px solid var(--line);">'+
   (canGroup?'<option value="all">All workshops</option>':'')+
   sites.map(([k,name])=>'<option value="'+k+'"'+(J.site===k?' selected':'')+'>'+esc(name)+'</option>').join('')+'</select>';

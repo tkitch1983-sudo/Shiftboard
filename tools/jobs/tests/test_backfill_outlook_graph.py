@@ -28,6 +28,32 @@ class OutlookBackfillTests(unittest.TestCase):
         self.assertIsNone(mod.resolve_site({"from":{"emailAddress":
                          {"address":"someone@other.invalid"}}}))
 
+    def test_mail_sources_are_partitioned(self):
+        self.assertTrue(mod.source_matches("lido", "inbox"))
+        self.assertFalse(mod.source_matches("lido", "day_sheets"))
+        self.assertTrue(mod.source_matches("middlesbrough", "day_sheets"))
+        self.assertFalse(mod.source_matches("middlesbrough", "inbox"))
+        self.assertFalse(mod.source_matches(None, "day_sheets"))
+
+    def test_day_sheets_discovery_ignores_trailing_spaces(self):
+        graph = mod.Graph("synthetic-token", "me")
+        def fake_pages(url):
+            self.assertIn("/mailFolders?", url)
+            yield {"id": "test-folder", "displayName": "day sheets ", "childFolderCount": 0}
+        graph.pages = fake_pages
+        self.assertEqual(graph.find_day_sheets_folder(), "test-folder")
+
+    def test_message_collection_uses_requested_folder(self):
+        graph = mod.Graph("synthetic-token", "me")
+        collected = []
+        def fake_pages(url):
+            collected.append(url)
+            yield {"id": "test-message"}
+        graph.pages = fake_pages
+        self.assertEqual(list(graph.messages("2024-10-12", "2024-10-19", "inbox")),
+                         [{"id": "test-message"}])
+        self.assertIn("/mailFolders/inbox/messages?", collected[0])
+
     def test_non_graph_paging_links_blocked(self):
         graph = mod.Graph("synthetic-token", "me")
         with self.assertRaises(ValueError):

@@ -8,11 +8,19 @@ const SCOPE = "offline_access User.Read Mail.Read";
 const SESSION_LIMIT_MS = 25 * 60 * 1000;
 const STORE_URL = Deno.env.get("SUPABASE_URL") || "";
 const STORE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const WEB_ORIGIN = "https://northeastautoservices.pages.dev";
+const WEB_PAGE = WEB_ORIGIN + "/outlook-connect.html";
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": WEB_ORIGIN,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "content-type",
+  "Vary": "Origin"
+};
 
 function reply(status: number, result: Record<string, unknown>) {
   return Response.json(result, { status, headers: {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer"
+    "Referrer-Policy": "no-referrer", ...CORS_HEADERS
   }});
 }
 async function db(tableAndQuery: string, method = "GET", body?: unknown, prefer?: string): Promise<any> {
@@ -172,16 +180,18 @@ async function connectionPoll(invite: string, sessionId: string) {
 const PAGE = "<!doctype html>\n<html lang=\"en-GB\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Shiftboard · Connect Tony's Outlook</title>\n<style nonce=\"__NONCE__\">\n:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;background:#071525;color:#f0f6fa}\n*{box-sizing:border-box}body{margin:0;min-height:100svh;display:flex;justify-content:center;align-items:center;padding:24px}\nmain{max-width:510px;width:100%;border:1px solid #314258;border-radius:20px;background:#10233a;padding:28px;box-shadow:0 18px 60px #0005}\nheader{display:flex;align-items:center;gap:12px}h1{font-size:24px;margin:22px 0 12px}p,li{color:#d0dce7;line-height:1.58}\n.brand{font-weight:900;letter-spacing:.7px;font-size:22px;color:white}.tag{margin-left:auto;border-radius:20px;padding:6px 9px;background:#223950;font-size:11px;color:#9ed4ff}\n.small{font-size:13px;color:#9caebc}.card{border:1px solid #41617e;border-radius:12px;padding:14px;background:#0a1d31;margin:20px 0}\n.code{font-size:32px;font-weight:800;letter-spacing:3px;text-align:center;user-select:all;color:#fff;margin:12px 0}\nbutton,a.action{appearance:none;display:block;width:100%;padding:15px 18px;text-align:center;font-size:16px;font-weight:700;border:0;border-radius:12px;background:#56b6fa;color:#081a2d;cursor:pointer;text-decoration:none;margin:12px 0}\nbutton:disabled{background:#536e80;color:#bac8d1;cursor:default}.secondary{background:#233e59!important;color:#fff!important}\n.notice{border-radius:9px;padding:12px;background:#193a54;color:#d9ecfa;margin-top:16px}\n.warning{background:#50301f;color:#ffe0c0}.success{background:#1b483c;color:#d3ffe7}\n[hidden]{display:none!important}\n</style></head>\n<body><main>\n<header><span class=\"brand\">SHIFTBOARD</span><span class=\"tag\">Secure Outlook connection</span></header>\n<h1>Connect Tony's Outlook</h1>\n<p>Connect <strong>tony@neautoservices.com</strong> to import workshop day sheets. Shiftboard will request <strong>read-only</strong> email access.</p>\n<div class=\"card\"><strong>What will be read?</strong><p class=\"small\">Day Sheets folder: seven workshops. Inbox: Lido emails only. No emails will be deleted, moved or changed.</p></div>\n<section id=\"start\"><button id=\"connect\" type=\"button\">Start secure Microsoft sign-in</button>\n<p class=\"small\">You'll use Microsoft's official sign-in page. No password or verification code is entered into Shiftboard.</p></section>\n<section id=\"challenge\" hidden>\n<p>1. Copy this short Microsoft sign-in code:</p>\n<div class=\"card\"><div id=\"code\" class=\"code\"></div><button class=\"secondary\" id=\"copy\" type=\"button\">Copy code</button></div>\n<p>2. Open Microsoft's secure sign-in page, enter the code and sign in as Tony.</p>\n<a id=\"microsoft\" class=\"action\" href=\"https://microsoft.com/devicelogin\" target=\"_blank\" rel=\"noopener noreferrer\">Open Microsoft sign-in <span aria-hidden=\"true\">↗</span></a>\n<p class=\"small\">3. Return to this tab when you finish. Connection status checks automatically.</p>\n<button class=\"secondary\" type=\"button\" id=\"check\">Check connection</button>\n</section>\n<div id=\"status\" role=\"status\" aria-live=\"polite\" class=\"notice\">Ready when you are.</div>\n<p class=\"small\">This is a one-time connection invitation. The historical import remains in review until reports and classifications are verified.</p>\n</main>\n<script nonce=\"__NONCE__\">\n(function(){\n\"use strict\";\nconst form = document.getElementById(\"start\");\nconst challenge = document.getElementById(\"challenge\");\nconst status = document.getElementById(\"status\");\nconst copy = document.getElementById(\"copy\");\nconst code = document.getElementById(\"code\");\nconst checkButton = document.getElementById(\"check\");\nconst link = document.getElementById(\"microsoft\");\nconst connect = document.getElementById(\"connect\");\nconst hash = new URLSearchParams(window.location.hash.slice(1));\nconst invite = hash.get(\"invite\") || \"\";\nwindow.history.replaceState(null, \"\", window.location.pathname);\nlet session = null, interval = null, busy = false, connected = false;\nfunction notice(text, kind) {status.textContent = text;status.className=\"notice \"+(kind||\"\");}\nasync function api(body) {\n  const res = await fetch(location.pathname,{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},\n    cache:\"no-store\",body:JSON.stringify(Object.assign({invite:invite},body))});\n  const result = await res.json();\n  if(!res.ok)throw new Error(result.error||\"Couldn't connect. Try again.\");\n  return result;\n}\nasync function poll() {\n if(!session || busy || connected)return;\n busy=true;\n try{\n  const answer=await api({action:\"poll\",session_id:session});\n  if(answer.status===\"connected\"){\n    connected=true;\n    if(interval)clearInterval(interval);\n    challenge.hidden=true;form.hidden=true;\n    notice(\"Connected successfully: \"+answer.mailbox+\". Your day-sheet history is ready for the staging importer.\",\"success\");\n  }else notice(\"Waiting for Tony to finish signing in at Microsoft…\");\n }catch(e){\n   if(interval)clearInterval(interval);\n   notice(e.message||\"Connection check failed.\",\"warning\");\n }finally{busy=false;}\n}\nconnect.addEventListener(\"click\",async()=>{\n connect.disabled=true;notice(\"Contacting Microsoft securely…\");\n try{\n  const response=await api({action:\"start\"});\n  session=response.session_id;code.textContent=response.user_code;\n  link.href=response.verification_uri;\n  form.hidden=true;challenge.hidden=false;\n  notice(\"Code ready. Open the Microsoft sign-in page and enter it.\");\n  interval=setInterval(poll,Math.max(6,response.interval_seconds+2)*1000);\n }catch(e){connect.disabled=false;notice(e.message||\"Unable to start.\",\"warning\");}\n});\ncopy.addEventListener(\"click\",async()=>{\n try{await navigator.clipboard.writeText(code.textContent||\"\");notice(\"Code copied. Open Microsoft sign-in and paste it.\");}\n catch{notice(\"Press and hold the code above to copy it.\",\"warning\");}\n});\ncheckButton.addEventListener(\"click\",poll);\ndocument.addEventListener(\"visibilitychange\",()=>{if(!document.hidden)poll();});\nif(!/^[a-f0-9]{64}$/.test(invite)){connect.disabled=true;notice(\"A valid one-time connection link is required. Please request a fresh link from Shiftboard.\",\"warning\");}\n})();\n</script></body></html>";
 Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
-    const nonce = b64(crypto.getRandomValues(new Uint8Array(18)));
-    return new Response(PAGE.replaceAll("__NONCE__", nonce), { status: 200,
-      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
-        "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; connect-src 'self'; form-action 'none'; script-src 'nonce-" +
-          nonce + "'; style-src 'nonce-" + nonce + "'" }
-    });
+    // Supabase's shared function domain intentionally rewrites HTML to text/plain.
+    // A 302 Location without a fragment preserves the caller's #invite fragment.
+    return new Response(null, { status: 302, headers: {
+      "Location": WEB_PAGE, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"
+    } });
+  }
+  if (req.method === "OPTIONS") {
+    if (req.headers.get("Origin") !== WEB_ORIGIN) return reply(403, { error: "Invalid origin." });
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
   if (req.method !== "POST") return reply(405, { error: "Method not allowed" });
-  if (req.headers.get("Origin") && req.headers.get("Origin") !== new URL(req.url).origin)
+  if (req.headers.get("Origin") !== WEB_ORIGIN)
     return reply(403, { error: "Invalid origin." });
   if ((Number(req.headers.get("Content-Length") || 0)) > 4096)
     return reply(413, { error: "Request too large." });

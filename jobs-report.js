@@ -36,6 +36,11 @@ function counts(rows){
  return {total,reports:rows.length,reportDays:new Set(rows.map(r=>r.report_date)).size,
   provisional:rows.filter(r=>r.import_status!=='verified').length};
 }
+function mostRecentBackfillDate(){
+ // The already staged 13 Oct 2026 pilot must not conceal the 2024 onwards archive.
+ const historic=(J.rows||[]).filter(r=>r.report_date<'2026-10-13');
+ return historic.length?historic.reduce((best,r)=>r.report_date>best?r.report_date:best,''):'';
+}
 function selection(){
  const [a,b]=periodRange(),site=selectedSite();
  return (J.rows||[]).filter(r=>r.report_date>=a&&r.report_date<=b&&(site==='all'||r.site_key===site));
@@ -71,7 +76,13 @@ async function load(force=false){
    if(offset===19000)throw Error('History exceeds safe query limit.');
   }
   J.rows=out;J.lastLoad=Date.now();
-  if(!J.date)J.date=out[0]?.report_date||today();
+  if(!J.userPickedDate&&!J.initialRangeSet){
+    // Show the latest backfilled historical month first, not today's empty date.
+    const historical=mostRecentBackfillDate();
+    J.date=historical||out[0]?.report_date||today();
+    J.period='month';
+    J.initialRangeSet=true;
+  }
   if(isGroup()){
    const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/jobs_report_import_progress',{
     method:'POST',headers,cache:'no-store',body:'{}'});
@@ -157,7 +168,7 @@ function progressSection(){
   ' A received date is not necessarily the invoice date. Missing reports are not zero jobs.</div></div>';
 }
 function renderJobs(){
- if(!canOpen())return '<div class="card">Please sign in through Management to view the Jobs Report.</div>';
+ if(!canOpen()return '<div class="card">Please sign in through Management to view the Jobs Report.</div>';
  if(!J.date)J.date=today();
  if(!J.rows&&!J.loading)setTimeout(()=>load(),0);
  const rows=selection(),current=counts(rows),prev=counts(previousRows());
@@ -168,6 +179,7 @@ function renderJobs(){
  const siteOptions=(isGroup()?'<option value="all">All workshops</option>':'')+
   sites.map(([id,name])=>'<option value="'+id+'"'+(site===id?' selected':'')+'>'+E(name)+'</option>').join('');
  const [start,end]=periodRange();
+ const latestBackfill=mostRecentBackfillDate();
  const comparison=prev.reports>0?
   F(prev.total)+' jobs in the comparable period last year, from '+F(prev.reports)+
   ' available branch-day reports. This year has '+F(current.reports)+' reports.':
@@ -179,6 +191,12 @@ function renderJobs(){
   '<div class="card" style="margin:12px 0;border-left:4px solid var(--amber);font-size:13px;">'+
   '<b>Import still being checked.</b> Jobs are counted once per workshop and invoice day. '+
   'Missing day sheets are not treated as zero jobs. Figures remain provisional until approved.</div>'+
+  '<div class="card" style="margin:12px 0;padding:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">'+
+  '<div><b>Historical imports</b><div style="color:var(--muted);font-size:12px;margin-top:4px;">'+
+  (J.rows?F(J.rows.length)+' branch-day reports available':'Loading import history…')+
+  (latestBackfill?' · latest backfill: '+E(label(latestBackfill)):'')+
+  '</div></div>'+
+  '<button type="button" class="add-btn" data-jobs-action="history"'+(latestBackfill?'':' disabled')+'>View imported history →</button></div>'+
   '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">'+
   '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Period<select data-jobs-filter="period" style="min-width:110px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;">'+periodOptions+'</select></label>'+
   '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Date<input type="date" min="2024-10-12" value="'+E(J.date)+'" data-jobs-filter="date" style="min-width:150px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;"></label>'+
@@ -209,8 +227,8 @@ document.addEventListener('change',e=>{
  const el=e.target?.closest?.('[data-jobs-filter]');
  if(!el||!canOpen()||state.admin.tab!=='jobs')return;
  const key=el.dataset.jobsFilter;
- if(key==='period'&&['day','week','month','year'].includes(el.value))J.period=el.value;
- if(key==='date'&&/^\d{4}-\d{2}-\d{2}$/.test(el.value))J.date=el.value;
+ if(key==='period'&&['day','week','month','year'].includes(el.value)){J.period=el.value;J.userPickedDate=true;}
+ if(key==='date'&&/^\d{4}-\d{2}-\d{2}$/.test(el.value)){J.date=el.value;J.userPickedDate=true;}
  if(key==='site'&&isGroup()&&(el.value==='all'||SITES[el.value]))J.site=el.value;
  if(typeof render==='function')render();
 });
@@ -219,6 +237,14 @@ document.addEventListener('click',e=>{
  if(!el||!canOpen()||state.admin.tab!=='jobs')return;
  e.preventDefault();if(el.dataset.jobsAction==='refresh')load(true);
  if(el.dataset.jobsAction==='csv'&&J.rows)csv();
+ if(el.dataset.jobsAction==='history'&&J.rows){
+  const historical=mostRecentBackfillDate();
+  if(historical){
+   J.date=historical;J.period='month';J.userPickedDate=true;
+   if(isGroup())J.site='all';
+   if(typeof render==='function')render();
+  }
+ }
 });
 J.render=renderJobs;J.load=load;
 })();

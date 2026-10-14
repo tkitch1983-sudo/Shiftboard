@@ -16,7 +16,7 @@ const report = [
  "Type Cost Sell Profit Margin %",
  "0.00 20.00 20.00 100.00% MOT","0.00 20.00 20.00 100.00% Total",
  "Totals","Type Cost Sell Profit Margin %",
- "0.00 65.00 65.00 100.00% Total"
+ "0.00 85.00 85.00 100.00% Total"
 ].join("\n");
 
 Deno.test("daily report preserves invoice date, credit and job deduplication",()=>{
@@ -25,7 +25,7 @@ Deno.test("daily report preserves invoice date, credit and job deduplication",()
  if(result.total_jobs!==2)throw Error("Two unique jobs expected");
  if(result.entries.length!==4)throw Error("Four invoice/credit entries expected");
  if(result.labour_candidates!==1||result.review_jobs!==0)throw Error("Classification changed");
- if(result.report_sales_ex_vat!=="65.00")throw Error("Sales reconciliation incorrect");
+ if(result.report_sales_ex_vat!=="85.00")throw Error("Sales reconciliation incorrect");
 });
 Deno.test("rejects mixed report dates",()=>{
  const altered=report.replace("Date Range:\n12/10/2024\n12/10/2024",

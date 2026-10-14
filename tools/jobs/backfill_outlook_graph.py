@@ -211,7 +211,7 @@ def main():
         seen = set()
         for folder_kind, folder_id in sources:
             for message in graph.messages(start, end, folder_id):
-            site = resolve_site(message)
+                site = resolve_site(message)
                 if not site or not source_matches(site, folder_kind) or not message.get("hasAttachments") or not message.get("id"):
                     continue
                 msg_id = message["id"]

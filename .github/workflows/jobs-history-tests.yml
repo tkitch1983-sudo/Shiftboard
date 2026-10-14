@@ -27,6 +27,7 @@ jobs:
       - name: Check dashboard and mobile connection JavaScript syntax
         run: |
           node --check jobs-per-day.js
+          node --check jobs-report.js
           node --check outlook-connect.js
           node --check sw.js
       - uses: denoland/setup-deno@v2

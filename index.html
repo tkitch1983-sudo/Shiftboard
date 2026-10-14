@@ -889,7 +889,7 @@ const ADMIN_TAB_OPTIONS=[
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['bankholidays','Bank Holidays','Holiday'],
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
-  ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
+  ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['jobs','Jobs Report','Reports'],['audit','Audit','Reports'],
   ['cameras','Cameras','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
@@ -906,6 +906,7 @@ function defaultTabAccessFor(role,siteId,email,tab){
   if(role!=='site') return false;
   if(SITE_BASE_TABS.has(tab)) return true;
   if(tab==='sales') return !isFillingStationSite(siteId);
+  if(tab==='jobs') return !isFillingStationSite(siteId);
   if(tab==='targets') return !isFillingStationSite(siteId)&&!!targetSiteInfo(siteId);
   return false;
 }
@@ -2930,7 +2931,7 @@ function renderTonyDashboard(){
   return `<div class="tony-dashboard">
     <div class="tony-hero">
       <div><div class="tony-hero-title">Tony Dashboard</div><div class="tony-hero-sub">Group performance in one place. Wage savings are recalculated from completed Shiftboard days using the protected pay rates; sales and stock use the latest nightly Autowork snapshots.</div></div>
-      <button type="button" class="add-btn" data-action="refresh-tony-dashboard">Refresh now</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-admin-tab="jobs">Jobs Report →</button><button type="button" class="add-btn" data-action="refresh-tony-dashboard">Refresh now</button></div>
     </div>
     <div class="tony-toolbar">
       <div class="tony-filter-group"><span class="tony-filter-label">Period</span>${periodButtons}</div>
@@ -4575,6 +4576,7 @@ function renderAdmin(){
       (async ()=>{ state.admin._loadingSales=false; await loadSalesData(false); render(); })();
     }
   }
+  else if(state.admin.tab==='jobs') body=window.NEASJobs?.render?window.NEASJobs.render():'<div class="card">Jobs Report loading…</div>';
   else if(state.admin.tab==='targets') body = renderAdminTargets();
   else if(state.admin.tab==='targetsetup') body = renderAdminTargetSetup();
   else if(state.admin.tab==='stock'){
@@ -9145,5 +9147,6 @@ if('serviceWorker' in navigator){
 }
 init();
 </script>
+<script src="./jobs-report.js?v=1"></script>
 </body>
 </html>

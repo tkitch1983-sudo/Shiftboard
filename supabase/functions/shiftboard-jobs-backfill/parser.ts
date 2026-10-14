@@ -17,12 +17,16 @@ function cents(input:string):number{
  if(!/^-?\d+\.\d{2}$/.test(n))throw Error("invalid_amount");
  return Math.round(Number(n)*100);
 }
+function rows(block:string){
+ // FitZ places each field on its own line; PDF.js can place adjacent
+ // fields on one line. Parse the numeric four-column REPDATAB rows.
+ const pattern=/([-+]?\d[\d,]*\.\d{2})\s+([-+]?\d[\d,]*\.\d{2})\s+([-+]?\d[\d,]*\.\d{2})\s+([-+]?\d[\d,]*\.\d{2})\s*%\s+(Parts|Labour|MOT|Fixed Price|Tyres|Discount|Total)\b/g;
+ return Array.from(block.matchAll(pattern),m=>({type:m[5],sell:cents(m[2])}));
+}
 function lineTotal(block:string):number{
- const lines=block.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
- for(let i=lines.length-1;i>=4;i--){
-  if(lines[i]==="Total"&&lines[i-1].endsWith("%"))return cents(lines[i-3]);
- }
- throw Error("missing_line_total");
+ const totals=rows(block).filter(r=>r.type==="Total");
+ if(!totals.length)throw Error("missing_line_total");
+ return totals[totals.length-1].sell;
 }
 export async function pdfToText(bytes:Uint8Array):Promise<string>{
  const doc=await getDocumentProxy(bytes,{maxImageSize:16777216});
@@ -54,7 +58,7 @@ export function parseReport(text:string,site:string,hash:string):ParsedReport|nu
   const stop=i+1<invoices.length?invoices[i+1].index!:totalsAt;
   if(stop<=match.index!)throw Error("malformed_invoice_block");
   const block=text.slice(match.index!+match[0].length,stop);
-  const cat=new Set(Array.from(block.matchAll(/[-+]?\d+(?:\.\d+)?%\s*\n([^\n]+)/g),m=>m[1].trim()).filter(x=>x!=="Total"));
+  const cat=new Set(rows(block).map(r=>r.type).filter(x=>x!=="Total"));
   if(!cat.size)throw Error("missing_categories");
   for(const c of cat)if(!allowed.has(c))throw Error("unknown_category");
   const value=lineTotal(block),kind=invoice.startsWith("I")?"invoice":invoice.startsWith("C")?"credit":"invalid";

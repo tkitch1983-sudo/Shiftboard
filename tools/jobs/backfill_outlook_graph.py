@@ -32,6 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from import_profit_tracker import parse
+from graph_auth import GraphAuth
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0/"
 SENDERS = {

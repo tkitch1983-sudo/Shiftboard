@@ -72,3 +72,28 @@ When the invite holder taps Start, the service requests a Microsoft device sign-
 - The isolated connection HTML/CSS/JavaScript and matching `_headers` were deployed on Cloudflare Pages, without merging the draft Jobs Per Day dashboard. The existing production service worker was patched to exclude the new /outlook-connect route and its assets from app-shell caching and script injection.
 - On an actual iPhone visit, Start initially showed `Connection service temporarily unavailable`. Function logs showed a 400 when inserting into `jobs_outlook_connect_sessions`. The cause was that the function inserted `verification_uri` but migration 035 had omitted that column. Migration `036_jobs_outlook_device_verification_uri.sql` has since been applied and the missing column confirmed. No earlier sign-in session was persisted.
 - **Do not claim an end-to-end Microsoft token exchange has been tested** until the user retries and the server confirms a connected mailbox row. Original user invitation remains valid until its TTL.
+
+
+## Live staged-only historical backfill (14 October 2026)
+
+The new **Supabase Edge Function** \`shiftboard-jobs-backfill\` reads Tony's encrypted delegated Graph refresh token **server-side**, rotates it, discovers the Day Sheets folder and reads seven workshop senders from there. It reads only Lido sender messages from Tony's Inbox. The function extracts Profit Tracker text using \`unpdf\`, validates the PDF daily reporting date, de-duplicates invoice/job references, includes credit values in sales reconciliation, and stages only fully reconciled PDFs.
+
+- \`database/037_jobs_backfill_runner.sql\`: private random-key-protected \`pg_net\` trigger and \`jobs_backfill_run_audit\` table. No public or ordinary authenticated access.
+- \`database/038_jobs_history_backfill_dispatcher.sql\`: a day-by-day dispatcher with an advisory lock and idempotent date selection. \`cron.job\` name \`jobs-history-archive\` calls it every two minutes. It stops itself after the received-date archive through 13 October 2026 has been attempted.
+- Each received-day audit records discovered reports, staged reports, skipped/missing site labels and parser/reconciliation errors; missing days are **never zero jobs**. Failed reports can be investigated and retried manually. Cron does not automatically reprocess an audited day.
+- The runner's direct HTTP endpoint has \`verify_jwt=false\` because it enforces its own **private 256-bit server-to-server shared key** in \`x-shiftboard-run-key\`. The key is never included in the repository, client-side code, or user-visible dashboard.
+- The first read-only comparison on **12 October 2024** found all five known PDFs and staged **zero duplicate reports**. **14 October 2024** produced six reconciled reports and 85 unique jobs (staged). **13 October 2026** produced eight reconciled PDFs and 119 unique jobs, exactly matching the original manual pilot. All data remains staged, not verified.
+- Some archived PDFs are genuinely multi-day or fail sum reconciliation; these are logged and do not generate a provisional zero or invented job count. A separate exception-review process is required before management approval.
+- GitHub CI tests exercise the edge importer TypeScript and a synthetic invoice/credit fixture; see \`parser_test.ts\`. No production frontend jobs dashboard has been merged.
+
+**Operational checks** (restricted Supabase SQL editor):
+
+~~~sql
+select jobname,active,schedule from cron.job where jobname='jobs-history-archive';
+select report_day,status,reports_found,reports_staged,errors
+from public.jobs_backfill_run_audit order by report_day desc limit 20;
+select count(*) as staged from public.jobs_import_batches where status='staged';
+select count(*) as visible from public.jobs_daily_summary;
+~~~
+
+**Stop if necessary:** \`select cron.unschedule('jobs-history-archive');\`. This stops future import jobs; it does not erase any staged data. Reconcile all exceptions and review service/repair category rules before verifying batches.

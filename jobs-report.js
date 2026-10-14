@@ -10,7 +10,6 @@ const J=window.NEASJobs=window.NEASJobs||{rows:null,progress:null,loading:false,
 const E=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const N=x=>Number.isFinite(Number(x))?Number(x):0;
 const F=x=>N(x).toLocaleString('en-GB',{maximumFractionDigits:0});
-const GBP=x=>'£'+N(x).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
 const dayISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const parseDate=s=>{const [y,m,d]=String(s).split('-').map(Number);return new Date(y,m-1,d,12)};
 const label=s=>parseDate(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
@@ -33,14 +32,9 @@ function periodRange(date=J.date,mode=J.period){
  return [String(dt.getFullYear())+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-01',dayISO(last)];
 }
 function counts(rows){
- const sum=rows.reduce((a,r)=>{
-  a.total+=N(r.total_jobs);a.labour+=N(r.labour_candidates);a.review+=N(r.review_jobs);
-  a.sales+=N(r.net_sales_ex_vat);a.provisional+=(r.import_status==='staged'?1:0);
-  return a;
- },{total:0,labour:0,review:0,sales:0,provisional:0});
- sum.reports=rows.length;
- sum.reportDays=new Set(rows.map(r=>r.report_date)).size;
- return sum;
+ const total=rows.reduce((n,r)=>n+N(r.total_jobs),0);
+ return {total,reports:rows.length,reportDays:new Set(rows.map(r=>r.report_date)).size,
+  provisional:rows.filter(r=>r.import_status!=='verified').length};
 }
 function selection(){
  const [a,b]=periodRange(),site=selectedSite();
@@ -67,7 +61,7 @@ async function load(force=false){
   const headers=await authHeaders();
   const out=[];
   for(let offset=0;offset<20000;offset+=1000){
-   const q='jobs_report_management?select=site_key,report_date,import_status,total_jobs,labour_candidates,review_jobs,other_jobs,credit_notes,net_sales_ex_vat&order=report_date.desc,site_key.asc&limit=1000&offset='+offset;
+   const q='jobs_report_management?select=site_key,report_date,import_status,total_jobs&order=report_date.desc,site_key.asc&limit=1000&offset='+offset;
    const res=await fetch(SUPABASE_URL+'/rest/v1/'+q,{headers,cache:'no-store'});
    if(!res.ok)throw Error('Cannot load management jobs report (HTTP '+res.status+').');
    const page=await res.json();
@@ -111,40 +105,43 @@ function makeBars(rows){
 }
 function branchTable(rows){
  const branches=Object.entries(SITES).filter(([site])=>selectedSite()==='all'||selectedSite()===site);
- const data=branches.map(([site,name])=>{
-  const a=rows.filter(r=>r.site_key===site),t=counts(a);
-  return {name,site,...t};
- });
- const body=data.map(t=>'<tr><td>'+E(t.name)+'</td><td class="mono">'+(t.reports?F(t.total):'—')+
-  '</td><td class="mono">'+(t.reports?F(t.labour):'—')+
-  '</td><td class="mono">'+(t.reports?F(t.review):'—')+
-  '</td><td class="mono">'+F(t.reports)+'</td></tr>').join('');
- return '<div style="overflow-x:auto;"><table style="min-width:460px;width:100%;"><thead><tr>'+
-  '<th>Workshop</th><th>Total jobs</th><th>Labour-coded*</th><th>Review</th><th>Reports</th>'+
-  '</tr></thead><tbody>'+body+'</tbody></table></div>';
+ const entries=branches.map(([site,name])=>({name,...counts(rows.filter(r=>r.site_key===site))}));
+ return '<div style="display:flex;flex-direction:column;gap:0;">'+
+  entries.map(t=>'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'+
+    'padding:13px 2px;border-bottom:1px solid var(--line);">'+
+    '<div><b>'+E(t.name)+'</b><div style="font-size:11px;color:var(--muted);">'+
+    F(t.reports)+' available report'+(t.reports===1?'':'s')+'</div></div>'+
+    '<div style="font-family:Oswald,sans-serif;font-weight:700;font-size:25px;white-space:nowrap;">'+
+    (t.reports?F(t.total):'—')+'</div></div>').join('')+'</div>';
 }
 function dailyTable(rows){
- const by=rows.slice().sort((a,b)=>b.report_date.localeCompare(a.report_date)||String(a.site_key).localeCompare(String(b.site_key)));
+ const by=rows.slice().sort((a,b)=>b.report_date.localeCompare(a.report_date)||
+   String(a.site_key).localeCompare(String(b.site_key)));
  const shown=by.slice(0,180);
- const trs=shown.map(r=>'<tr><td>'+E(label(r.report_date))+'</td><td>'+E(SITES[r.site_key]||r.site_key)+'</td>'+
-   '<td class="mono">'+F(r.total_jobs)+'</td><td class="mono">'+F(r.labour_candidates)+'</td>'+
-   '<td class="mono">'+F(r.review_jobs)+'</td><td class="mono">'+GBP(r.net_sales_ex_vat)+'</td>'+
-   '<td style="font-size:11px;">'+(r.import_status==='verified'?'Approved':'Provisional')+'</td></tr>').join('');
- return '<div style="overflow-x:auto;"><table style="min-width:670px;width:100%;"><thead><tr>'+
- '<th>Invoice date</th><th>Site</th><th>Total</th><th>Labour-coded*</th><th>Review</th><th>Net sales</th><th>Status</th>'+
- '</tr></thead><tbody>'+trs+'</tbody></table></div>'+
- (by.length>shown.length?'<div style="color:var(--muted);font-size:11px;margin:10px 0;">Showing newest '+shown.length+' of '+by.length+' branch-days. Narrow the date filter to see more.</div>':'');
+ const cards=shown.map(r=>
+  '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'+
+  'padding:12px 2px;border-bottom:1px solid var(--line);">'+
+  '<div><b>'+E(SITES[r.site_key]||r.site_key)+'</b><div style="font-size:12px;color:var(--muted);">'+
+  E(label(r.report_date))+' · '+(r.import_status==='verified'?'Approved':'Provisional')+'</div></div>'+
+  '<div style="text-align:right;white-space:nowrap;">'+
+  '<b style="font-family:Oswald,sans-serif;font-size:24px;">'+F(r.total_jobs)+'</b>'+
+  '<div style="font-size:11px;color:var(--muted);">jobs</div></div></div>'
+ ).join('');
+ return '<div>'+ (cards||'<div style="color:var(--muted);padding:16px 0;">No reports available for these dates.</div>') +'</div>'+
+ (by.length>shown.length?'<div style="color:var(--muted);font-size:11px;margin:10px 0;">Showing newest '+
+ shown.length+' of '+by.length+' branch-days. Narrow the date filter to see more.</div>':'');
 }
 function csv(){
  const rows=selection();
- const data=[['Invoice date','Workshop','Total jobs','Labour-coded candidates','Classification review','Net sales ex VAT','Status']];
- rows.forEach(r=>data.push([r.report_date,SITES[r.site_key]||r.site_key,r.total_jobs,r.labour_candidates,r.review_jobs,r.net_sales_ex_vat,r.import_status]));
+ const data=[['Invoice date','Workshop','Total jobs','Status']];
+ rows.forEach(r=>data.push([r.report_date,SITES[r.site_key]||r.site_key,r.total_jobs,
+  r.import_status==='verified'?'Approved':'Provisional']));
  const safe=x=>'"'+String(x==null?'':x).replace(/^[=+\-@\t\r]/,"'").replace(/"/g,'""')+'"';
- const csv=data.map(row=>row.map(safe).join(',')).join('\r\n');
- const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+ const content=data.map(row=>row.map(safe).join(',')).join('\r\n');
+ const blob=new Blob(['\uFEFF'+content],{type:'text/csv;charset=utf-8'});
  const url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download='NEAS-Jobs-'+(J.date||today())+'-'+J.period+'.csv';document.body.append(a);a.click();a.remove();
- setTimeout(()=>URL.revokeObjectURL(url),1000);
+ a.href=url;a.download='NEAS-Total-Jobs-'+(J.date||today())+'-'+J.period+'.csv';
+ document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function progressSection(){
  const p=J.progress;
@@ -164,42 +161,49 @@ function renderJobs(){
  if(!J.date)J.date=today();
  if(!J.rows&&!J.loading)setTimeout(()=>load(),0);
  const rows=selection(),current=counts(rows),prev=counts(previousRows());
- const date=J.date;
  const periods=[['day','Day'],['week','Week'],['month','Month'],['year','Year']];
- const periodOptions=periods.map(([id,name])=>'<option value="'+id+'"'+(J.period===id?' selected':'')+'>'+name+'</option>').join('');
+ const periodOptions=periods.map(([id,name])=>'<option value="'+id+'"'+
+  (J.period===id?' selected':'')+'>'+name+'</option>').join('');
  const site=selectedSite(),sites=Object.entries(SITES).filter(([id])=>isGroup()||id===site);
- const siteOptions=(isGroup()?'<option value="all">All workshops</option>':'')+sites.map(([id,name])=>'<option value="'+id+'"'+(site===id?' selected':'')+'>'+E(name)+'</option>').join('');
+ const siteOptions=(isGroup()?'<option value="all">All workshops</option>':'')+
+  sites.map(([id,name])=>'<option value="'+id+'"'+(site===id?' selected':'')+'>'+E(name)+'</option>').join('');
  const [start,end]=periodRange();
- const completeEnough=current.reports>0&&prev.reports>0&&current.reports===prev.reports;
- const yoy=prev.reports===0?'No matching period imported yet':(completeEnough?F(prev.total)+' jobs last year · '+F(prev.reports)+' matching branch-day reports':F(prev.total)+' jobs last year ('+F(prev.reports)+' reports versus '+F(current.reports)+' now; incomplete comparison)');
+ const comparison=prev.reports>0?
+  F(prev.total)+' jobs in the comparable period last year, from '+F(prev.reports)+
+  ' available branch-day reports. This year has '+F(current.reports)+' reports.':
+  'No imported reports for the comparable period last year yet.';
  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'+
- '<div><h2>Jobs Report</h2><div class="head-sub">Invoiced jobs · all workshops · historic daily reports</div></div>'+
- '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-jobs-action="refresh">Refresh</button>'+
- '<button type="button" class="add-btn" data-jobs-action="csv"'+(rows.length?'':' disabled')+'>Export CSV</button></div></div>'+
- '<div class="card" style="margin:12px 0;border-left:4px solid var(--amber);font-size:13px;">'+
- '<b>Provisional data — under review.</b> Total jobs count unique invoiced job references per site and invoice day. '+
- '<b>Labour-coded*</b> means service/repair candidates, not yet confirmed servicing/repair jobs. '+
- 'Fixed-price jobs needing classification are shown separately. Missing reports are unknown, not zero.</div>'+
- '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">'+
- '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Period<select data-jobs-filter="period" style="min-width:110px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;">'+periodOptions+'</select></label>'+
- '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Date<input type="date" min="2024-10-12" value="'+E(date)+'" data-jobs-filter="date" style="min-width:150px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;"></label>'+
- '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Workshop<select data-jobs-filter="site" style="min-width:160px;max-width:230px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;">'+siteOptions+'</select></label></div>'+
- '<div style="color:var(--muted);font-size:12px;margin:8px 0;">'+E(label(start))+' – '+E(label(end))+' · '+F(current.reports)+' available branch-day reports</div>'+
- (J.loading?'<div class="card">Loading historical job reports…</div>':'')+
- (J.error?'<div class="card" style="color:var(--red);">Could not refresh: '+E(J.error)+'</div>':'')+
- '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+
- kpi('Total jobs',J.rows?F(current.total):'—','Each job counted once on its invoice day')+
- kpi('Labour-coded*',J.rows?F(current.labour):'—','Candidate service / repair jobs')+
- kpi('Classification review',J.rows?F(current.review):'—','Potential additional servicing / repair')+
- kpi('Average jobs / reported day',current.reportDays?(current.total/current.reportDays).toFixed(1):'—',F(current.reportDays)+' dates with available reports')+
- '</div>'+
- '<div class="card" style="margin-top:12px;"><b>Historical comparison</b><div style="color:var(--muted);font-size:13px;margin-top:7px;">'+E(yoy)+'</div>'+
- '<div style="color:var(--muted);font-size:11px;margin-top:7px;">Comparisons are illustrative while the archive is importing; different coverage means job totals cannot yet be compared fairly.</div></div>'+
- progressSection()+
- '<div class="card" style="margin-top:12px;"><b>Job volume trend</b><div style="font-size:11px;color:var(--muted);margin-top:5px;">'+
- (J.period==='year'?'Monthly totals':'Daily totals')+' · currently imported reports only</div>'+makeBars(rows)+'</div>'+
- '<div class="card" style="margin-top:12px;"><b>Workshop comparison</b><div style="color:var(--muted);font-size:12px;margin:5px 0 10px;">No reports shown as — rather than zero.</div>'+branchTable(rows)+'</div>'+
- '<div class="card" style="margin-top:12px;"><b>Branch-day history</b><div style="font-size:12px;color:var(--muted);margin:6px 0 12px;">'+F(current.reports)+' reports · '+GBP(current.sales)+' reconciled net sales · refreshed '+(J.lastLoad?new Date(J.lastLoad).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'—')+'</div>'+dailyTable(rows)+'</div>';
+  '<div><h2>Jobs Report</h2><div class="head-sub">Total invoiced jobs · workshop history</div></div>'+
+  '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-jobs-action="refresh">Refresh</button>'+
+  '<button type="button" class="add-btn" data-jobs-action="csv"'+(rows.length?'':' disabled')+'>Export CSV</button></div></div>'+
+  '<div class="card" style="margin:12px 0;border-left:4px solid var(--amber);font-size:13px;">'+
+  '<b>Import still being checked.</b> Jobs are counted once per workshop and invoice day. '+
+  'Missing day sheets are not treated as zero jobs. Figures remain provisional until approved.</div>'+
+  '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">'+
+  '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Period<select data-jobs-filter="period" style="min-width:110px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;">'+periodOptions+'</select></label>'+
+  '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Date<input type="date" min="2024-10-12" value="'+E(J.date)+'" data-jobs-filter="date" style="min-width:150px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;"></label>'+
+  '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Workshop<select data-jobs-filter="site" style="min-width:160px;max-width:230px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;">'+siteOptions+'</select></label></div>'+
+  '<div style="color:var(--muted);font-size:12px;margin:8px 0;">'+E(label(start))+' – '+E(label(end))+
+  ' · '+F(current.reports)+' available branch-day reports</div>'+
+  (J.loading?'<div class="card">Loading historical job reports…</div>':'')+
+  (J.error?'<div class="card" style="color:var(--red);">Could not refresh: '+E(J.error)+'</div>':'')+
+  '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+
+  kpi('Total jobs',J.rows?F(current.total):'—','Unique invoiced job references')+
+  kpi('Average jobs per branch-day',current.reports?(current.total/current.reports).toFixed(1):'—',
+   F(current.reports)+' branch-day reports available')+'</div>'+
+  '<div class="card" style="margin-top:12px;"><b>Same period last year</b>'+
+  '<div style="color:var(--muted);font-size:13px;margin-top:7px;">'+E(comparison)+'</div>'+
+  '<div style="color:var(--muted);font-size:11px;margin-top:7px;">Historical comparisons are incomplete while more reports are importing.</div></div>'+
+  progressSection()+
+  '<div class="card" style="margin-top:12px;"><b>Job volume trend</b><div style="font-size:11px;color:var(--muted);margin-top:5px;">'+
+  (J.period==='year'?'Monthly totals':'Daily totals')+' · imported reports only</div>'+makeBars(rows)+'</div>'+
+  '<div class="card" style="margin-top:12px;"><b>Total jobs by workshop</b><div style="font-size:12px;color:var(--muted);margin:5px 0 10px;">— means no available reports, not zero jobs.</div>'+
+  branchTable(rows)+'</div>'+
+  '<div class="card" style="margin-top:12px;"><b>Jobs by date and workshop</b>'+
+  '<div style="font-size:12px;color:var(--muted);margin:6px 0 12px;">'+
+  F(current.reports)+' imported reports · last refreshed '+
+  (J.lastLoad?new Date(J.lastLoad).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'—')+
+  '</div>'+dailyTable(rows)+'</div>';
 }
 document.addEventListener('change',e=>{
  const el=e.target?.closest?.('[data-jobs-filter]');

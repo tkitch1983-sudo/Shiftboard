@@ -87,12 +87,16 @@ async function connectionStart(invite: string) {
   const row = await validInvite(invite);
   if (!row) return reply(403, { error: "This invitation is missing, used or expired." });
   const existing = await db("jobs_outlook_connect_sessions?select=id,user_code,expires_at,status,interval_seconds&invite_id=eq." + row.id + "&limit=1");
-  if (existing && existing.length) {
-    const session = existing[0];
-    if (session.status !== "pending" || Date.parse(session.expires_at) < Date.now())
-      return reply(403, { error: "This sign-in session has expired. Please request a new link." });
-    return reply(200, { ok: true, session_id: session.id, user_code: session.user_code,
-      verification_uri: "https://microsoft.com/devicelogin", interval_seconds: session.interval_seconds });
+  if (existing?.length) {
+    const previous = existing[0];
+    if (previous.status === "pending" && Date.parse(previous.expires_at) > Date.now() + 10000) {
+      return reply(200, { ok: true, session_id: previous.id, user_code: previous.user_code,
+        verification_uri: "https://microsoft.com/devicelogin", interval_seconds: previous.interval_seconds });
+    }
+    // A sign-in can expire if iOS Safari is closed or reopens the tab.
+    // Reissue a NEW Microsoft device code within the still-valid one-use invitation.
+    if (previous.status === "connected")
+      return reply(403, { error: "This mailbox has already been connected." });
   }
   const { response, payload } = await msTokenPost(AUTH_BASE + "/devicecode", {
     client_id: CLIENT_ID, scope: SCOPE
@@ -103,14 +107,20 @@ async function connectionStart(invite: string) {
   const device = await encrypt(payload.device_code);
   const interval = Math.min(60, Math.max(5, Number(payload.interval) || 5));
   const expires = new Date(Date.now() + Math.min(SESSION_LIMIT_MS, Number(payload.expires_in || 900) * 1000)).toISOString();
-  const inserted = await db("jobs_outlook_connect_sessions", "POST", [{
-    invite_id: row.id, device_ciphertext: device.ciphertext, device_iv: device.iv,
-    user_code: String(payload.user_code), verification_uri: "https://microsoft.com/devicelogin",
-    interval_seconds: interval, expires_at: expires, status: "pending"
-  }], "return=representation");
-  const session = inserted[0];
+  const updated = existing?.length
+    ? await db("jobs_outlook_connect_sessions?id=eq." + existing[0].id, "PATCH", {
+        device_ciphertext: device.ciphertext, device_iv: device.iv,
+        user_code: String(payload.user_code), interval_seconds: interval, expires_at: expires,
+        status: "pending", last_polled_at: null
+      }, "return=representation")
+    : await db("jobs_outlook_connect_sessions", "POST", [{
+        invite_id: row.id, device_ciphertext: device.ciphertext, device_iv: device.iv,
+        user_code: String(payload.user_code), verification_uri: "https://microsoft.com/devicelogin",
+        interval_seconds: interval, expires_at: expires, status: "pending"
+      }], "return=representation");
+  const session = updated[0];
   return reply(200, { ok: true, session_id: session.id, user_code: session.user_code,
-    verification_uri: session.verification_uri, interval_seconds: interval });
+    verification_uri: "https://microsoft.com/devicelogin", interval_seconds: interval });
 }
 async function connectionPoll(invite: string, sessionId: string) {
   const row = await validInvite(invite);

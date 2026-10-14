@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v121';
+const CACHE='neas-shift-board-shell-v122';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -73,7 +73,7 @@ self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_W
 self.addEventListener('fetch',event=>{
   const req=event.request;if(req.method!=='GET')return;const url=new URL(req.url);if(url.origin!==self.location.origin)return;
   // Keep the standalone Microsoft sign-in page outside the PWA shell.
-  if(/^\/outlook-connect(?:\.html|\.js|\.css)$/.test(url.pathname))return;
+  if(/^\/outlook-connect(?:\.html|\.js|\.css)?$/.test(url.pathname))return;
   if(req.mode==='navigate'){
     event.respondWith((async()=>{try{const fresh=await fetch(req,{cache:'no-store'});const cache=await caches.open(CACHE);cache.put('./',fresh.clone());return await withAppScripts(fresh);}catch(_e){const cached=await caches.match('./');return cached?await withAppScripts(cached):Response.error();}})());return;
   }

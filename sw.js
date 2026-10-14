@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v120';
+const CACHE='neas-shift-board-shell-v122';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -15,6 +15,7 @@ const INJECT=[
   ['kiosk-wake-lock.js','2'],
   ['holiday-cover-exempt.js','1'],
   ['sales-ytd.js','2'],
+  ['jobs-per-day.js','1'],
   ['sales-daily-closed-label.js','1'],
   ['target-daily-autosave.js','1'],
   ['holiday-approval-snapshot.js','1'],
@@ -72,6 +73,8 @@ self.addEventListener('activate',event=>{event.waitUntil((async()=>{const keys=a
 self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('fetch',event=>{
   const req=event.request;if(req.method!=='GET')return;const url=new URL(req.url);if(url.origin!==self.location.origin)return;
+  // Keep one-time Outlook sign-in isolated from the Shiftboard app shell and cache.
+  if(/^\/outlook-connect(?:\.html|\.js|\.css)$/.test(url.pathname))return;
   if(req.mode==='navigate'){
     event.respondWith((async()=>{try{const fresh=await fetch(req,{cache:'no-store'});const cache=await caches.open(CACHE);cache.put('./',fresh.clone());return await withAppScripts(fresh);}catch(_e){const cached=await caches.match('./');return cached?await withAppScripts(cached):Response.error();}})());return;
   }

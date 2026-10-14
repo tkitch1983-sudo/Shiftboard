@@ -1,0 +1,36 @@
+name: Jobs history import tests
+on:
+  pull_request:
+    paths:
+      - 'tools/jobs/**'
+      - 'jobs-per-day.js'
+      - 'database/034_jobs_per_day_history.sql'
+  push:
+    branches:
+      - feature/jobs-per-day-history
+
+permissions:
+  contents: read
+
+jobs:
+  parser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PDF parser
+        run: python -m pip install pymupdf
+      - name: Test historical extraction and Outlook week batching
+        run: python -m unittest discover -s tools/jobs/tests -v
+      - name: Check dashboard and mobile connection JavaScript syntax
+        run: |
+          node --check jobs-per-day.js
+          node --check outlook-connect.js
+          node --check sw.js
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Outlook connection service
+        run: deno check supabase/functions/shiftboard-outlook-connect/index.ts

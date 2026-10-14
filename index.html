@@ -887,7 +887,7 @@ const ADMIN_TAB_OPTIONS=[
   ['tonydashboard','Tony Dashboard','Tony'],
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['bankholidays','Bank Holidays','Holiday'],
-  ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
+  ['sales','Live Sales','Sales'],['jobs','Jobs Per Day','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
   ['cameras','Cameras','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
@@ -905,7 +905,7 @@ function defaultTabAccessFor(role,siteId,email,tab){
   if(role==='super') return true;
   if(role!=='site') return false;
   if(SITE_BASE_TABS.has(tab)) return true;
-  if(tab==='sales') return !isFillingStationSite(siteId);
+  if(tab==='sales'||tab==='jobs') return !isFillingStationSite(siteId);
   if(tab==='targets') return !isFillingStationSite(siteId)&&!!targetSiteInfo(siteId);
   return false;
 }
@@ -2951,6 +2951,7 @@ function renderTonyDashboard(){
       <div class="tony-chart-card"><div class="tony-chart-head"><div><div class="tony-chart-title">Sales by workshop</div><div class="tony-chart-sub">Latest month-to-date NET sales snapshot. Tap a bar to filter.</div></div><div class="mono" style="font-size:12px;">${salesValue}</div></div>${state.admin.salesRows===null?'<div class="empty-state">Loading live sales…</div>':tonyDashboardBars(salesBars,'money')}</div>
       <div class="tony-chart-card wide"><div class="tony-chart-head"><div><div class="tony-chart-title">Cumulative wage-saving trend</div><div class="tony-chart-sub">Selected period · completed workshop days only. Hover/tap chart points for dated values.</div></div><div class="mono" style="font-size:12px;">${tonyDashboardMoney(wage.totalSaving,2)}</div></div>${tonyDashboardTrend(wage.series)}</div>
       <div class="tony-chart-card"><div class="tony-chart-head"><div><div class="tony-chart-title">Tony tools</div><div class="tony-chart-sub">Jump straight into the detailed private reports behind this summary.</div></div></div><div class="tony-quick-links">
+        <button type="button" class="tony-quick-link" data-admin-tab="jobs"><b>Jobs Per Day</b><span>Daily workshop volumes and history</span></button>
         <button type="button" class="tony-quick-link" data-admin-tab="analysis"><b>Sales Analysis</b><span>Monthly / yearly site performance</span></button>
         <button type="button" class="tony-quick-link" data-admin-tab="salesvs"><b>Sales VS</b><span>Compare periods and sites</span></button>
         <button type="button" class="tony-quick-link" data-admin-tab="stock"><b>Stock Value</b><span>Latest and historical stock</span></button>
@@ -4561,6 +4562,9 @@ function renderAdmin(){
   else if(state.admin.tab==='register') body = renderAdminRegister();
   else if(state.admin.tab==='sickness') body = renderAdminSickness();
   else if(state.admin.tab==='bradford') body = renderAdminBradford();
+  else if(state.admin.tab==='jobs'){
+    body = window.NEASJobs ? window.NEASJobs.render() : '<div class="card">Jobs Per Day module loading…</div>';
+  }
   else if(state.admin.tab==='sales'){
     body = renderAdminSales();
     if(state.admin.salesRows===null && !state.admin._loadingSales){
@@ -9145,5 +9149,6 @@ if('serviceWorker' in navigator){
 }
 init();
 </script>
+<script src="./jobs-per-day.js?v=1"></script>
 </body>
 </html>

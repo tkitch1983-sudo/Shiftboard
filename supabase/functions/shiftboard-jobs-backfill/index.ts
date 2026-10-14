@@ -21,7 +21,7 @@ function reply(status:number,obj:Record<string,unknown>){
 }
 async function digest(bytes:Uint8Array|string):Promise<string>{
  const data=typeof bytes==="string"?new TextEncoder().encode(bytes):bytes;
- const buffer=new Uint8Array(await crypto.subtle.digest("SHA-256",data));
+ const buffer=new Uint8Array(await crypto.subtle.digest("SHA-256",new Uint8Array(data)));
  return Array.from(buffer,b=>b.toString(16).padStart(2,"0")).join("");
 }
 async function rest(path:string,method="GET",value?:unknown,prefer?:string):Promise<any>{

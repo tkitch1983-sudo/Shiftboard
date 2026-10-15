@@ -7733,11 +7733,15 @@ async function onAction(e){
     else if(!requestInScope(r)){ showToast('Not permitted for this site.', true); state.admin.pendingApprove=null; }
     else {
       const oldStatus=r.status, oldDecidedAt=r.decidedAt;
+      const oldSiteId=r.approvedSiteId, oldAuthoriser=r.authorisedBy;
+      const approvedEmployee=employeeById(r.employeeId);
       r.status='approved'; r.decidedAt=Date.now();
+      // Snapshot the approved site, so later employee transfers cannot redirect a notification.
+      r.approvedSiteId=approvedEmployee&&approvedEmployee.siteId||null;
       r.authorisedBy = state.admin.managerName || 'Upper Management';
       const ok=await saveRequests();
-      if(ok){ showToast('Holiday authorised.'); state.admin.pendingApprove=null; }
-      else { r.status=oldStatus; r.decidedAt=oldDecidedAt; delete r.authorisedBy; showToast('Could not save approval.', true); }
+      if(ok){ showToast('Holiday authorised. Site email notification will follow.'); state.admin.pendingApprove=null; }
+      else { r.status=oldStatus; r.decidedAt=oldDecidedAt; r.approvedSiteId=oldSiteId; r.authorisedBy=oldAuthoriser; showToast('Could not save approval.', true); }
     }
   }
   else if(action==='reject-request'){

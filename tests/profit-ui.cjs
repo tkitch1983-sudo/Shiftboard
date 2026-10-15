@@ -5,7 +5,7 @@ const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1280,height:1000}});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const data={rows:[
+const data={invoices:[{site_key:'gateshead',report_date:day,job_number:'J001',invoice_number:'I001',storage_path:'gateshead/'+day+'/I001.pdf'}],rows:[
  {site_key:'gateshead',report_date:day,job_number:'J001',invoice_numbers:'I001',job_type:'other',sales:200,cost:110,profit:90,margin_pct:45},
  {site_key:'gateshead',report_date:day,job_number:'J002',invoice_numbers:'I002',job_type:'tyre_only',sales:200,cost:140,profit:60,margin_pct:30},
  {site_key:'gateshead',report_date:day,job_number:'J003',invoice_numbers:'I003',job_type:'mixed',sales:200,cost:210,profit:-10,margin_pct:-5},
@@ -15,11 +15,13 @@ const data={rows:[
 await page.setContent(`<style>:root{--bg:#101723;--panel:#182232;--text:#eff4fa;--muted:#a5b3c5;--line:#344258;--amber:#efb34b;--red:#ef6464}body{font-family:Arial;background:var(--bg);color:var(--text);margin:25px}.card{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}.add-btn{color:var(--text);background:#26354b;border:1px solid var(--line);padding:10px 14px;border-radius:8px;cursor:pointer}</style><main id="app"></main>`);
 await page.evaluate(data=>{
 window._session={email:'qa@example.test',role:'super'};window.state={view:'admin',admin:{authed:true,role:'super',tab:'jobs'}};window.SUPABASE_URL='https://example.test';window.authHeaders=async()=>({});
-window.fetch=async(url)=>({ok:true,json:async()=>url.includes('jobs_margin_review')?data.rows:url.includes('jobs_report_management')?data.reports:data.statuses});
+window.open=()=>window._invoiceTab={location:{href:''},close(){}};
+window.fetch=async(url)=>({ok:true,blob:async()=>new Blob(['%PDF-1.4 test'],{type:'application/pdf'}),json:async()=>url.includes('jobs_margin_review')?data.rows:url.includes('jobs_report_management')?data.reports:url.includes('jobs_invoice_documents')?data.invoices:data.statuses});
 window.NEASJobs={render:()=>'<h2>Job totals test view</h2>'};window.render=()=>document.querySelector('#app').innerHTML=window.NEASJobs.render();
 },data);
 await page.addScriptTag({content:fs.readFileSync('profit-review.js','utf8')});
 await page.evaluate(()=>render());await page.waitForSelector('.pr-job');
+await page.locator('[data-profit-invoice]').click();await page.waitForFunction(()=>window._invoiceTab.location.href.startsWith('blob:'));
 const all=await page.locator('.pr-job').count();if(all!==3)throw Error('Inclusive 45% threshold failed');
 await page.locator('[data-profit-filter=filter]').selectOption('tyres');
 if(!(await page.locator('.pr-job').allTextContents()).every(t=>t.includes('Tyre-only')))throw Error('Tyre filter failed');

@@ -72,7 +72,7 @@ async function load(force=false){
   const headers=await authHeaders();
   const out=[];
   for(let offset=0;offset<20000;offset+=1000){
-   const q='jobs_report_management?select=site_key,report_date,import_status,total_jobs&order=report_date.desc,site_key.asc&limit=1000&offset='+offset;
+   const q='jobs_report_management?select=site_key,report_date,import_status,total_jobs,source_kind&order=report_date.desc,site_key.asc&limit=1000&offset='+offset;
    const res=await fetch(SUPABASE_URL+'/rest/v1/'+q,{headers,cache:'no-store'});
    if(!res.ok)throw Error('Cannot load management jobs report (HTTP '+res.status+').');
    const page=await res.json();
@@ -140,7 +140,7 @@ function dailyTable(rows){
   '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'+
   'padding:12px 2px;border-bottom:1px solid var(--line);">'+
   '<div><b>'+E(SITES[r.site_key]||r.site_key)+'</b><div style="font-size:12px;color:var(--muted);">'+
-  E(label(r.report_date))+' · '+(r.import_status==='verified'?'Approved':'Provisional')+'</div></div>'+
+  E(label(r.report_date))+' · '+(r.source_kind==='autowork'?'Direct Autowork · reconciled':r.import_status==='verified'?'Approved email':'Email · provisional')+'</div></div>'+
   '<div style="text-align:right;white-space:nowrap;">'+
   '<b style="font-family:Oswald,sans-serif;font-size:24px;">'+F(r.total_jobs)+'</b>'+
   '<div style="font-size:11px;color:var(--muted);">jobs</div></div></div>'
@@ -197,8 +197,8 @@ function renderJobs(){
   '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-jobs-action="refresh">Refresh</button>'+
   '<button type="button" class="add-btn" data-jobs-action="csv"'+(rows.length?'':' disabled')+'>Export CSV</button></div></div>'+
   '<div class="card" style="margin:12px 0;border-left:4px solid var(--amber);font-size:13px;">'+
-  '<b>Import still being checked.</b> Jobs are counted once per workshop and invoice day. '+
-  'Missing day sheets are not treated as zero jobs. Figures remain provisional until approved.</div>'+
+  '<b>Direct Autowork collection.</b> Daily jobs are collected from Profit Tracker, with emails as a fallback. Jobs are counted once per workshop and invoice day. '+
+  'Missing reports are not treated as zero jobs. Direct reports are checked against their financial totals; historical email figures remain provisional until approved.</div>'+
   '<div class="card" style="margin:12px 0;padding:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">'+
   '<div><b>Historical imports</b><div style="color:var(--muted);font-size:12px;margin-top:4px;">'+
   (J.rows?F(J.rows.length)+' branch-day reports available':'Loading import history…')+

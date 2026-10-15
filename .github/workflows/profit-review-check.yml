@@ -1,0 +1,24 @@
+name: Check job margin review
+on:
+  push:
+    paths: ['profit-review.js', 'tests/profit-ui.cjs', '.github/workflows/profit-review-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright@1.55.0
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/profit-ui.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: profit-review-previews
+          path: profit-*.png
+          retention-days: 3

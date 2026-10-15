@@ -889,7 +889,7 @@ const ADMIN_TAB_OPTIONS=[
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['bankholidays','Bank Holidays','Holiday'],
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
-  ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['jobs','Jobs Report','Reports'],['checkstatus','Checklist Status','Reports'],['audit','Audit','Reports'],
+  ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['jobs','Jobs & Margins','Reports'],['checkstatus','Checklist Status','Reports'],['audit','Audit','Reports'],
   ['cameras','Cameras','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
@@ -9179,7 +9179,8 @@ if('serviceWorker' in navigator){
 }
 init();
 </script>
-<script src="./jobs-report.js?v=4"></script>
+<script src="./jobs-report.js?v=5"></script>
+<script src="./profit-review.js?v=1"></script>
 <script src="./checklist-status.js?v=1"></script>
 </body>
 </html>

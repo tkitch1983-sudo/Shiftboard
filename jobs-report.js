@@ -41,6 +41,12 @@ function mostRecentBackfillDate(){
  const historic=(J.rows||[]).filter(r=>r.report_date<'2026-10-13');
  return historic.length?historic.reduce((best,r)=>r.report_date>best?r.report_date:best,''):'';
 }
+function mostRecentDailyDate(){
+ // New reports received after the original 13 October pilot are prioritised.
+ // Keep the older historical-import shortcut separate.
+ const daily=(J.rows||[]).filter(r=>r.report_date>'2026-10-13');
+ return daily.length?daily.reduce((best,r)=>r.report_date>best?r.report_date:best,''):'';
+}
 function selection(){
  const [a,b]=periodRange(),site=selectedSite();
  return (J.rows||[]).filter(r=>r.report_date>=a&&r.report_date<=b&&(site==='all'||r.site_key===site));
@@ -77,9 +83,10 @@ async function load(force=false){
   }
   J.rows=out;J.lastLoad=Date.now();
   if(!J.userPickedDate&&!J.initialRangeSet){
-    // Show the latest backfilled historical month first, not today's empty date.
+    // Prefer the latest new daily sheet, or show the current historical progress.
+    const recent=mostRecentDailyDate();
     const historical=mostRecentBackfillDate();
-    J.date=historical||out[0]?.report_date||today();
+    J.date=recent||historical||out[0]?.report_date||today();
     J.period='month';
     J.initialRangeSet=true;
   }
@@ -180,6 +187,7 @@ function renderJobs(){
   sites.map(([id,name])=>'<option value="'+id+'"'+(site===id?' selected':'')+'>'+E(name)+'</option>').join('');
  const [start,end]=periodRange();
  const latestBackfill=mostRecentBackfillDate();
+ const latestDaily=mostRecentDailyDate();
  const comparison=prev.reports>0?
   F(prev.total)+' jobs in the comparable period last year, from '+F(prev.reports)+
   ' available branch-day reports. This year has '+F(current.reports)+' reports.':
@@ -196,6 +204,7 @@ function renderJobs(){
   (J.rows?F(J.rows.length)+' branch-day reports available':'Loading import history…')+
   (latestBackfill?' · latest backfill: '+E(label(latestBackfill)):'')+
   '</div></div>'+
+  (latestDaily?'<button type="button" class="add-btn" data-jobs-action="daily">Latest daily →</button>':'')+
   '<button type="button" class="add-btn" data-jobs-action="history"'+(latestBackfill?'':' disabled')+'>View imported history →</button></div>'+
   '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">'+
   '<label style="display:flex;flex-direction:column;font-size:12px;gap:5px;">Period<select data-jobs-filter="period" style="min-width:110px;padding:10px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;">'+periodOptions+'</select></label>'+
@@ -237,6 +246,13 @@ document.addEventListener('click',e=>{
  if(!el||!canOpen()||state.admin.tab!=='jobs')return;
  e.preventDefault();if(el.dataset.jobsAction==='refresh')load(true);
  if(el.dataset.jobsAction==='csv'&&J.rows)csv();
+ if(el.dataset.jobsAction==='daily'&&J.rows){
+  const newest=mostRecentDailyDate();
+  if(newest){
+   J.date=newest;J.period='day';J.userPickedDate=true;
+   if(typeof render==='function')render();
+  }
+ }
  if(el.dataset.jobsAction==='history'&&J.rows){
   const historical=mostRecentBackfillDate();
   if(historical){

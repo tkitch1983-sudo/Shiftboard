@@ -5567,11 +5567,16 @@ function holidayMonthLabel(monthKey){
   if(!b) return String(monthKey||'');
   return new Date(b.year,b.month-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
 }
-function holidayAllowanceLiveRowsForMonth(monthKey,asOfOverride){
+// Accrual is posted at the next month boundary. Include that credit at
+// month end, but deduct holidays only through the selected month's last day.
+function holidayAllowanceMonthEndBalance(emp,monthKey){
+  const b=holidayMonthBounds(monthKey);
+  return accruedToDate(emp,addIsoDaysPure(b.end,1))-holidayApprovedSinceOpening(emp,b.end);
+}
+function holidayAllowanceLiveRowsForMonth(monthKey){
   const b=holidayMonthBounds(monthKey);
   if(!b) return [];
-  const today=iso(new Date());
-  const asOf=asOfOverride||((monthKey===today.slice(0,7))?today:b.end);
+  const asOf=b.end;
   const yearEnd=String(b.year)+'-12-31';
   const nextYear=String(b.year+1);
   const nextYearStart=nextYear+'-01-01';
@@ -5588,10 +5593,10 @@ function holidayAllowanceLiveRowsForMonth(monthKey,asOfOverride){
       allowance,
       monthlyRate:Number(e.monthlyRate!==undefined?e.monthlyRate:(state.config.settings.monthlyAccrualRate||1.66)),
       taken:holidayBookedBetween(e,b.start,asOf),
-      monthStart:availableBalance(e,b.start),
-      currentBalance:availableBalance(e,asOf),
+      monthStart:accruedToDate(e,b.start)-holidayApprovedSinceOpening(e,addIsoDaysPure(b.start,-1)),
+      currentBalance:holidayAllowanceMonthEndBalance(e,monthKey),
       bookedToYearEnd:asOf<yearEnd?holidayBookedBetween(e,addIsoDaysPure(asOf,1),yearEnd):0,
-      projectedYearEnd:availableBalance(e,yearEnd),
+      projectedYearEnd:holidayAllowanceMonthEndBalance(e,String(b.year)+'-12'),
       nextYearBooked:holidayBookedBetween(e,nextYearStart,nextYearEnd)
     };
   });
@@ -5616,7 +5621,7 @@ async function ensurePreviousHolidayAllowanceSnapshot(){
     state.config.holidayAllowanceHistory[prevKey]={
       month:prevKey,
       savedAt:new Date().toISOString(),
-      rows:holidayAllowanceLiveRowsForMonth(prevKey,prevEnd)
+      rows:holidayAllowanceLiveRowsForMonth(prevKey)
     };
     const ok=await saveConfig();
     if(!ok){
@@ -5641,7 +5646,7 @@ function renderAdminHolidayAllowance(){
   const isCurrent=selectedMonth===currentMonth;
   const monthBounds=holidayMonthBounds(selectedMonth);
   const snapshot=isCurrent?null:holidayAllowanceSnapshotForMonth(selectedMonth);
-  const sourceRows=isCurrent?holidayAllowanceLiveRowsForMonth(selectedMonth,today):(snapshot?snapshot.rows:[]);
+  const sourceRows=isCurrent?holidayAllowanceLiveRowsForMonth(selectedMonth):(snapshot?snapshot.rows:[]);
   const allActive=(state.config.employees||[]).filter(e=>e.active!==false);
   const siteIds=(state.config.sites||[])
     .filter(s=>allActive.some(e=>e.siteId===s.id)||sourceRows.some(r=>String(r.siteId||'')===String(s.id)))
@@ -5694,7 +5699,7 @@ function renderAdminHolidayAllowance(){
     : '';
 
   const archivedNote=!isCurrent
-    ? '<div class="card" style="border-left:4px solid var(--amber);"><b>Saved monthly snapshot</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">This is the preserved '+holidayMonthLabel(selectedMonth)+' position and will not change when later holidays are updated.</div></div>'
+    ? '<div class="card" style="border-left:4px solid var(--amber);"><b>Saved monthly snapshot</b><div style="font-size:12px;color:var(--muted);margin-top:4px;">This is the preserved '+holidayMonthLabel(selectedMonth)+' position and will not change when later holidays are updated. Older snapshots retain the original close and year-end calculations.</div></div>'
     : '';
 
   return '<h2>Holiday Allowance / Taken</h2>'
@@ -5711,11 +5716,11 @@ function renderAdminHolidayAllowance(){
     +'</div>'
     +'<div id="holiday-allowance-site-output" class="card" style="margin-top:0;">'
       +'<div style="margin-bottom:12px;"><div style="font-family:Oswald,sans-serif;font-size:20px;font-weight:600;">Holiday Allowance / Taken — '+salesHtml(siteLabel)+'</div>'
-      +'<div style="font-size:12px;color:var(--muted);">'+holidayMonthLabel(selectedMonth)+(isCurrent?' · Live position as at '+fmtDate(today):' · Archived month')+'</div></div>'
-      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Taken / approved</th><th>Month start</th><th>Current / close</th><th>Booked to year end</th><th>Projected year end</th><th>Next year booked</th></tr></thead>'
+      +'<div style="font-size:12px;color:var(--muted);">'+holidayMonthLabel(selectedMonth)+(isCurrent?' · Month-end balance at '+fmtDate(monthBounds.end)+' · updated live':' · Archived month')+'</div></div>'
+      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Approved this month</th><th>Month start</th><th>Month-end balance</th><th>Booked after month end</th><th>Projected year-end balance</th><th>Next year booked</th></tr></thead>'
       +'<tbody>'+(tableRows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No saved holiday data for this selection.</td></tr>')+'</tbody></table>'
     +'</div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">The current month stays live. When a new month begins, Shiftboard preserves the previous month so Upper Management can return to it later. Print and Save use the site and month currently selected.</div>';
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month-end balance includes the selected month’s allowance and all approved holidays through its last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live; saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
 }
 
 function renderAdminEmployees(){

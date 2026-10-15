@@ -97,3 +97,33 @@ select count(*) as visible from public.jobs_daily_summary;
 ~~~
 
 **Stop if necessary:** \`select cron.unschedule('jobs-history-archive');\`. This stops future import jobs; it does not erase any staged data. Reconcile all exceptions and review service/repair category rules before verifying batches.
+
+
+## New daily Outlook collection (15 October 2026)
+
+**Deployed and enabled independently of archive backfill.**
+
+- Migration `database/041_jobs_new_daily_outlook_schedule.sql` added two active Supabase pg_cron jobs:
+  - `jobs-daily-inbox`: hourly, minute 01 UTC; scans the **current UTC received date** in Tony's Day Sheets folder and Lido's Inbox.
+  - `jobs-daily-prior-day`: every day at 05:31 UTC; rechecks **yesterday's UTC received date** for late previous-evening emails.
+- Both call existing restricted `jobs_trigger_backfill_day` / Edge Function and use its server-only Outlook refresh token, PDF parsing, deduplication, strict PDF net-sales reconciliation and staging audit. **All calendar days including weekends.**
+- Dates scanned are **Outlook received dates**; report date recorded in the database comes from the PDF's invoice/Date Range field. A report received the following day can still be counted against its correct invoice date.
+- The historical archive's separate `jobs-history-archive` cron is unchanged and will stop itself at the archive end; **the daily schedules remain active afterwards**.
+- Verification on 15 October: manual current/prior-day wrapper invocations completed successfully. Scanning received date **14 October 2026** found seven reconciled workshop PDFs (76 total jobs; one report per branch except Hartlepool), and an immediate re-scan found all seven and staged zero duplicates. Scanning received date **15 October** at 06:34 UK found no qualifying PDF so far, as expected early in the morning. Hartlepool's 14 Oct PDF remains a source-coverage gap requiring follow-up; do not substitute zero.
+- The live Jobs Report's initial filter now prioritises latest new invoice-day reports after 13 Oct 2026; the separate 'View imported history' option continues to track 2024+ archive.
+- `jobs-daily-inbox` and `jobs-daily-prior-day` are active but at deployment time had not yet fired **on their cron ticks**; confirm after the next `:01` tick by reading `cron.job_run_details`. Manual dispatcher end-to-end runs succeeded.
+
+### Daily operations
+
+~~~sql
+select jobname,active,schedule from cron.job where jobname like 'jobs-daily-%';
+select j.jobname,d.status,d.start_time from cron.job j
+left join lateral (select status,start_time from cron.job_run_details
+where jobid=j.jobid order by start_time desc limit 1) d on true
+where j.jobname like 'jobs-daily-%';
+select report_day,status,reports_found,reports_staged,completed_at
+from public.jobs_backfill_run_audit
+where report_day >= current_date-2 order by started_at desc;
+~~~
+
+**If intake must be stopped** (requires privileged SQL editor): unschedule jobs individually with `select cron.unschedule('jobs-daily-inbox');` and `select cron.unschedule('jobs-daily-prior-day');`. This never deletes staged history.

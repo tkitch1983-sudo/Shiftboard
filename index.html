@@ -5941,16 +5941,34 @@ function holidayMonthLabel(monthKey){
   if(!b) return String(monthKey||'');
   return new Date(b.year,b.month-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
 }
-// The month opens before its allowance is credited. Post that allowance
-// once at month end, with approved holidays deducted through the last day.
+// Carry the saved closing balance forward by employee ID. Later employee
+// edits must not replace the opening balance of a historical month.
+function holidayAllowanceMonthlyRate(emp){
+  const rate=emp.monthlyRate??state.config.settings.monthlyAccrualRate??1.66;
+  return Number.isFinite(Number(rate))?Number(rate):0;
+}
 function holidayAllowanceMonthStartBalance(emp,monthKey){
   const b=holidayMonthBounds(monthKey);
+  const history=state.config.holidayAllowanceHistory||{};
+  const keys=Object.keys(history).filter(k=>/^\d{4}-\d{2}$/.test(k)&&k<monthKey).sort().reverse();
+  for(const key of keys){
+    const row=(history[key]?.rows||[]).find(r=>r.employeeId===emp.id);
+    if(!row||row.currentBalance===null||row.currentBalance===undefined||!Number.isFinite(Number(row.currentBalance))) continue;
+    let balance=Number(row.currentBalance);
+    let cursor=addIsoDaysPure(holidayMonthBounds(key).end,1).slice(0,7);
+    while(cursor<monthKey){
+      const period=holidayMonthBounds(cursor);
+      balance+=holidayAllowanceMonthlyRate(emp)-holidayBookedBetween(emp,period.start,period.end);
+      cursor=addIsoDaysPure(period.end,1).slice(0,7);
+    }
+    return balance;
+  }
   const previousEnd=addIsoDaysPure(b.start,-1);
   return accruedToDate(emp,previousEnd)-holidayApprovedSinceOpening(emp,previousEnd);
 }
 function holidayAllowanceMonthEndBalance(emp,monthKey){
   const b=holidayMonthBounds(monthKey);
-  return accruedToDate(emp,b.end)-holidayApprovedSinceOpening(emp,b.end);
+  return holidayAllowanceMonthStartBalance(emp,monthKey)+holidayAllowanceMonthlyRate(emp)-holidayBookedBetween(emp,b.start,b.end);
 }
 function holidayAllowanceLiveRowsForMonth(monthKey){
   const b=holidayMonthBounds(monthKey);
@@ -6099,7 +6117,7 @@ function renderAdminHolidayAllowance(){
       +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Approved this month</th><th>Month start</th><th>Month-end balance</th><th>Booked after month end</th><th>Projected year-end balance</th><th>Next year booked</th></tr></thead>'
       +'<tbody>'+(tableRows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No saved holiday data for this selection.</td></tr>')+'</tbody></table>'
     +'</div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start excludes the selected month’s allowance. Month-end balance adds that allowance once and deducts all approved holidays through the last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live; saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start carries forward the previous month’s closing balance. Month-end balance adds that allowance once and deducts all approved holidays through the last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live; saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
 }
 
 function renderAdminEmployees(){

@@ -4820,7 +4820,7 @@ function renderAdminSickness(){
          <button type="button" class="btn-sm reject" data-action="remove-sick-note" data-id="${g.key}">Remove note</button>`
       : `<button type="button" class="btn-sm" data-action="upload-sick-note" data-id="${g.key}">Add sick note</button>`;
     const period = g.periodStart===g.periodEnd ? fmtDate(g.periodStart) : `${fmtDate(g.periodStart)} – ${fmtDate(g.periodEnd)}`;
-    const plannedBadge = g.periodStart>today ? `<span class="pill" style="background:var(--panel-2);color:var(--amber);border:1px solid var(--amber);margin-left:6px;">Planned</span>` : '';
+    const plannedBadge = g.periodEnd>today ? `<span class="pill" style="background:var(--panel-2);color:var(--amber);border:1px solid var(--amber);margin-left:6px;">Planned</span>` : '';
     const uploaded = g.noteUploadedAt ? `<div style="font-size:10px;color:var(--muted-2);margin-top:4px;">${g.noteName||'Document'} · added ${fmtDateShort(iso(new Date(Number(g.noteUploadedAt))))}${g.noteUploadedBy?' by '+g.noteUploadedBy:''}</div>` : '';
     return `<tr>
       <td>${emp.name}</td>
@@ -4845,9 +4845,9 @@ function renderAdminSickness(){
     </div>
     <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:0;">
       <input type="checkbox" id="sick-planned" style="width:auto;">
-      <label style="margin:0;">Planned sick leave — dates are known in advance (e.g. a scheduled hospital stay or operation)</label>
+      <label style="margin:0;">Planned / ongoing sick leave — includes future dates (the first day can be in the past)</label>
     </div>
-    <div style="font-size:12px;color:var(--muted-2);margin-top:8px;">PDF or photo, maximum 10 MB. Only scheduled working days are marked Sick on the timesheet; the full first/last date range is kept with the sickness record. Tick the box above to record a future date range — otherwise dates are limited to today or earlier.</div>
+    <div style="font-size:12px;color:var(--muted-2);margin-top:8px;">PDF or photo, maximum 10 MB. Only scheduled working days are marked Sick on the timesheet; the full first/last date range is kept with the sickness record. The first day can be a previous date. Tick Planned / ongoing sick leave if the last day is in the future. You can attach a note now or use Add sick note on an existing record. Dates in locked timesheet weeks must be unlocked before changing the sickness dates.</div>
   </div>
 
   <h2 style="font-size:18px;margin-top:24px;">Recorded sickness</h2>
@@ -6502,7 +6502,7 @@ function attachHandlers(){
       const today = iso(new Date());
       if(sickPlannedBox.checked){
         startInp.removeAttribute('max'); endInp.removeAttribute('max');
-        startInp.min = today; endInp.min = today;
+        startInp.removeAttribute('min'); endInp.removeAttribute('min');
       } else {
         startInp.max = today; endInp.max = today;
         startInp.removeAttribute('min'); endInp.removeAttribute('min');
@@ -7427,10 +7427,8 @@ async function onAction(e){
     const file=document.getElementById('sick-note-file')?.files?.[0] || null;
     if(!employeeInScope(emp)){ showToast('Not permitted for this employee.',true); return render(); }
     if(!start || !end || end<start){ showToast('Choose a valid first and last sick day.',true); return; }
-    if(planned){
-      if(start<iso(new Date())){ showToast('Planned sick leave should start today or later — for past or current dates, untick Planned.',true); return; }
-    } else if(end>iso(new Date())){
-      showToast('Sick days cannot be entered in the future — tick Planned sick leave for a date range that starts later.',true); return;
+    if(!planned && end>iso(new Date())){
+      showToast('Tick Planned sick leave when the sickness continues beyond today. The first day can be in the past.',true); return;
     }
     const workDates=sicknessWorkDates(emp,start,end);
     if(!workDates.length){ showToast('There are no scheduled working days in that period.',true); return; }

@@ -5,7 +5,7 @@ const J=window.NEASJobs;if(!J)return;
 const original=J.render;
 const sites={'seaham':'Seaham','peterlee':'Peterlee','middlesbrough':'Middlesbrough','hartlepool':'Hartlepool','gateshead':'Gateshead','fairfield':'Fairfield','chester-le-street':'Chester-le-Street','lido':'Lido'};
 const keys={s1:'seaham',s2:'peterlee',s3:'middlesbrough',s4:'hartlepool',s5:'gateshead',s6:'fairfield',s7:'chester-le-street',s8:'lido'};
-const P={view:'margins',date:new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),site:'all',filter:'low',rows:[],reports:[],statuses:[],invoices:[],loading:false,error:'',loaded:'',at:0,owner:''};
+const P={view:'margins',date:new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()),site:'all',filter:'review',rows:[],reports:[],statuses:[],invoices:[],loading:false,error:'',loaded:'',at:0,owner:''};
 const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>Number(n).toLocaleString('en-GB',{style:'currency',currency:'GBP'});
 const allowed=()=>!!(_session&&state?.view==='admin'&&state.admin?.authed&&(state.admin.role==='super'||(state.admin.role==='site'&&keys[state.admin.scopeSite])));
@@ -35,9 +35,18 @@ async function load(force=false){
    fetchRows('jobs_margin_review',headers,filter),fetchRows('jobs_report_management',headers,filter),fetchRows('jobs_direct_import_status',headers,filter),fetchRows('jobs_invoice_documents',headers,filter)
   ]);
   if(!allowed()||queryKey()!==key)return;
-  P.rows=rows;P.reports=reports;P.statuses=statuses;P.invoices=invoices;P.loaded=key;P.at=Date.now();
+  P.rows=rows.map(r=>invoiceJobType(r,invoices));P.reports=reports;P.statuses=statuses;P.invoices=invoices;P.loaded=key;P.at=Date.now();
  }catch(e){if(allowed()&&queryKey()===key){P.error=e.message||'Report unavailable';P.loaded=key;P.at=Date.now();}}
  finally{P.loading=false;redraw();}
+}
+function invoiceJobType(row,documents){
+ if(row.margin_pct!==null&&Number(row.margin_pct)>45)return row;
+ const numbers=String(row.invoice_numbers).split(',').map(n=>n.trim());
+ const docs=numbers.map(n=>documents.find(d=>d.site_key===row.site_key&&d.report_date===row.report_date&&d.job_number===row.job_number&&d.invoice_number===n));
+ if(docs.some(d=>!d?.invoice_job_type))return {...row,job_type:'uncertain',invoice_basis:'Invoice check pending'};
+ const types=docs.map(d=>d.invoice_job_type);
+ let type=types.includes('mixed')||(types.includes('tyre_only')&&types.includes('other'))?'mixed':types.includes('uncertain')?'uncertain':types.every(t=>t==='tyre_only')?'tyre_only':'other';
+ return {...row,job_type:type,invoice_basis:type==='uncertain'?'Invoice checked · wording needs review':'Invoice checked'};
 }
 const low=r=>r.margin_pct!==null&&Number(r.margin_pct)<=45;
 function selected(){
@@ -50,9 +59,9 @@ function badge(r){
  return '<span class="pr-badge '+cls+'">'+m.toFixed(2)+'%</span>';
 }
 function row(r){
- const kind=r.job_type==='tyre_only'?'Tyre-only':r.job_type==='mixed'?'Tyres + other work':'Non-tyre job';
+ const kind=r.job_type==='tyre_only'?'Tyre-only':r.job_type==='mixed'?'Tyres + other work':r.job_type==='uncertain'?'Job type needs checking':'Non-tyre job';
  return '<article class="pr-job"><div class="pr-job-head"><div><b>'+E(sites[r.site_key])+'</b><div class="pr-muted">Job '+E(r.job_number)+'</div></div>'+badge(r)+'</div>'+
- '<div class="pr-type">'+E(kind)+(Number(r.profit)<0?' · <b>Loss-making</b>':'')+'</div>'+
+ '<div class="pr-type">'+E(kind)+(r.invoice_basis?' · '+E(r.invoice_basis):'')+(Number(r.profit)<0?' · <b>Loss-making</b>':'')+'</div>'+
  '<div class="pr-amounts"><span>Sale<strong>'+money(r.sales)+'</strong></span><span>Cost<strong>'+money(r.cost)+'</strong></span><span>Gross profit<strong>'+money(r.profit)+'</strong></span></div>'+
  '<div class="pr-muted" style="margin-top:12px;overflow-wrap:anywhere;">Invoice '+E(r.invoice_numbers)+'</div>'+invoiceButtons(r)+'</article>';
 }
@@ -122,9 +131,9 @@ function display(){
  const lows=rows.filter(low),tyres=lows.filter(r=>r.job_type==='tyre_only');
  const shown=valid?selected():[];
  return styles()+tabs+'<section class="pr-root"><div class="pr-top"><div><h2>Job margin review</h2><div class="pr-muted">Daily Profit Tracker · '+E(dateLabel(P.date))+'</div></div><div class="pr-actions">'+button('refresh','Refresh')+button('print','Print / Save PDF')+button('csv','Export CSV')+'</div></div>'+
- '<div class="card pr-controls"><label>Report date<input type="date" data-profit-filter="date" value="'+E(P.date)+'"></label><label>Workshop<select data-profit-filter="site">'+(group()?'<option value="all">All workshops</option>':'')+Object.entries(sites).filter(([k])=>group()||k===site()).map(([k,v])=>'<option value="'+k+'"'+(site()===k?' selected':'')+'>'+E(v)+'</option>').join('')+'</select></label><label>Show<select data-profit-filter="filter">'+[['low','All jobs at 45% or below'],['review','Non-tyre / mixed jobs ≤45%'],['tyres','Tyre-only jobs ≤45%'],['checks','Zero / negative sale checks'],['all','All invoiced jobs']].map(([k,v])=>'<option value="'+k+'"'+(P.filter===k?' selected':'')+'>'+E(v)+'</option>').join('')+'</select></label></div>'+
- '<div class="pr-metrics">'+metric(valid?lows.length-tyres.length:'—','Non-tyre / mixed jobs ≤45%','pr-amber')+metric(valid?tyres.length:'—','Tyre-only jobs ≤45%','pr-blue')+metric(valid?rows.filter(r=>Number(r.profit)<0).length:'—','Loss-making jobs','pr-red')+metric(valid?direct.length+' / '+expected:'—','Workshops collected directly')+'</div>'+
- '<div class="card pr-note"><b>Review threshold: 45% or below.</b> Tyre-only jobs are labelled separately; mixed jobs remain in the main review. Margin = gross profit ÷ sale, excluding VAT. Autowork costs may exclude workshop wages and overheads, so this is not net profit. Zero or negative sales appear under value checks. Original invoice PDFs are collected for flagged jobs; pending invoices will appear after a successful collection.</div>'+
+ '<div class="card pr-controls"><label>Report date<input type="date" data-profit-filter="date" value="'+E(P.date)+'"></label><label>Workshop<select data-profit-filter="site">'+(group()?'<option value="all">All workshops</option>':'')+Object.entries(sites).filter(([k])=>group()||k===site()).map(([k,v])=>'<option value="'+k+'"'+(site()===k?' selected':'')+'>'+E(v)+'</option>').join('')+'</select></label><label>Show<select data-profit-filter="filter">'+[['low','All jobs at 45% or below'],['review','Jobs to review ≤45%'],['tyres','Tyre-only jobs ≤45%'],['checks','Zero / negative sale checks'],['all','All invoiced jobs']].map(([k,v])=>'<option value="'+k+'"'+(P.filter===k?' selected':'')+'>'+E(v)+'</option>').join('')+'</select></label></div>'+
+ '<div class="pr-metrics">'+metric(valid?lows.length-tyres.length:'—','Jobs to review ≤45%','pr-amber')+metric(valid?tyres.length:'—','Tyre-only jobs ≤45%','pr-blue')+metric(valid?rows.filter(r=>Number(r.profit)<0).length:'—','Loss-making jobs','pr-red')+metric(valid?direct.length+' / '+expected:'—','Workshops collected directly')+'</div>'+
+ '<div class="card pr-note"><b>Review threshold: 45% or below.</b> Invoice descriptions identify tyre-only jobs, including fitting, balancing and disposal. Tyres with repairs, MOT or alignment stay in the main review, as do unclear or unchecked invoices. Margin = gross profit ÷ sale, excluding VAT. Autowork costs may exclude workshop wages and overheads, so this is not net profit. Zero or negative sales appear under value checks. Original invoice PDFs are collected for flagged jobs; pending invoices will appear after a successful collection.</div>'+
  ((P.loading||!valid)&&!P.error?'<div class="card" role="status">Loading daily jobs and margins…</div>':'')+
  (P.error?'<div class="card pr-red" role="alert">'+E(P.error)+' Use Refresh to retry.</div>':'')+
  (valid&&!P.error?'<div class="pr-coverage-grid">'+coverage()+'</div>':'')+
@@ -142,7 +151,7 @@ function print(){
  if(P.loaded!==queryKey()||P.error||P.loading)return;
  const win=window.open('','_blank');if(!win)return;
  const direct=P.reports.filter(r=>r.source_kind==='autowork').length;
- win.document.write('<!doctype html><html><head><title>NEAS job margins '+E(P.date)+'</title><style>body{font:12px Arial;margin:25px}table{width:100%;border-collapse:collapse}td,th{padding:9px;text-align:left;border-bottom:1px solid #ccc}h1{font-size:23px}p{line-height:1.5}@media print{button{display:none}tr{break-inside:avoid}}</style></head><body><h1>North East Auto Services · Job margins</h1><p>'+E(dateLabel(P.date))+' · '+E(site()==='all'?'All workshops':sites[site()])+' · '+direct+' direct reports. Filter: '+E(P.filter)+'.<br>Review threshold ≤45%. Tyre-only jobs labelled separately. Margin excludes VAT and may exclude wages/overheads. Missing reports are not zero.</p><button onclick="window.print()">Print / Save PDF</button><table><thead><tr><th>Workshop / job</th><th>Invoice</th><th>Type</th><th>Sale</th><th>Cost</th><th>Profit</th><th>Margin</th></tr></thead><tbody>'+selected().map(r=>'<tr><td>'+E(sites[r.site_key])+'<br>'+E(r.job_number)+'</td><td>'+E(r.invoice_numbers)+'</td><td>'+E(r.job_type==='tyre_only'?'Tyre-only':r.job_type==='mixed'?'Mixed':'Non-tyre')+'</td><td>'+money(r.sales)+'</td><td>'+money(r.cost)+'</td><td>'+money(r.profit)+'</td><td>'+(r.margin_pct===null?'Check':Number(r.margin_pct).toFixed(2)+'%')+'</td></tr>').join('')+'</tbody></table></body></html>');win.document.close();
+ win.document.write('<!doctype html><html><head><title>NEAS job margins '+E(P.date)+'</title><style>body{font:12px Arial;margin:25px}table{width:100%;border-collapse:collapse}td,th{padding:9px;text-align:left;border-bottom:1px solid #ccc}h1{font-size:23px}p{line-height:1.5}@media print{button{display:none}tr{break-inside:avoid}}</style></head><body><h1>North East Auto Services · Job margins</h1><p>'+E(dateLabel(P.date))+' · '+E(site()==='all'?'All workshops':sites[site()])+' · '+direct+' direct reports. Filter: '+E(P.filter)+'.<br>Review threshold ≤45%. Tyre-only jobs labelled separately. Margin excludes VAT and may exclude wages/overheads. Missing reports are not zero.</p><button onclick="window.print()">Print / Save PDF</button><table><thead><tr><th>Workshop / job</th><th>Invoice</th><th>Type</th><th>Sale</th><th>Cost</th><th>Profit</th><th>Margin</th></tr></thead><tbody>'+selected().map(r=>'<tr><td>'+E(sites[r.site_key])+'<br>'+E(r.job_number)+'</td><td>'+E(r.invoice_numbers)+'</td><td>'+E(r.job_type==='tyre_only'?'Tyre-only':r.job_type==='mixed'?'Mixed':r.job_type==='uncertain'?'Needs checking':'Non-tyre')+'</td><td>'+money(r.sales)+'</td><td>'+money(r.cost)+'</td><td>'+money(r.profit)+'</td><td>'+(r.margin_pct===null?'Check':Number(r.margin_pct).toFixed(2)+'%')+'</td></tr>').join('')+'</tbody></table></body></html>');win.document.close();
 }
 document.addEventListener('click',e=>{
  const invoice=e.target.closest?.('[data-profit-invoice]');

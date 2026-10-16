@@ -210,8 +210,8 @@ function exportDailyCsv(){
   const has=hasJobValue(r),jobs=r&&Number.isFinite(Number(r.total_jobs))?Number(r.total_jobs):'';
   return [P.date,name,jobs,has?Number(r.net_sales_ex_vat):'',has&&jobs>0?Number(r.net_sales_ex_vat)/jobs:'',!r?'Missing report':!has?'Sales unavailable':r.source_kind==='autowork'?'Direct Autowork':r.import_status==='verified'?'Approved email':'Provisional email'];
  })];
- const csv=data.map(row=>row.map(x=>'"'+String(x??'').replace(/^[=+@\\-\\t\\r]/,"'").replaceAll('"','""')+'"').join(',')).join('\\r\\n');
- const url=URL.createObjectURL(new Blob(['\\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
+ const csv=data.map(row=>row.map(x=>'"'+String(x??'').replace(/^[=+@\-\t\r]/,"'").replaceAll('"','""')+'"').join(',')).join('\r\n');
+ const url=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='NEAS-Daily-Job-Value-'+P.date+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function printDailyValueTable(){

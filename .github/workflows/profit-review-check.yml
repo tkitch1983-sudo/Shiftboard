@@ -1,7 +1,7 @@
 name: Check job margin review
 on:
   push:
-    paths: ['profit-review.js', 'tests/profit-ui.cjs', '.github/workflows/profit-review-check.yml']
+    paths: ['profit-review.js', 'jobs-report.js', 'index.html', 'sw.js', 'tests/profit-ui.cjs', '.github/workflows/profit-review-check.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,6 +16,7 @@ jobs:
           node-version: '22'
       - run: npm install --no-save playwright@1.55.0
       - run: npx playwright install --with-deps chromium
+      - run: node --check sw.js && node --check jobs-report.js && node --check profit-review.js
       - run: node tests/profit-ui.cjs
       - uses: actions/upload-artifact@v4
         with:

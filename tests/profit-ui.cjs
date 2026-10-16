@@ -11,7 +11,7 @@ const data={invoices:[{site_key:'gateshead',report_date:day,job_number:'J002',in
  {site_key:'gateshead',report_date:day,job_number:'J003',invoice_numbers:'I003',job_type:'mixed',sales:200,cost:210,profit:-10,margin_pct:-5},
  {site_key:'gateshead',report_date:day,job_number:'J004',invoice_numbers:'I004',job_type:'other',sales:100,cost:54.99,profit:45.01,margin_pct:45.01},
  {site_key:'gateshead',report_date:day,job_number:'J005',invoice_numbers:'I005',job_type:'other',sales:0,cost:0,profit:0,margin_pct:null}
-],reports:[{site_key:'gateshead',report_date:day,source_kind:'autowork',total_jobs:5,credit_notes:1,collected_at:new Date().toISOString()}],statuses:[{site_key:'gateshead',report_date:day,status:'ok'}]};
+],reports:[{site_key:'gateshead',report_date:day,source_kind:'autowork',total_jobs:5,net_sales_ex_vat:675,credit_notes:1,collected_at:new Date().toISOString()},{site_key:'seaham',report_date:day,source_kind:'email',total_jobs:2,net_sales_ex_vat:null,credit_notes:0}],statuses:[{site_key:'gateshead',report_date:day,status:'ok'}]};
 data.rows[1].category_breakdowns=[[{category:'Parts',cost:100,sell:100,profit:0},{category:'Labour',cost:0,sell:50,profit:50}],[{category:'Parts',cost:40,sell:40,profit:0},{category:'Labour',cost:0,sell:10,profit:10}]];
 data.rows[2].category_breakdowns=[null];
 await page.setContent(`<style>:root{--bg:#101723;--panel:#182232;--text:#eff4fa;--muted:#a5b3c5;--line:#344258;--amber:#efb34b;--red:#ef6464}body{font-family:Arial;background:var(--bg);color:var(--text);margin:25px}.card{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}.add-btn{color:var(--text);background:#26354b;border:1px solid var(--line);padding:10px 14px;border-radius:8px;cursor:pointer}</style><main id="app"></main>`);
@@ -23,6 +23,19 @@ window.NEASJobs={render:()=>'<h2>Job totals test view</h2>'};window.render=()=>d
 },data);
 await page.addScriptTag({content:fs.readFileSync('profit-review.js','utf8')});
 await page.evaluate(()=>render());await page.waitForSelector('.pr-job');
+const summary=page.locator('.pr-daily-summary');
+if(!(await summary.innerText()).includes('Daily job value by workshop'))throw Error('Daily job value summary missing');
+if(!(await summary.innerText()).includes('£675.00')||!(await summary.innerText()).includes('£135.00'))throw Error('Net ex-VAT value or average job value incorrect');
+if(!(await summary.innerText()).includes('5 of 8'))throw Error('Coverage count unexpected');
+const seaham=page.locator('[data-daily-site=seaham]');
+if(!(await seaham.innerText()).includes('Job value unavailable')||(await seaham.innerText()).includes('£0.00'))throw Error('Missing site sales incorrectly shown as zero');
+const gateshead=page.locator('[data-daily-site=gateshead]');
+if(!(await gateshead.innerText()).includes('5')||!(await gateshead.innerText()).includes('£675.00'))throw Error('Per-site job stats missing');
+await page.locator('[data-profit-filter=site]').selectOption('gateshead');
+await page.waitForFunction(()=>document.querySelectorAll('[data-daily-site]').length===1);
+if(!(await page.locator('.pr-daily-summary').innerText()).includes('1 of 1'))throw Error('Selected workshop coverage incorrect');
+await page.locator('[data-profit-filter=site]').selectOption('all');
+await page.waitForFunction(()=>document.querySelectorAll('[data-daily-site]').length===8);
 if(await page.locator('.pr-job').count()!==2)throw Error('Default review must exclude confirmed tyres and retain uncertain jobs');
 const job2=page.locator('.pr-job').filter({hasText:'Job J002'});
 if(!(await job2.innerText()).includes('£60.00')||!(await job2.innerText()).includes('Labour'))throw Error('Multi-invoice labour breakdown missing');

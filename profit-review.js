@@ -139,6 +139,38 @@ function coverage(){
 }
 const button=(id,text)=>'<button class="add-btn" type="button" data-profit-action="'+id+'">'+text+'</button>';
 function metric(value,title,cls=''){return '<div class="pr-metric"><strong class="'+cls+'">'+value+'</strong><span>'+title+'</span></div>';}
+function hasJobValue(r){
+ return !!r&&r.net_sales_ex_vat!==null&&r.net_sales_ex_vat!==undefined&&r.net_sales_ex_vat!==''&&
+ Number.isFinite(Number(r.net_sales_ex_vat))&&Number.isFinite(Number(r.total_jobs))&&Number(r.total_jobs)>=0;
+}
+function dailyValueSites(){
+ return Object.entries(sites).filter(([k])=>site()==='all'||k===site()).map(([k,name])=>({
+  key:k,name,report:P.reports.find(r=>r.site_key===k)
+ }));
+}
+function dailyValueSummary(){
+ const branches=dailyValueSites(),complete=branches.filter(x=>hasJobValue(x.report));
+ const jobs=complete.reduce((sum,x)=>sum+Number(x.report.total_jobs),0);
+ const value=complete.reduce((sum,x)=>sum+Number(x.report.net_sales_ex_vat),0);
+ const ready=complete.length>0;
+ const cells=branches.map(({key,name,report:r})=>{
+  const known=hasJobValue(r),count=r&&Number.isFinite(Number(r.total_jobs))?Number(r.total_jobs):null;
+  const source=!r?'Awaiting report':!known?'Job value unavailable':r.source_kind==='autowork'?'Direct Autowork':r.import_status==='verified'?'Approved email':'Provisional email';
+  return '<div class="pr-site-value-row" data-daily-site="'+E(key)+'"><div class="pr-site-value-name"><b>'+E(name)+'</b><small class="pr-muted">'+E(source)+'</small></div>'+
+   '<div class="pr-site-value-cell"><strong>'+(count===null?'—':count.toLocaleString('en-GB'))+'</strong><small>Jobs</small></div>'+
+   '<div class="pr-site-value-cell"><strong>'+(known?money(r.net_sales_ex_vat):'—')+'</strong><small>Job value ex VAT</small></div>'+
+   '<div class="pr-site-value-cell"><strong>'+(known&&count>0?money(Number(r.net_sales_ex_vat)/count):'—')+'</strong><small>Average / job</small></div></div>';
+ }).join('');
+ return '<section class="card pr-daily-summary" aria-label="Daily job value by workshop">'+
+  '<div class="pr-daily-value-head"><div><h3>Daily job value by workshop</h3><div class="pr-muted">Invoice date: '+E(dateLabel(P.date))+' · net invoiced sales excluding VAT</div></div>'+
+  '<button type="button" class="add-btn" data-profit-action="daily-csv">Export daily totals</button></div>'+
+  '<div class="pr-metrics pr-value-metrics">'+metric(ready?jobs.toLocaleString('en-GB'):'—','Total jobs')+
+  metric(ready?money(value):'—','Total job value (ex VAT)')+
+  metric(ready&&jobs>0?money(value/jobs):'—','Average job value (ex VAT)')+'</div>'+
+  '<p class="pr-muted">Summary uses '+complete.length+' of '+branches.length+' workshop report'+(branches.length===1?'':'s')+
+  ' with both job count and sales. Missing sales/reports are excluded, not treated as £0. Credit notes affect net sales but are not counted as jobs.</p>'+
+  '<div class="pr-daily-sites">'+cells+'</div></section>';
+}
 function display(){
  if(invoiceViewer&&(!allowed()||invoiceViewer.identity!==owner()))closeInvoice();
  if(!allowed())return '<div class="card">Sign in through Management to view job margins.</div>';
@@ -152,6 +184,7 @@ function display(){
  const shown=valid?selected():[];
  return styles()+tabs+'<section class="pr-root"><div class="pr-top"><div><h2>Job margin review</h2><div class="pr-muted">Daily Profit Tracker · '+E(dateLabel(P.date))+'</div></div><div class="pr-actions">'+button('refresh','Refresh')+button('print','Print / Save PDF')+button('csv','Export CSV')+'</div></div>'+
  '<div class="card pr-controls"><label>Report date<input type="date" data-profit-filter="date" value="'+E(P.date)+'"></label><label>Workshop<select data-profit-filter="site">'+(group()?'<option value="all">All workshops</option>':'')+Object.entries(sites).filter(([k])=>group()||k===site()).map(([k,v])=>'<option value="'+k+'"'+(site()===k?' selected':'')+'>'+E(v)+'</option>').join('')+'</select></label><label>Show<select data-profit-filter="filter">'+[['low','All jobs at 45% or below'],['review','Jobs to review ≤45%'],['tyres','Tyre-only jobs ≤45%'],['checks','Zero / negative sale checks'],['all','All invoiced jobs']].map(([k,v])=>'<option value="'+k+'"'+(P.filter===k?' selected':'')+'>'+E(v)+'</option>').join('')+'</select></label></div>'+
+ (valid?dailyValueSummary():'')+
  '<div class="pr-metrics">'+metric(valid?lows.length-tyres.length:'—','Jobs to review ≤45%','pr-amber')+metric(valid?tyres.length:'—','Tyre-only jobs ≤45%','pr-blue')+metric(valid?rows.filter(r=>Number(r.profit)<0).length:'—','Loss-making jobs','pr-red')+metric(valid?direct.length+' / '+expected:'—','Workshops collected directly')+'</div>'+
  '<div class="card pr-note"><b>Review threshold: 45% or below.</b> Invoice descriptions identify tyre-only jobs, including fitting, balancing and disposal. Tyres with repairs, MOT or alignment stay in the main review, as do unclear or unchecked invoices. Margin = gross profit ÷ sale, excluding VAT. Autowork costs may exclude workshop wages and overheads, so this is not net profit. Zero or negative sales appear under value checks. Original invoice PDFs are collected for flagged jobs; pending invoices will appear after a successful collection.</div>'+
  ((P.loading||!valid)&&!P.error?'<div class="card" role="status">Loading daily jobs and margins…</div>':'')+
@@ -160,7 +193,7 @@ function display(){
  (valid&&direct.length<expected?'<div class="card pr-note"><b>Coverage is incomplete.</b> '+direct.length+' of '+expected+' workshops have direct margin data. Missing reports are not zero jobs. Email counts remain available in Job totals & history.</div>':'')+
  (valid&&!P.error?'<div class="pr-list-head"><b>'+shown.length+' '+(P.filter==='all'?'invoiced jobs':'jobs in this view')+'</b><span class="pr-muted">Lowest margin first · all values exclude VAT</span></div><div class="pr-grid">'+(shown.length?shown.map(row).join(''):'<div class="card">'+(direct.length?'No jobs match this filter in the available reports.':'No direct margin reports available for this date yet.')+'</div>')+'</div><div class="pr-muted" style="margin-top:16px;">'+reports.reduce((n,r)=>n+Number(r.credit_notes||0),0)+' credit notes are included in report sales reconciliation, but excluded from invoiced-job margins. These are invoice-day figures, not lifetime job profitability.</div>':'')+'</section>';
 }
-function styles(){return '<style>.pr-tabs,.pr-actions,.pr-top,.pr-controls,.pr-list-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.pr-tabs{margin:0 0 18px}.pr-top,.pr-list-head{justify-content:space-between}.pr-top h2{margin:0 0 5px}.pr-controls{margin:18px 0;align-items:end}.pr-controls label{display:flex;flex-direction:column;gap:7px;font-size:12px;flex:1;min-width:150px}.pr-controls input,.pr-controls select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:11px;max-width:100%;width:100%;box-sizing:border-box}.pr-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}.pr-metric,.pr-job,.pr-coverage{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:16px}.pr-metric strong{display:block;font-size:30px;margin-bottom:8px}.pr-metric span,.pr-muted{font-size:12px;color:var(--muted)}.pr-note{font-size:12px;line-height:1.65;margin:15px 0}.pr-coverage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:15px 0}.pr-coverage{padding:12px;display:flex;flex-direction:column;gap:6px;font-size:12px}.pr-list-head{margin:22px 0 12px}.pr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}.pr-job-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.pr-job-head .pr-muted{margin-top:6px}.pr-badge{padding:7px 10px;border-radius:9px;background:var(--bg);font-weight:800;font-size:22px;white-space:nowrap}.pr-amber{color:#d89b25}.pr-blue{color:#589de7}.pr-red{color:#ef6464}.pr-green{color:#49ad82}.pr-type{font-size:12px;margin:14px 0;color:var(--muted)}.pr-breakdown{margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:12px}.pr-breakdown-table{width:100%;border-collapse:collapse;margin:8px 0}.pr-breakdown-table th,.pr-breakdown-table td{padding:7px 0;text-align:right;border-bottom:1px solid var(--line)}.pr-breakdown-table th:first-child{text-align:left;font-weight:500}.pr-breakdown .pr-muted{line-height:1.5}.pr-amounts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:13px;border-top:1px solid var(--line)}.pr-amounts span{font-size:11px;color:var(--muted)}.pr-amounts strong{display:block;font-size:15px;color:var(--text);margin-top:6px}@media(max-width:520px){.pr-actions .add-btn{font-size:11px}.pr-controls label{min-width:100%}.pr-metrics{grid-template-columns:1fr 1fr}.pr-metric{padding:12px}.pr-metric strong{font-size:26px}}</style>';}
+function styles(){return '<style>.pr-daily-summary{margin:16px 0}.pr-daily-value-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.pr-daily-value-head h3{margin:0 0 5px}.pr-value-metrics{margin:15px 0}.pr-value-metrics .pr-metric{background:var(--bg)}.pr-daily-sites{border-top:1px solid var(--line)}.pr-site-value-row{display:grid;grid-template-columns:minmax(140px,1.2fr) repeat(3,minmax(90px,1fr));gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}.pr-site-value-name small,.pr-site-value-cell small{display:block;margin-top:5px}.pr-site-value-cell{text-align:right;min-width:0}.pr-site-value-cell strong{font-size:17px;overflow-wrap:anywhere}@media(max-width:620px){.pr-site-value-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 5px}.pr-site-value-name{grid-column:1/-1}.pr-site-value-cell{text-align:left}.pr-site-value-cell strong{font-size:14px}.pr-site-value-cell small{font-size:10px}}.pr-tabs,.pr-actions,.pr-top,.pr-controls,.pr-list-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.pr-tabs{margin:0 0 18px}.pr-top,.pr-list-head{justify-content:space-between}.pr-top h2{margin:0 0 5px}.pr-controls{margin:18px 0;align-items:end}.pr-controls label{display:flex;flex-direction:column;gap:7px;font-size:12px;flex:1;min-width:150px}.pr-controls input,.pr-controls select{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:11px;max-width:100%;width:100%;box-sizing:border-box}.pr-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}.pr-metric,.pr-job,.pr-coverage{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:16px}.pr-metric strong{display:block;font-size:30px;margin-bottom:8px}.pr-metric span,.pr-muted{font-size:12px;color:var(--muted)}.pr-note{font-size:12px;line-height:1.65;margin:15px 0}.pr-coverage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:15px 0}.pr-coverage{padding:12px;display:flex;flex-direction:column;gap:6px;font-size:12px}.pr-list-head{margin:22px 0 12px}.pr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}.pr-job-head{display:flex;justify-content:space-between;align-items:center;gap:10px}.pr-job-head .pr-muted{margin-top:6px}.pr-badge{padding:7px 10px;border-radius:9px;background:var(--bg);font-weight:800;font-size:22px;white-space:nowrap}.pr-amber{color:#d89b25}.pr-blue{color:#589de7}.pr-red{color:#ef6464}.pr-green{color:#49ad82}.pr-type{font-size:12px;margin:14px 0;color:var(--muted)}.pr-breakdown{margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:12px}.pr-breakdown-table{width:100%;border-collapse:collapse;margin:8px 0}.pr-breakdown-table th,.pr-breakdown-table td{padding:7px 0;text-align:right;border-bottom:1px solid var(--line)}.pr-breakdown-table th:first-child{text-align:left;font-weight:500}.pr-breakdown .pr-muted{line-height:1.5}.pr-amounts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:13px;border-top:1px solid var(--line)}.pr-amounts span{font-size:11px;color:var(--muted)}.pr-amounts strong{display:block;font-size:15px;color:var(--text);margin-top:6px}@media(max-width:520px){.pr-actions .add-btn{font-size:11px}.pr-controls label{min-width:100%}.pr-metrics{grid-template-columns:1fr 1fr}.pr-metric{padding:12px}.pr-metric strong{font-size:26px}}</style>';}
 function exportCsv(){
  if(P.loaded!==queryKey()||P.error||P.loading)return;
  const categories=['Parts','Labour','Tyres','MOT','Fixed Price','Discount'];
@@ -171,11 +204,26 @@ function exportCsv(){
  const csv=rows.map(row=>row.map(x=>'"'+String(x??'').replace(/^[=+@\-\t\r]/,"'").replaceAll('"','""')+'"').join(',')).join('\r\n');
  const url=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='NEAS-Job-Margins-'+P.date+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+function exportDailyCsv(){
+ if(P.loaded!==queryKey()||P.error||P.loading)return;
+ const data=[['Invoice date','Workshop','Total jobs','Total job value ex VAT','Average job value ex VAT','Source'],...dailyValueSites().map(({name,report:r})=>{
+  const has=hasJobValue(r),jobs=r&&Number.isFinite(Number(r.total_jobs))?Number(r.total_jobs):'';
+  return [P.date,name,jobs,has?Number(r.net_sales_ex_vat):'',has&&jobs>0?Number(r.net_sales_ex_vat)/jobs:'',!r?'Missing report':!has?'Sales unavailable':r.source_kind==='autowork'?'Direct Autowork':r.import_status==='verified'?'Approved email':'Provisional email'];
+ })];
+ const csv=data.map(row=>row.map(x=>'"'+String(x??'').replace(/^[=+@\\-\\t\\r]/,"'").replaceAll('"','""')+'"').join(',')).join('\\r\\n');
+ const url=URL.createObjectURL(new Blob(['\\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download='NEAS-Daily-Job-Value-'+P.date+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function printDailyValueTable(){
+ return '<h2>Daily job value by workshop</h2><p>Net invoice-day sales ex VAT. Missing reports are not zero; credits reduce net sales but do not count as jobs.</p><table><thead><tr><th>Workshop</th><th>Jobs</th><th>Job value ex VAT</th><th>Average / job</th></tr></thead><tbody>'+
+ dailyValueSites().map(({name,report:r})=>{const known=hasJobValue(r),count=r&&Number.isFinite(Number(r.total_jobs))?Number(r.total_jobs):null;
+ return '<tr><td>'+E(name)+'</td><td>'+(count===null?'—':count)+'</td><td>'+(known?money(r.net_sales_ex_vat):'—')+'</td><td>'+(known&&count>0?money(Number(r.net_sales_ex_vat)/count):'—')+'</td></tr>';}).join('')+'</tbody></table>';
+}
 function print(){
  if(P.loaded!==queryKey()||P.error||P.loading)return;
  const win=window.open('','_blank');if(!win)return;
  const direct=P.reports.filter(r=>r.source_kind==='autowork').length;
- win.document.write('<!doctype html><html><head><title>NEAS job margins '+E(P.date)+'</title><style>body{font:12px Arial;margin:25px}table{width:100%;border-collapse:collapse}td,th{padding:9px;text-align:left;border-bottom:1px solid #ccc}h1{font-size:23px}p{line-height:1.5}@media print{button{display:none}tr{break-inside:avoid}}</style></head><body><h1>North East Auto Services · Job margins</h1><p>'+E(dateLabel(P.date))+' · '+E(site()==='all'?'All workshops':sites[site()])+' · '+direct+' direct reports. Filter: '+E(P.filter)+'.<br>Review threshold ≤45%. Tyre-only jobs labelled separately. Margin excludes VAT and may exclude wages/overheads. Missing reports are not zero.</p><button onclick="window.print()">Print / Save PDF</button><table><thead><tr><th>Workshop / job</th><th>Invoice</th><th>Type</th><th>Sale</th><th>Cost</th><th>Profit</th><th>Margin</th><th>Cost / labour breakdown</th></tr></thead><tbody>'+selected().map(r=>'<tr><td>'+E(sites[r.site_key])+'<br>'+E(r.job_number)+'</td><td>'+E(r.invoice_numbers)+'</td><td>'+E(r.job_type==='tyre_only'?'Tyre-only':r.job_type==='mixed'?'Mixed':r.job_type==='uncertain'?'Needs checking':'Non-tyre')+'</td><td>'+money(r.sales)+'</td><td>'+money(r.cost)+'</td><td>'+money(r.profit)+'</td><td>'+(r.margin_pct===null?'Check':Number(r.margin_pct).toFixed(2)+'%')+'</td><td>'+breakdownTable(r)+'</td></tr>').join('')+'</tbody></table></body></html>');win.document.close();
+ win.document.write('<!doctype html><html><head><title>NEAS job margins '+E(P.date)+'</title><style>body{font:12px Arial;margin:25px}table{width:100%;border-collapse:collapse}td,th{padding:9px;text-align:left;border-bottom:1px solid #ccc}h1{font-size:23px}p{line-height:1.5}@media print{button{display:none}tr{break-inside:avoid}}</style></head><body><h1>North East Auto Services · Job margins</h1><p>'+E(dateLabel(P.date))+' · '+E(site()==='all'?'All workshops':sites[site()])+' · '+direct+' direct reports. Filter: '+E(P.filter)+'.<br>Review threshold ≤45%. Tyre-only jobs labelled separately. Margin excludes VAT and may exclude wages/overheads. Missing reports are not zero.</p><button onclick="window.print()">Print / Save PDF</button>'+printDailyValueTable()+'<h2>Job margins</h2><table><thead><tr><th>Workshop / job</th><th>Invoice</th><th>Type</th><th>Sale</th><th>Cost</th><th>Profit</th><th>Margin</th><th>Cost / labour breakdown</th></tr></thead><tbody>'+selected().map(r=>'<tr><td>'+E(sites[r.site_key])+'<br>'+E(r.job_number)+'</td><td>'+E(r.invoice_numbers)+'</td><td>'+E(r.job_type==='tyre_only'?'Tyre-only':r.job_type==='mixed'?'Mixed':r.job_type==='uncertain'?'Needs checking':'Non-tyre')+'</td><td>'+money(r.sales)+'</td><td>'+money(r.cost)+'</td><td>'+money(r.profit)+'</td><td>'+(r.margin_pct===null?'Check':Number(r.margin_pct).toFixed(2)+'%')+'</td><td>'+breakdownTable(r)+'</td></tr>').join('')+'</tbody></table></body></html>');win.document.close();
 }
 document.addEventListener('click',e=>{
  const invoice=e.target.closest?.('[data-profit-invoice]');
@@ -184,7 +232,7 @@ document.addEventListener('click',e=>{
  const action=el.dataset.profitAction;
  if(action==='totals'||action==='margins'){P.view=action;redraw();}
  if(action==='refresh'){load(true);redraw();}
- if(action==='csv')exportCsv();if(action==='print')print();
+ if(action==='csv')exportCsv();if(action==='daily-csv')exportDailyCsv();if(action==='print')print();
 });
 document.addEventListener('change',e=>{
  const el=e.target.closest?.('[data-profit-filter]');if(!el||!allowed()||state.admin.tab!=='jobs')return;

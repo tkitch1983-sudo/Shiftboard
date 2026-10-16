@@ -67,6 +67,30 @@ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))thro
 await page.locator('[data-profit-filter=filter]').selectOption('checks');if(await page.locator('.pr-job').count()!==1)throw Error('Zero sale check filter');
 await page.locator('[data-profit-action=totals]').click();if(!await page.getByText('Job totals test view').count())throw Error('Totals tab failed');
 await page.evaluate(()=>{_session=null;render()});if(await page.locator('.pr-job').count())throw Error('Signed out data visible');
-console.log(JSON.stringify({allLowJobs:all,errors,mobileOverflow:false,filters:'passed',signout:'passed'}));
+// Job history uses the same invoice-day values and must never substitute £0 for absent sales.
+const history=await browser.newPage({viewport:{width:1280,height:900}});
+await history.setContent('<style>:root{--panel:#182232;--text:#eff4fa;--muted:#a5b3c5;--line:#344258;--amber:#efb34b;--red:#ef6464}body{font-family:Arial;background:#101723;color:var(--text)}.card{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}.add-btn{padding:10px}</style><main id="app"></main>');
+await history.evaluate((rows)=>{
+ window._session={email:'qa@example.test',role:'super'};
+ window.state={view:'admin',admin:{authed:true,role:'super',tab:'jobs'}};
+ window.SUPABASE_URL='https://example.test';window.authHeaders=async()=>({});
+ window.fetch=async(url)=>({ok:true,json:async()=>url.includes('jobs_report_import_progress')?{}:rows});
+ window.render=()=>document.querySelector('#app').innerHTML=window.NEASJobs.render();
+},[
+ {site_key:'gateshead',report_date:day,source_kind:'autowork',import_status:'staged',total_jobs:5,net_sales_ex_vat:675},
+ {site_key:'seaham',report_date:day,source_kind:'email',import_status:'staged',total_jobs:2,net_sales_ex_vat:null}
+]);
+history.on('pageerror',e=>errors.push(e.message));
+await history.addScriptTag({content:fs.readFileSync('jobs-report.js','utf8')});
+await history.evaluate(()=>render());
+await history.waitForFunction(()=>window.NEASJobs.rows?.length===2);
+await history.evaluate(day=>{window.NEASJobs.date=day;window.NEASJobs.period='day';render();},day);
+const historyText=await history.locator('#app').innerText();
+if(!historyText.includes('Total job value (ex VAT)')||!historyText.includes('£675.00')||!historyText.includes('£135.00'))throw Error('History job totals and weighted job average missing');
+const byWorkshop=history.locator('.card').filter({hasText:'Jobs and value by workshop'}).last();
+const seahamHistory=byWorkshop.locator('.jobs-site-value-row').filter({hasText:'Seaham'});
+if(!(await seahamHistory.innerText()).includes('—')||(await seahamHistory.innerText()).includes('£0.00'))throw Error('Historical missing sales shown as zero');
+await history.close();
+console.log(JSON.stringify({allLowJobs:all,errors,mobileOverflow:false,filters:'passed',signout:'passed',history:'passed'}));
 await browser.close();if(errors.length)process.exitCode=1;
 })();

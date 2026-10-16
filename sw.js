@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v127';
+const CACHE='neas-shift-board-shell-v128';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -76,6 +76,25 @@ self.addEventListener('fetch',event=>{
   if(/^\/outlook-connect(?:\.html|\.js|\.css)?$/.test(url.pathname))return;
   if(req.mode==='navigate'){
     event.respondWith((async()=>{try{const fresh=await fetch(req,{cache:'no-store'});const cache=await caches.open(CACHE);cache.put('./',fresh.clone());return await withAppScripts(fresh);}catch(_e){const cached=await caches.match('./');return cached?await withAppScripts(cached):Response.error();}})());return;
+  }
+  // Job reports change frequently. Network-first prevents a previously cached
+  // jobs-report.js/profit-review.js file from hiding newly deployed dashboards.
+  // The last verified copy remains available when the device is offline.
+  if(/^\/(?:jobs-report|profit-review)\.js$/.test(url.pathname)){
+    event.respondWith((async()=>{
+      try{
+        const fresh=await fetch(req,{cache:'no-store'});
+        if(!fresh.ok)throw Error('Job report script unavailable');
+        const cache=await caches.open(CACHE);
+        await cache.put(req,fresh.clone());
+        return fresh;
+      }catch(error){
+        const cached=await caches.match(req);
+        if(cached)return cached;
+        throw error;
+      }
+    })());
+    return;
   }
   event.respondWith((async()=>{const cached=await caches.match(req);if(cached)return cached;const fresh=await fetch(req);const cache=await caches.open(CACHE);cache.put(req,fresh.clone());return fresh;})());
 });

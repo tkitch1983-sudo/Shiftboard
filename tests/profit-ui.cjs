@@ -15,13 +15,23 @@ const data={invoices:[{site_key:'gateshead',report_date:day,job_number:'J001',in
 await page.setContent(`<style>:root{--bg:#101723;--panel:#182232;--text:#eff4fa;--muted:#a5b3c5;--line:#344258;--amber:#efb34b;--red:#ef6464}body{font-family:Arial;background:var(--bg);color:var(--text);margin:25px}.card{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}.add-btn{color:var(--text);background:#26354b;border:1px solid var(--line);padding:10px 14px;border-radius:8px;cursor:pointer}</style><main id="app"></main>`);
 await page.evaluate(data=>{
 window._session={email:'qa@example.test',role:'super'};window.state={view:'admin',admin:{authed:true,role:'super',tab:'jobs'}};window.SUPABASE_URL='https://example.test';window.authHeaders=async()=>({});
-window.open=()=>window._invoiceTab={location:{href:''},close(){}};
+window.open=()=>{throw Error('Invoice must stay inside Shiftboard');};
 window.fetch=async(url)=>({ok:true,blob:async()=>new Blob(['%PDF-1.4 test'],{type:'application/pdf'}),json:async()=>url.includes('jobs_margin_review')?data.rows:url.includes('jobs_report_management')?data.reports:url.includes('jobs_invoice_documents')?data.invoices:data.statuses});
 window.NEASJobs={render:()=>'<h2>Job totals test view</h2>'};window.render=()=>document.querySelector('#app').innerHTML=window.NEASJobs.render();
 },data);
 await page.addScriptTag({content:fs.readFileSync('profit-review.js','utf8')});
 await page.evaluate(()=>render());await page.waitForSelector('.pr-job');
-await page.locator('[data-profit-invoice]').click();await page.waitForFunction(()=>window._invoiceTab.location.href.startsWith('blob:'));
+for(let i=0;i<2;i++){
+ await page.locator('[data-profit-invoice]').click();
+ await page.waitForSelector('dialog iframe');
+ if(!await page.evaluate(()=>_session?.email==='qa@example.test'&&state.view==='admin'&&state.admin.tab==='jobs'))throw Error('Invoice lost management session');
+ await page.getByRole('button',{name:'Back to jobs'}).click();
+ if(await page.locator('dialog').count())throw Error('Invoice viewer did not close');
+}
+await page.locator('[data-profit-invoice]').click();await page.waitForSelector('dialog iframe');
+await page.evaluate(()=>{_session=null;render()});
+if(await page.locator('dialog').count())throw Error('Invoice visible after signout');
+await page.evaluate(()=>{_session={email:'qa@example.test',role:'super'};render()});await page.waitForSelector('.pr-job');
 const all=await page.locator('.pr-job').count();if(all!==3)throw Error('Inclusive 45% threshold failed');
 await page.locator('[data-profit-filter=filter]').selectOption('tyres');
 if(!(await page.locator('.pr-job').allTextContents()).every(t=>t.includes('Tyre-only')))throw Error('Tyre filter failed');

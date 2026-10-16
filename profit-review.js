@@ -65,25 +65,40 @@ function invoiceButtons(r){
   return doc?'<button type="button" class="add-btn" data-profit-invoice="'+E(doc.site_key+'|'+doc.report_date+'|'+doc.invoice_number)+'">View invoice'+(numbers.length>1?' '+E(n):'')+'</button>':'<span class="pr-muted">Invoice '+E(n)+' pending collection</span>';
  }).join('')+'</div>';
 }
+let invoiceViewer=null;
+function closeInvoice(){
+ if(!invoiceViewer)return;
+ const {dialog,url,button}=invoiceViewer;invoiceViewer=null;
+ dialog.remove();if(url)URL.revokeObjectURL(url);
+ if(button?.isConnected)button.focus();
+}
 async function openInvoice(key,button){
  const doc=P.invoices.find(d=>d.site_key+'|'+d.report_date+'|'+d.invoice_number===key);
  if(!doc||!allowed()||P.loaded!==queryKey())return;
- const identity=owner(),tab=window.open('about:blank','_blank');
- button.disabled=true;const label=button.textContent;button.textContent='Opening…';
+ closeInvoice();
+ const identity=owner(),dialog=document.createElement('dialog');
+ dialog.setAttribute('aria-label','Invoice '+doc.invoice_number);
+ dialog.style.cssText='width:min(1000px,96vw);max-width:96vw;height:90dvh;max-height:90dvh;padding:0;border:1px solid #64748b;border-radius:12px;background:#fff;color:#172033;';
+ dialog.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;"><strong>Invoice '+E(doc.invoice_number)+'</strong><button type="button" data-invoice-close style="padding:10px 14px;cursor:pointer;">Back to jobs</button></div><p role="status" style="padding:12px;">Loading invoice…</p>';
+ const viewer={dialog,url:null,button,identity};invoiceViewer=viewer;
+ dialog.querySelector('[data-invoice-close]').addEventListener('click',closeInvoice);
+ dialog.addEventListener('cancel',e=>{e.preventDefault();closeInvoice();});
+ document.body.appendChild(dialog);dialog.showModal();
  try{
   const headers=await authHeaders();delete headers['Content-Type'];
   const path=doc.storage_path.split('/').map(encodeURIComponent).join('/');
   const res=await fetch(SUPABASE_URL+'/storage/v1/object/authenticated/job-invoices/'+path,{headers,cache:'no-store'});
-  if(!res.ok)throw Error('Invoice could not be opened (HTTP '+res.status+'). Please refresh and try again.');
+  if(!res.ok)throw Error('Invoice could not be opened (HTTP '+res.status+'). Please go back and try again.');
   const blob=await res.blob();
-  if(!allowed()||owner()!==identity)throw Error('Please sign in again to view this invoice.');
-  const url=URL.createObjectURL(blob);
-  if(tab)tab.location.href=url;
-  else{const a=document.createElement('a');a.href=url;a.download=doc.invoice_number+'.pdf';a.click();}
-  setTimeout(()=>URL.revokeObjectURL(url),120000);
- }catch(e){if(tab)tab.close();window.alert(e.message||'Could not open invoice');}
- finally{button.disabled=false;button.textContent=label;}
+  if(invoiceViewer!==viewer)return;
+  if(!allowed()||owner()!==identity){closeInvoice();return;}
+  viewer.url=URL.createObjectURL(blob);
+  const frame=document.createElement('iframe');frame.title='Original invoice '+doc.invoice_number;
+  frame.style.cssText='display:block;width:100%;height:calc(100% - 66px);border:0;';frame.src=viewer.url;
+  dialog.querySelector('[role="status"]').replaceWith(frame);
+ }catch(e){if(invoiceViewer===viewer)dialog.querySelector('[role="status"]').textContent=e.message||'Could not open invoice';}
 }
+
 function coverage(){
  return Object.entries(sites).filter(([k])=>site()==='all'||k===site()).map(([k,name])=>{
   const r=P.reports.find(r=>r.site_key===k),s=P.statuses.find(r=>r.site_key===k);
@@ -96,6 +111,7 @@ function coverage(){
 const button=(id,text)=>'<button class="add-btn" type="button" data-profit-action="'+id+'">'+text+'</button>';
 function metric(value,title,cls=''){return '<div class="pr-metric"><strong class="'+cls+'">'+value+'</strong><span>'+title+'</span></div>';}
 function display(){
+ if(invoiceViewer&&(!allowed()||invoiceViewer.identity!==owner()))closeInvoice();
  if(!allowed())return '<div class="card">Sign in through Management to view job margins.</div>';
  if(P.owner!==owner()){P.owner=owner();P.loaded='';P.rows=[];P.reports=[];P.statuses=[];P.invoices=[];P.error='';P.site='all';}
  const tabs='<div class="pr-tabs">'+button('margins','Low-margin jobs')+button('totals','Job totals & history')+'</div>';

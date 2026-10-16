@@ -10,6 +10,16 @@ const J=window.NEASJobs=window.NEASJobs||{rows:null,progress:null,loading:false,
 const E=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const N=x=>Number.isFinite(Number(x))?Number(x):0;
 const F=x=>N(x).toLocaleString('en-GB',{maximumFractionDigits:0});
+const money=x=>N(x).toLocaleString('en-GB',{style:'currency',currency:'GBP'});
+function hasJobValue(r){
+ return !!r&&r.net_sales_ex_vat!==null&&r.net_sales_ex_vat!==undefined&&r.net_sales_ex_vat!==''&&
+ Number.isFinite(Number(r.net_sales_ex_vat))&&Number.isFinite(Number(r.total_jobs))&&Number(r.total_jobs)>=0;
+}
+function jobValues(rows){
+ const reports=rows.filter(hasJobValue);
+ return {reports:reports.length,jobs:reports.reduce((s,r)=>s+Number(r.total_jobs),0),
+  value:reports.reduce((s,r)=>s+Number(r.net_sales_ex_vat),0)};
+}
 const dayISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const parseDate=s=>{const [y,m,d]=String(s).split('-').map(Number);return new Date(y,m-1,d,12)};
 const label=s=>parseDate(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
@@ -72,7 +82,7 @@ async function load(force=false){
   const headers=await authHeaders();
   const out=[];
   for(let offset=0;offset<20000;offset+=1000){
-   const q='jobs_report_management?select=site_key,report_date,import_status,total_jobs,source_kind&order=report_date.desc,site_key.asc&limit=1000&offset='+offset;
+   const q='jobs_report_management?select=site_key,report_date,import_status,total_jobs,net_sales_ex_vat,source_kind&order=report_date.desc,site_key.asc&limit=1000&offset='+offset;
    const res=await fetch(SUPABASE_URL+'/rest/v1/'+q,{headers,cache:'no-store'});
    if(!res.ok)throw Error('Cannot load management jobs report (HTTP '+res.status+').');
    const page=await res.json();
@@ -123,37 +133,38 @@ function makeBars(rows){
 }
 function branchTable(rows){
  const branches=Object.entries(SITES).filter(([site])=>selectedSite()==='all'||selectedSite()===site);
- const entries=branches.map(([site,name])=>({name,...counts(rows.filter(r=>r.site_key===site))}));
- return '<div style="display:flex;flex-direction:column;gap:0;">'+
-  entries.map(t=>'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'+
-    'padding:13px 2px;border-bottom:1px solid var(--line);">'+
-    '<div><b>'+E(t.name)+'</b><div style="font-size:11px;color:var(--muted);">'+
-    F(t.reports)+' available report'+(t.reports===1?'':'s')+'</div></div>'+
-    '<div style="font-family:Oswald,sans-serif;font-weight:700;font-size:25px;white-space:nowrap;">'+
-    (t.reports?F(t.total):'—')+'</div></div>').join('')+'</div>';
+ return '<div class="jobs-site-values">'+branches.map(([key,name])=>{
+  const siteRows=rows.filter(r=>r.site_key===key),total=counts(siteRows),values=jobValues(siteRows);
+  return '<div class="jobs-site-value-row"><div class="jobs-site-value-name"><b>'+E(name)+'</b><div class="jobs-site-muted">'+
+   F(total.reports)+' available report'+(total.reports===1?'':'s')+' · '+F(values.reports)+' with job value</div></div>'+
+   '<div class="jobs-site-value-cell"><strong>'+(total.reports?F(total.total):'—')+'</strong><small>Jobs</small></div>'+
+   '<div class="jobs-site-value-cell"><strong>'+(values.reports?money(values.value):'—')+'</strong><small>Job value ex VAT</small></div>'+
+   '<div class="jobs-site-value-cell"><strong>'+(values.jobs?money(values.value/values.jobs):'—')+'</strong><small>Average / job</small></div></div>';
+ }).join('')+'</div>';
 }
 function dailyTable(rows){
  const by=rows.slice().sort((a,b)=>b.report_date.localeCompare(a.report_date)||
    String(a.site_key).localeCompare(String(b.site_key)));
  const shown=by.slice(0,180);
- const cards=shown.map(r=>
-  '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;'+
-  'padding:12px 2px;border-bottom:1px solid var(--line);">'+
-  '<div><b>'+E(SITES[r.site_key]||r.site_key)+'</b><div style="font-size:12px;color:var(--muted);">'+
-  E(label(r.report_date))+' · '+(r.source_kind==='autowork'?'Direct Autowork · reconciled':r.import_status==='verified'?'Approved email':'Email · provisional')+'</div></div>'+
-  '<div style="text-align:right;white-space:nowrap;">'+
-  '<b style="font-family:Oswald,sans-serif;font-size:24px;">'+F(r.total_jobs)+'</b>'+
-  '<div style="font-size:11px;color:var(--muted);">jobs</div></div></div>'
- ).join('');
- return '<div>'+ (cards||'<div style="color:var(--muted);padding:16px 0;">No reports available for these dates.</div>') +'</div>'+
+ const cards=shown.map(r=>{
+  const available=hasJobValue(r),count=Number(r.total_jobs);
+  return '<div class="jobs-site-value-row"><div class="jobs-site-value-name"><b>'+E(SITES[r.site_key]||r.site_key)+'</b><div class="jobs-site-muted">'+
+   E(label(r.report_date))+' · '+(r.source_kind==='autowork'?'Direct Autowork':r.import_status==='verified'?'Approved email':'Provisional email')+
+   '</div></div><div class="jobs-site-value-cell"><strong>'+F(count)+'</strong><small>Jobs</small></div>'+
+   '<div class="jobs-site-value-cell"><strong>'+(available?money(r.net_sales_ex_vat):'—')+'</strong><small>Job value ex VAT</small></div>'+
+   '<div class="jobs-site-value-cell"><strong>'+(available&&count>0?money(Number(r.net_sales_ex_vat)/count):'—')+'</strong><small>Average / job</small></div></div>';
+ }).join('');
+ return '<div class="jobs-site-values">'+(cards||'<div style="color:var(--muted);padding:16px 0;">No reports available for these dates.</div>')+'</div>'+
  (by.length>shown.length?'<div style="color:var(--muted);font-size:11px;margin:10px 0;">Showing newest '+
  shown.length+' of '+by.length+' branch-days. Narrow the date filter to see more.</div>':'');
 }
 function csv(){
  const rows=selection();
- const data=[['Invoice date','Workshop','Total jobs','Status']];
+ const data=[['Invoice date','Workshop','Total jobs','Total job value ex VAT','Average job value ex VAT','Status']];
  rows.forEach(r=>data.push([r.report_date,SITES[r.site_key]||r.site_key,r.total_jobs,
-  r.import_status==='verified'?'Approved':'Provisional']));
+  hasJobValue(r)?Number(r.net_sales_ex_vat):'',
+  hasJobValue(r)&&Number(r.total_jobs)>0?Number(r.net_sales_ex_vat)/Number(r.total_jobs):'',
+  r.source_kind==='autowork'?'Direct Autowork':r.import_status==='verified'?'Approved email':'Provisional email']));
  const safe=x=>'"'+String(x==null?'':x).replace(/^[=+\-@\t\r]/,"'").replace(/"/g,'""')+'"';
  const content=data.map(row=>row.map(safe).join(',')).join('\r\n');
  const blob=new Blob(['\uFEFF'+content],{type:'text/csv;charset=utf-8'});
@@ -174,11 +185,12 @@ function progressSection(){
   (p.scheduler_active?'Import is still running in the background.':'Scheduled archive importer is not currently running.')+
   ' A received date is not necessarily the invoice date. Missing reports are not zero jobs.</div></div>';
 }
+function reportStyles(){return '<style>.jobs-site-value-row{display:grid;grid-template-columns:minmax(145px,1.2fr) repeat(3,minmax(90px,1fr));gap:12px;align-items:center;padding:13px 2px;border-bottom:1px solid var(--line)}.jobs-site-muted,.jobs-site-value-cell small{display:block;font-size:11px;color:var(--muted);margin-top:6px}.jobs-site-value-cell{text-align:right;min-width:0}.jobs-site-value-cell strong{font-size:18px;overflow-wrap:anywhere}@media(max-width:620px){.jobs-site-value-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 5px}.jobs-site-value-name{grid-column:1/-1}.jobs-site-value-cell{text-align:left}.jobs-site-value-cell strong{font-size:14px}.jobs-site-value-cell small{font-size:10px}}</style>';}
 function renderJobs(){
  if(!canOpen())return '<div class="card">Please sign in through Management to view the Jobs Report.</div>';
  if(!J.date)J.date=today();
  if(!J.rows&&!J.loading)setTimeout(()=>load(),0);
- const rows=selection(),current=counts(rows),prev=counts(previousRows());
+ const rows=selection(),current=counts(rows),values=jobValues(rows),prev=counts(previousRows());
  const periods=[['day','Day'],['week','Week'],['month','Month'],['year','Year']];
  const periodOptions=periods.map(([id,name])=>'<option value="'+id+'"'+
   (J.period===id?' selected':'')+'>'+name+'</option>').join('');
@@ -192,7 +204,7 @@ function renderJobs(){
   F(prev.total)+' jobs in the comparable period last year, from '+F(prev.reports)+
   ' available branch-day reports. This year has '+F(current.reports)+' reports.':
   'No imported reports for the comparable period last year yet.';
- return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'+
+ return reportStyles()+'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'+
   '<div><h2>Jobs Report</h2><div class="head-sub">Total invoiced jobs · workshop history</div></div>'+
   '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="add-btn" data-jobs-action="refresh">Refresh</button>'+
   '<button type="button" class="add-btn" data-jobs-action="csv"'+(rows.length?'':' disabled')+'>Export CSV</button></div></div>'+
@@ -215,18 +227,19 @@ function renderJobs(){
   (J.loading?'<div class="card">Loading historical job reports…</div>':'')+
   (J.error?'<div class="card" style="color:var(--red);">Could not refresh: '+E(J.error)+'</div>':'')+
   '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+
-  kpi('Total jobs',J.rows?F(current.total):'—','Unique invoiced job references')+
-  kpi('Average jobs per branch-day',current.reports?(current.total/current.reports).toFixed(1):'—',
-   F(current.reports)+' branch-day reports available')+'</div>'+
+  kpi('Total jobs',current.reports?F(current.total):'—','Across '+F(current.reports)+' available branch-day reports')+
+  kpi('Total job value (ex VAT)',values.reports?money(values.value):'—',F(values.reports)+' of '+F(current.reports)+' reports with sales')+
+  kpi('Average job value (ex VAT)',values.jobs?money(values.value/values.jobs):'—','Net sales ÷ jobs on valued reports')+'</div>'+
+  '<p style="color:var(--muted);font-size:12px;line-height:1.5;">Net invoice-day sales exclude VAT and include any credit notes. Missing values are not £0; totals and averages use available reports with sales.</p>'+
   '<div class="card" style="margin-top:12px;"><b>Same period last year</b>'+
   '<div style="color:var(--muted);font-size:13px;margin-top:7px;">'+E(comparison)+'</div>'+
   '<div style="color:var(--muted);font-size:11px;margin-top:7px;">Historical comparisons are incomplete while more reports are importing.</div></div>'+
   progressSection()+
   '<div class="card" style="margin-top:12px;"><b>Job volume trend</b><div style="font-size:11px;color:var(--muted);margin-top:5px;">'+
   (J.period==='year'?'Monthly totals':'Daily totals')+' · imported reports only</div>'+makeBars(rows)+'</div>'+
-  '<div class="card" style="margin-top:12px;"><b>Total jobs by workshop</b><div style="font-size:12px;color:var(--muted);margin:5px 0 10px;">— means no available reports, not zero jobs.</div>'+
+  '<div class="card" style="margin-top:12px;"><b>Jobs and value by workshop</b><div style="font-size:12px;color:var(--muted);margin:5px 0 10px;">— means unavailable, not zero. Average uses only reports with sales.</div>'+
   branchTable(rows)+'</div>'+
-  '<div class="card" style="margin-top:12px;"><b>Jobs by date and workshop</b>'+
+  '<div class="card" style="margin-top:12px;"><b>Daily job value by workshop</b>'+
   '<div style="font-size:12px;color:var(--muted);margin:6px 0 12px;">'+
   F(current.reports)+' imported reports · last refreshed '+
   (J.lastLoad?new Date(J.lastLoad).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'—')+

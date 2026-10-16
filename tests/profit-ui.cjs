@@ -12,6 +12,8 @@ const data={invoices:[{site_key:'gateshead',report_date:day,job_number:'J002',in
  {site_key:'gateshead',report_date:day,job_number:'J004',invoice_numbers:'I004',job_type:'other',sales:100,cost:54.99,profit:45.01,margin_pct:45.01},
  {site_key:'gateshead',report_date:day,job_number:'J005',invoice_numbers:'I005',job_type:'other',sales:0,cost:0,profit:0,margin_pct:null}
 ],reports:[{site_key:'gateshead',report_date:day,source_kind:'autowork',total_jobs:5,credit_notes:1,collected_at:new Date().toISOString()}],statuses:[{site_key:'gateshead',report_date:day,status:'ok'}]};
+data.rows[1].category_breakdowns=[[{category:'Parts',cost:100,sell:100,profit:0},{category:'Labour',cost:0,sell:50,profit:50}],[{category:'Parts',cost:40,sell:40,profit:0},{category:'Labour',cost:0,sell:10,profit:10}]];
+data.rows[2].category_breakdowns=[null];
 await page.setContent(`<style>:root{--bg:#101723;--panel:#182232;--text:#eff4fa;--muted:#a5b3c5;--line:#344258;--amber:#efb34b;--red:#ef6464}body{font-family:Arial;background:var(--bg);color:var(--text);margin:25px}.card{padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}.add-btn{color:var(--text);background:#26354b;border:1px solid var(--line);padding:10px 14px;border-radius:8px;cursor:pointer}</style><main id="app"></main>`);
 await page.evaluate(data=>{
 window._session={email:'qa@example.test',role:'super'};window.state={view:'admin',admin:{authed:true,role:'super',tab:'jobs'}};window.SUPABASE_URL='https://example.test';window.authHeaders=async()=>({});
@@ -22,6 +24,11 @@ window.NEASJobs={render:()=>'<h2>Job totals test view</h2>'};window.render=()=>d
 await page.addScriptTag({content:fs.readFileSync('profit-review.js','utf8')});
 await page.evaluate(()=>render());await page.waitForSelector('.pr-job');
 if(await page.locator('.pr-job').count()!==2)throw Error('Default review must exclude confirmed tyres and retain uncertain jobs');
+const job2=page.locator('.pr-job').filter({hasText:'Job J002'});
+if(!(await job2.innerText()).includes('£60.00')||!(await job2.innerText()).includes('Labour'))throw Error('Multi-invoice labour breakdown missing');
+const parts=job2.locator('.pr-breakdown-table tbody tr').filter({hasText:'Parts'});
+if((await parts.innerText()).match(/£140.00/g)?.length!==2)throw Error('Category totals must aggregate across invoices');
+if(!await page.locator('.pr-job').filter({hasText:'Job J003'}).getByText('Cost and labour breakdown unavailable for this report.').count())throw Error('Missing breakdown must not become zero');
 await page.locator('[data-profit-filter=filter]').selectOption('low');
 if(!(await page.locator('.pr-job').allTextContents()).some(t=>t.includes('Job J001')&&t.includes('Tyre-only')&&t.includes('Invoice checked')))throw Error('Invoice must override category label');
 for(let i=0;i<2;i++){

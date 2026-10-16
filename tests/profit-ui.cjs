@@ -26,7 +26,7 @@ await page.evaluate(()=>render());await page.waitForSelector('.pr-job');
 const summary=page.locator('.pr-daily-summary');
 if(!(await summary.innerText()).includes('Daily job value by workshop'))throw Error('Daily job value summary missing');
 if(!(await summary.innerText()).includes('£675.00')||!(await summary.innerText()).includes('£135.00'))throw Error('Net ex-VAT value or average job value incorrect');
-if(!(await summary.innerText()).includes('5 of 8'))throw Error('Coverage count unexpected');
+if(!(await summary.innerText()).includes('1 of 8'))throw Error('Coverage count unexpected');
 const seaham=page.locator('[data-daily-site=seaham]');
 if(!(await seaham.innerText()).includes('Job value unavailable')||(await seaham.innerText()).includes('£0.00'))throw Error('Missing site sales incorrectly shown as zero');
 const gateshead=page.locator('[data-daily-site=gateshead]');

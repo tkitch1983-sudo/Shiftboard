@@ -1,5 +1,12 @@
 const {chromium}=require('playwright');
 const fs=require('fs');
+const appHtml=fs.readFileSync('index.html','utf8');
+const reportVersion=appHtml.match(/<script src="\.\/jobs-report\.js\?v=(\d+)"><\/script>/)?.[1];
+const profitVersion=appHtml.match(/<script src="\.\/profit-review\.js\?v=(\d+)"><\/script>/)?.[1];
+if(!reportVersion||!profitVersion||reportVersion!==profitVersion)throw Error('Daily reporting scripts need matching cache-busting versions');
+const workerScript=fs.readFileSync('sw.js','utf8');
+if(!workerScript.includes('Job reports change frequently.')||!workerScript.includes("fetch(req,{cache:'no-store'})"))throw Error('Job reporting scripts must use network-first service worker caching');
+
 (async()=>{
 const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:1280,height:1000}});

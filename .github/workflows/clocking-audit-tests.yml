@@ -1,0 +1,39 @@
+name: Shiftboard clocking audit checks
+on:
+  push:
+    paths:
+      - 'clocking-audit-core.js'
+      - 'clocking-audit-panel.js'
+      - 'public/clocking-audit-core.js'
+      - 'public/clocking-audit-panel.js'
+      - 'tests/clocking-audit.test.cjs'
+      - 'sw.js'
+      - 'public/sw.js'
+      - '.github/workflows/clocking-audit-tests.yml'
+  pull_request:
+    paths:
+      - 'clocking-audit-core.js'
+      - 'clocking-audit-panel.js'
+      - 'public/clocking-audit-core.js'
+      - 'public/clocking-audit-panel.js'
+      - 'tests/clocking-audit.test.cjs'
+      - 'sw.js'
+      - 'public/sw.js'
+      - '.github/workflows/clocking-audit-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: node --check clocking-audit-core.js && node --check clocking-audit-panel.js && node --check sw.js && node --check public/sw.js
+      - name: Check attribution and access boundaries
+        run: node --test tests/clocking-audit.test.cjs
+      - name: Confirm both deployed copies are equal
+        run: cmp -s clocking-audit-core.js public/clocking-audit-core.js && cmp -s clocking-audit-panel.js public/clocking-audit-panel.js

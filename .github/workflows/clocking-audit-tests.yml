@@ -2,6 +2,8 @@ name: Shiftboard clocking audit checks
 on:
   push:
     paths:
+      - 'index.html'
+      - 'public/index.html'
       - 'clocking-audit-core.js'
       - 'clocking-audit-panel.js'
       - 'public/clocking-audit-core.js'
@@ -12,6 +14,8 @@ on:
       - '.github/workflows/clocking-audit-tests.yml'
   pull_request:
     paths:
+      - 'index.html'
+      - 'public/index.html'
       - 'clocking-audit-core.js'
       - 'clocking-audit-panel.js'
       - 'public/clocking-audit-core.js'

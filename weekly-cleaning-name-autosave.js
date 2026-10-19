@@ -21,11 +21,7 @@
       return state.admin.role==='super'?String(state.admin.weeklySite||''):String(state.admin.scopeSite||'');
     }catch(_e){return '';}
   }
-  function mondayIso(){
-    const d=new Date(),diff=(d.getDay()+6)%7;
-    d.setHours(12,0,0,0);d.setDate(d.getDate()-diff);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  }
+  function mondayIso(){if(typeof window.shiftboardWeeklyWeekStart==="function")return window.shiftboardWeeklyWeekStart();const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   function jsonObj(v){return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}
   function cleanDayKey(v){
     const s=String(v||'').toLowerCase();
@@ -43,9 +39,9 @@
       return AREAS.every(function(a){return !!String(d[a]||'').trim();})&&!!String(d.signature||'').trim();
     });
   }
-  async function fetchRow(sid){
+  async function fetchRow(sid,week){week=week||mondayIso();
     const headers=await authHeaders();
-    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(sid)+'&week_start=eq.'+encodeURIComponent(mondayIso())+'&limit=1';
+    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(sid)+'&week_start=eq.'+encodeURIComponent(week)+'&limit=1';
     const res=await fetch(url,{headers:headers,cache:'no-store'});
     if(!res.ok)throw new Error('Weekly checks '+res.status);
     const rows=await res.json();
@@ -53,7 +49,7 @@
   }
   async function writeField(snapshot){
     const sid=snapshot.siteId;
-    let row=await fetchRow(sid);
+    let row=await fetchRow(sid,snapshot.week);
     const oldForm=jsonObj(row&&row.site_cleaning_form);
     const days=Object.assign({},jsonObj(oldForm.days));
     const day=Object.assign({},jsonObj(days[snapshot.day]));
@@ -70,7 +66,7 @@
         method:'PATCH',headers:headers,body:JSON.stringify(patch)
       });
     }else{
-      const payload=Object.assign({site_id:sid,week_start:mondayIso()},patch);
+      const payload=Object.assign({site_id:sid,week_start:snapshot.week},patch);
       headers['Prefer']='resolution=merge-duplicates,return=representation';
       res=await fetch(SUPABASE_URL+'/rest/v1/weekly_site_checks?on_conflict=site_id,week_start',{
         method:'POST',headers:headers,body:JSON.stringify(payload)
@@ -81,7 +77,7 @@
       throw new Error(msg||('Save failed ('+res.status+')'));
     }
     const rows=await res.json().catch(function(){return [];});
-    return rows&&rows[0]?rows[0]:await fetchRow(sid);
+    return rows&&rows[0]?rows[0]:await fetchRow(sid,snapshot.week);
   }
   function statusFor(el){
     if(!el||!el.parentElement)return null;
@@ -149,7 +145,7 @@
     if(!el||el.tagName!=='SELECT'||!onWeekly())return;
     const field=parseField(el.id);if(!field)return;
     const sid=siteId();if(!sid)return;
-    const snapshot={siteId:sid,day:field.day,field:field.field,value:String(el.value||'').trim()};
+    const snapshot={siteId:sid,week:mondayIso(),day:field.day,field:field.field,value:String(el.value||'').trim()};
     pending++;paint(el,'saving','Saving…');
     queue=queue.catch(function(){}).then(async function(){
       try{

@@ -12,11 +12,7 @@
     }catch(_e){return '';}
   }
 
-  function mondayIso(){
-    const d=new Date(),diff=(d.getDay()+6)%7;
-    d.setHours(12,0,0,0);d.setDate(d.getDate()-diff);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  }
+  function mondayIso(){if(typeof window.shiftboardWeeklyWeekStart==="function")return window.shiftboardWeeklyWeekStart();const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 
   function weeklyOpen(){
     try{return !!(state&&state.admin&&state.admin.authed&&state.admin.tab===TAB&&document.getElementById('weekly-check-form'));}catch(_e){return false;}

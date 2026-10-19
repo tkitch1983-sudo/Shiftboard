@@ -29,7 +29,13 @@
     x.setDate(x.getDate()-diff);
     return x;
   }
-  function currentWeekStart(){ return isoLocal(mondayFor(new Date())); }
+  function actualWeekStart(){return isoLocal(mondayFor(new Date()));}
+  function currentWeekStart(){
+    const current=actualWeekStart();
+    const previous=addDays(current,-7);
+    return state && state.admin && state.admin.tab===TAB_KEY && state.admin.weeklyEditWeek===previous?previous:current;
+  }
+  window.shiftboardWeeklyWeekStart=currentWeekStart;
   function addDays(isoDate,n){
     const d=new Date(isoDate+'T12:00:00'); d.setDate(d.getDate()+n); return isoLocal(d);
   }
@@ -239,8 +245,11 @@
     const sid=selectedSiteId();
     const isSuper=state.admin.role==='super';
     const options=sites().map(function(s){ return '<option value="'+esc(s.id)+'" '+(String(s.id)===sid?'selected':'')+'>'+esc(s.name)+'</option>'; }).join('');
+    const current=actualWeekStart(), previous=addDays(current,-7), editingPrevious=currentWeekStart()===previous;
+    const weekSelect='<div class="card" style="padding:13px 16px;margin:13px 0;border-left:4px solid '+(editingPrevious?'var(--amber)':'var(--red)')+';"><label for="weekly-week-select" style="display:block;font-weight:700;font-size:13px;margin-bottom:7px;">Week to complete or edit</label><select id="weekly-week-select" style="max-width:420px;width:100%;"><option value="'+esc(current)+'" '+(!editingPrevious?'selected':'')+'>This week — '+esc(fmtDate(current))+'</option><option value="'+esc(previous)+'" '+(editingPrevious?'selected':'')+'>Last week — '+esc(fmtDate(previous))+'</option></select>'+(editingPrevious?'<div style="margin-top:8px;font-size:12px;color:var(--amber);font-weight:700;">Editing last week. Changes update that original submission and are recorded in the audit history.</div>':'')+'</div>';
     return '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;"><div><h2>Weekly Checks</h2><div class="head-sub" style="margin-bottom:0;">Every site manager must complete these once each week. Outstanding checks stay flagged until submitted.</div></div><button type="button" class="btn-sm" data-weekly-refresh>Refresh</button></div>'
       +(isSuper?'<div style="margin:16px 0;" class="cal-toolbar"><label style="font-size:12px;color:var(--muted);">Site to review</label><select id="weekly-site-select">'+options+'</select></div>':'')
+      +weekSelect
       +(isSuper?summaryForSuper():'')
       +formFor(sid)
       +historyHtml(sid);
@@ -360,6 +369,15 @@
   }catch(err){
     console.error('Weekly checks setup failed:',err);
   }
+
+  document.addEventListener('change',function(e){
+    if(!e.target || e.target.id!=='weekly-week-select') return;
+    const current=actualWeekStart(),previous=addDays(current,-7);
+    state.admin.weeklyEditWeek=e.target.value===previous?previous:current;
+    loadedWeek='';historySite='';
+    window.dispatchEvent(new Event('shiftboard-weekly-week-changed'));
+    loadCurrent(true);
+  },true);
 
   document.addEventListener('change',function(e){
     if(!e.target || e.target.id!=='weekly-site-select') return;

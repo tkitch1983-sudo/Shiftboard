@@ -385,11 +385,11 @@
     if(immediate)run();else timers.set(key,setTimeout(run,650));
   }
 
-  async function uploadOne(sid,file){
+  async function uploadOne(sid,file,week){week=week||mondayIso();
     const ext=fileExt(file.name);
     if(!ALLOWED_EXT.has(ext))throw new Error('Stock sheet must be PDF, image, CSV or Excel.');
     if(file.size>MAX_FILE_BYTES)throw new Error('Each stock sheet must be 20 MB or smaller.');
-    const path=sid+'/'+mondayIso()+'/stocktake/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+cleanName(file.name);
+    const path=sid+'/'+week+'/stocktake/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'-'+cleanName(file.name);
     const headers=await authHeaders();headers['Content-Type']=mimeFor(file);headers['x-upsert']='false';
     const res=await fetch(SUPABASE_URL+'/storage/v1/object/'+BUCKET+'/'+storagePath(path),{method:'POST',headers:headers,body:file});
     if(!res.ok){const msg=await res.text().catch(function(){return '';});throw new Error(msg||('Stock upload failed ('+res.status+')'));}
@@ -402,7 +402,7 @@
     paintGlobal('saving','Uploading stock sheet…');paintControl(input,'saving');userSaving++;
     queue=queue.catch(function(){}).then(async function(){
       const row=await fetchRow(sid,week)||{},files=Array.isArray(row.stock_files)?row.stock_files.slice():[];
-      for(const file of chosen)files.push(await uploadOne(sid,file));
+      for(const file of chosen)files.push(await uploadOne(sid,file,week));
       const saved=await savePatch(sid,{stock_files:files,stock_take_done:files.length>0},week);
       try{input.value='';}catch(_e){}
       paintControl(input,'saved');hydrate(saved);

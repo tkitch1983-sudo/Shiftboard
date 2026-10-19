@@ -1,5 +1,6 @@
-const CACHE='neas-shift-board-shell-v132';
+const CACHE='neas-shift-board-shell-v133';
 const INJECT=[
+  ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
   ['bradford-fix.js','2'],

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'self'; style-src 'self'; connect-src https://disgpocvqitpeceqhuim.supabase.co">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Shiftboard — Connect Shiftboard email</title>
+<link rel="stylesheet" href="./outlook-connect.css">
+<script src="./sender-connect.js" defer></script>
+</head>
+<body>
+<main>
+  <header><span class="brand">SHIFTBOARD</span><span class="tag">Secure Outlook connection</span></header>
+  <h1>Connect Shiftboard email</h1>
+  <p>Connect <strong>shiftboard@neautoservices.com</strong> to send Shiftboard emails. You’ll authorise <strong>sending permission</strong> through Microsoft.</p>
+  <div class="card">
+    <strong>What happens next?</strong>
+    <p class="small">This step connects the sender only. We will test delivery to Tony before enabling routine emails. No centre or staff emails are sent during this connection step.</p>
+  </div>
+  <section id="start">
+    <button id="connect" type="button">Start secure Microsoft sign-in</button>
+    <p class="small">You'll sign in through Microsoft's official website. Do not share the Microsoft sign-in code.</p>
+  </section>
+  <section id="challenge" hidden>
+    <p><strong>Step 1.</strong> Copy your one-time Microsoft sign-in code:</p>
+    <div class="card"><div id="code" class="code"></div><button class="secondary" id="copy" type="button">Copy code</button></div>
+    <p><strong>Step 2.</strong> Open Microsoft's secure sign-in page and enter your code. Sign in as <strong>shiftboard@neautoservices.com</strong>.</p>
+    <a id="microsoft" class="action" href="https://microsoft.com/devicelogin" target="_blank" rel="noopener noreferrer">Open Microsoft sign-in ↗</a>
+    <p><strong>Step 3.</strong> Come back to this page after authorising the connection.</p>
+    <button class="secondary" type="button" id="check">Check connection</button>
+  </section>
+  <div id="status" role="status" aria-live="polite" class="notice">Ready when you are.</div>
+  <p class="small">This one-time invitation expires after 48 hours. Connecting does not activate automatic emails.</p>
+</main>
+<!-- Intentionally omit closing body tag so older Shiftboard service workers cannot inject unrelated app scripts. -->
+</html>

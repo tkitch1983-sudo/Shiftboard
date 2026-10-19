@@ -1,4 +1,4 @@
-// Shiftboard sender: isolated delegated connection. No sends or schedules are activated here.
+// Shiftboard sender: isolated delegated connection. Connection plus one fixed-recipient setup test; no schedules are activated.
 // No Microsoft tokens or service credentials are returned to the browser.
 const CLIENT_ID = "79a5c576-5ded-4d41-95cb-48e514ba32c3";
 const TENANT_ID = "37fc2f44-6eb7-42b2-9c1f-792abab41652";
@@ -187,6 +187,66 @@ async function connectionPoll(invite: string, sessionId: string) {
     "PATCH", { used_at: new Date().toISOString() }, "return=minimal");
   return reply(200, { status: "connected", mailbox: EXPECTED_MAILBOX });
 }
+// One setup test per connection invitation. Recipient and content are fixed server-side.
+async function sendSetupTest(invite: string) {
+  const row = await validInvite(invite, true);
+  if (!row || !row.used_at) return reply(403, { error: "A completed connection invitation is required." });
+  const sessions = await db("sender_outlook_connect_sessions?select=id,status,test_status&invite_id=eq." + row.id + "&limit=1");
+  const session = sessions?.[0];
+  if (!session || session.status !== "connected") return reply(403, { error: "Connect the mailbox first." });
+  if (session.test_status !== "not_sent") return reply(200, { status: session.test_status, already_attempted: true });
+  const claimed = await db("sender_outlook_connect_sessions?id=eq." + session.id + "&test_status=eq.not_sent", "PATCH",
+    { test_status: "preparing", test_attempted_at: new Date().toISOString() }, "return=representation");
+  if (!claimed?.length) return reply(409, { error: "Test already being prepared." });
+  let submitting = false;
+  try {
+    const rows = await db("sender_outlook_mailbox_connections?select=*&mailbox=eq." + EXPECTED_MAILBOX + "&limit=1");
+    const connection = rows?.[0];
+    if (!connection || connection.client_id !== CLIENT_ID || connection.tenant_id !== TENANT_ID) throw new Error("Connection unavailable");
+    const refresh = await decrypt(connection.encrypted_refresh_token, connection.refresh_iv);
+    const { response, payload } = await msTokenPost(AUTH_BASE + "/token", {
+      client_id: CLIENT_ID, grant_type: "refresh_token", refresh_token: refresh, scope: SCOPE
+    });
+    if (!response.ok || !payload.access_token || !String(payload.scope || "").split(/\s+/).some(s => s.toLowerCase().replace("https://graph.microsoft.com/", "") === "mail.send"))
+      throw new Error("Microsoft sending authorisation failed");
+    if (payload.refresh_token) {
+      const encrypted = await encrypt(payload.refresh_token);
+      await db("sender_outlook_mailbox_connections?mailbox=eq." + EXPECTED_MAILBOX, "PATCH", {
+        encrypted_refresh_token: encrypted.ciphertext, refresh_iv: encrypted.iv,
+        granted_scopes: String(payload.scope), last_verified_at: new Date().toISOString()
+      }, "return=minimal");
+    }
+    const who = await fetch("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName", {
+      headers: { Authorization: "Bearer " + payload.access_token }, signal: AbortSignal.timeout(15000)
+    });
+    if (!who.ok) throw new Error("Identity check failed");
+    const profile = await who.json();
+    if (![profile.mail, profile.userPrincipalName].some(v => String(v || "").toLowerCase() === EXPECTED_MAILBOX))
+      throw new Error("Unexpected sender");
+    const html = `<!doctype html><html lang="en"><body style="margin:0;background:#edf2f7;font-family:Arial,sans-serif;color:#172b43;padding:24px"><table role="presentation" style="max-width:600px;width:100%;margin:auto;border-collapse:collapse;background:white"><tr><td style="padding:28px;background:#10233a;color:white;font-size:24px;font-weight:bold">SHIFTBOARD</td></tr><tr><td style="padding:28px"><p style="font-size:12px;color:#287353;font-weight:bold;letter-spacing:1px">EMAIL CONNECTION TEST</p><h1 style="font-size:25px">Your new sender is connected</h1><p>Hi Tony,</p><p>This HTML email was sent directly by Shiftboard using <strong>shiftboard@neautoservices.com</strong>.</p><table role="presentation" style="width:100%;background:#f0f5f9;padding:16px;line-height:1.8"><tr><td><strong>From</strong></td><td>shiftboard@neautoservices.com</td></tr><tr><td><strong>To</strong></td><td>tony@neautoservices.com only</td></tr><tr><td><strong>Mode</strong></td><td>Setup test — automatic schedules remain off</td></tr></table><p>No centre or staff recipients have been included.</p><p>Once delivery is confirmed, we can finish configuring the reports and notifications.</p><p style="color:#607080;font-size:12px">North East Auto Services · Shiftboard<br>Reference: SB-SENDER-SETUP-${session.id}</p></td></tr></table></body></html>`;
+    await db("sender_outlook_connect_sessions?id=eq." + session.id, "PATCH", { test_status: "sending" }, "return=minimal");
+    submitting = true;
+    const result = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+      method: "POST", headers: { Authorization: "Bearer " + payload.access_token, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({ message: { subject: "Shiftboard — new email sender test", body: { contentType: "HTML", content: html },
+        toRecipients: [{ emailAddress: { address: "tony@neautoservices.com" } }] }, saveToSentItems: true })
+    });
+    const status = result.status === 202 ? "accepted" : "rejected";
+    await db("sender_outlook_connect_sessions?id=eq." + session.id, "PATCH", {
+      test_status: status, test_http_status: result.status, test_finished_at: new Date().toISOString()
+    }, "return=minimal");
+    return reply(result.status === 202 ? 200 : 502, { status, microsoft_status: result.status,
+      sender: EXPECTED_MAILBOX, recipient: "tony@neautoservices.com", delivery_confirmed: false });
+  } catch (_e) {
+    // Never automatically retry a potentially accepted send.
+    await db("sender_outlook_connect_sessions?id=eq." + session.id, "PATCH", {
+      test_status: submitting ? "unknown" : "failed", test_finished_at: new Date().toISOString()
+    }, "return=minimal");
+    return reply(502, { error: submitting ? "Delivery outcome unknown. Check Tony's inbox before any retry." : "Test preparation failed. No email was submitted." });
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
     // Supabase's shared function domain intentionally rewrites HTML to text/plain.
@@ -209,6 +269,7 @@ Deno.serve(async (req: Request) => {
     if (raw.length > 4096) return reply(413, { error: "Request too large." });
     const body = JSON.parse(raw);
     const invite = String(body.invite || "");
+    if (body.action === "test") return await sendSetupTest(invite);
     if (body.action === "start") return await connectionStart(invite);
     if (body.action === "poll") return await connectionPoll(invite, String(body.session_id || ""));
     return reply(400, { error: "Unknown request." });

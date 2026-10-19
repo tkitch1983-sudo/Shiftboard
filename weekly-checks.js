@@ -230,11 +230,11 @@
     if(historyLoading && historySite!==String(siteId)) return '<div class="card"><div class="empty-state">Loading recent weekly checks…</div></div>';
     const rows=historyRows.filter(function(r){ return String(r.site_id)===String(siteId); }).slice(0,8);
     if(!rows.length) return '';
-    return '<div class="card" style="margin-top:14px;"><h3 style="font-size:17px;margin-bottom:10px;">Recent submissions</h3><div style="overflow:auto;"><table><thead><tr><th>Week commencing</th><th>Submitted</th><th>By</th><th>Stock sheet</th></tr></thead><tbody>'
+    return '<div class="card" style="margin-top:14px;"><h3 style="font-size:17px;margin-bottom:10px;">Recent submissions</h3><div style="overflow:auto;"><table><thead><tr><th>Week commencing</th><th>Submitted</th><th>By</th><th>Stock sheet</th><th>Edit</th></tr></thead><tbody>'
       +rows.map(function(r){
         const files=Array.isArray(r.stock_files)?r.stock_files:[];
         const f=files[0];
-        return '<tr><td>'+esc(fmtShort(r.week_start))+'</td><td>'+esc(fmtDateTime(r.submitted_at))+'</td><td>'+esc(r.submitted_by_email||'—')+'</td><td>'+(f?'<button type="button" class="btn-sm" data-weekly-file="'+esc(f.path||'')+'" data-weekly-name="'+esc(f.name||'Stock sheet')+'">Open</button>':'—')+'</td></tr>';
+        return '<tr><td>'+esc(fmtShort(r.week_start))+'</td><td>'+esc(fmtDateTime(r.submitted_at))+'</td><td>'+esc(r.submitted_by_email||'—')+'</td><td>'+(f?'<button type="button" class="btn-sm" data-weekly-file="'+esc(f.path||'')+'" data-weekly-name="'+esc(f.name||'Stock sheet')+'">Open</button>':'—')+'</td><td>'+(r.week_start===addDays(actualWeekStart(),-7)?'<button type="button" class="btn-sm" data-weekly-edit-prior>Edit last week</button>':'—')+'</td></tr>';
       }).join('')+'</tbody></table></div></div>';
   }
 
@@ -387,8 +387,16 @@
   },true);
 
   document.addEventListener('click',function(e){
-    const el=e.target&&e.target.closest?e.target.closest('[data-weekly-open],[data-weekly-site],[data-weekly-submit],[data-weekly-file],[data-weekly-refresh]'):null;
+    const el=e.target&&e.target.closest?e.target.closest('[data-weekly-open],[data-weekly-site],[data-weekly-submit],[data-weekly-file],[data-weekly-refresh],[data-weekly-edit-prior]'):null;
     if(!el) return;
+    if(el.hasAttribute('data-weekly-edit-prior')){
+      e.preventDefault();
+      state.admin.weeklyEditWeek=addDays(actualWeekStart(),-7);
+      loadedWeek='';
+      window.dispatchEvent(new Event('shiftboard-weekly-week-changed'));
+      loadCurrent(true);
+      return;
+    }
     if(el.hasAttribute('data-weekly-open')){
       e.preventDefault(); state.admin.tab=TAB_KEY; if(typeof render==='function') render(); return;
     }

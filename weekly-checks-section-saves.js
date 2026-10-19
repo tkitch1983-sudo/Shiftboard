@@ -54,7 +54,8 @@
     return state.admin.role==='super'?String(state.admin.weeklySite||''):String(state.admin.scopeSite||'');
   }
   function isoLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+day;}
-  function mondayIso(){const d=new Date(),diff=(d.getDay()+6)%7;d.setHours(12,0,0,0);d.setDate(d.getDate()-diff);return isoLocal(d);}
+  function mondayIso(){return typeof window.shiftboardWeeklyWeekStart==="function"?window.shiftboardWeeklyWeekStart():isoLocal((function(){const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return d;})());}
+  function cacheKey(siteId){return String(siteId)+'|'+mondayIso();}
   function fmtDateTime(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
   function fileExt(name){const p=String(name||'').toLowerCase().split('.');return p.length>1?p.pop():'';}
   function cleanName(name){return String(name||'file').replace(/[^a-zA-Z0-9._-]+/g,'_').slice(0,120)||'file';}
@@ -76,20 +77,22 @@
 
   async function fetchCurrent(siteId){
     if(!siteId)return null;
+    const week=mondayIso(),key=String(siteId)+'|'+week;
     const headers=await authHeaders();
-    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(siteId)+'&week_start=eq.'+encodeURIComponent(mondayIso())+'&limit=1';
+    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(siteId)+'&week_start=eq.'+encodeURIComponent(week)+'&limit=1';
     const res=await fetch(url,{headers,cache:'no-store'});
     if(!res.ok)throw new Error('Weekly checks '+res.status);
     const rows=await res.json(),rec=rows[0]||null;
-    currentCache.set(String(siteId),rec);
+    currentCache.set(key,rec);
     return rec;
   }
   function scheduleCurrent(siteId){
     siteId=String(siteId||'');
-    if(!siteId||currentCache.has(siteId)||loadingCurrent.has(siteId))return;
-    loadingCurrent.add(siteId);
+    if(!siteId||currentCache.has(cacheKey(siteId))||loadingCurrent.has(cacheKey(siteId)))return;
+    loadingCurrent.add(cacheKey(siteId));
     setTimeout(function(){
-      fetchCurrent(siteId).catch(function(){}).finally(function(){loadingCurrent.delete(siteId);try{if(typeof render==='function')render();}catch(_e){}});
+      const pendingKey=cacheKey(siteId);
+      fetchCurrent(siteId).catch(function(){}).finally(function(){loadingCurrent.delete(pendingKey);try{if(typeof render==='function')render();}catch(_e){}});
     },0);
   }
 
@@ -109,7 +112,7 @@
     }
     if(!res.ok){const text=await res.text().catch(function(){return '';});throw new Error(text||('Save failed ('+res.status+')'));}
     await fetchCurrent(siteId);
-    return currentCache.get(String(siteId))||null;
+    return currentCache.get(cacheKey(siteId))||null;
   }
 
   async function uploadStock(siteId,file){
@@ -319,8 +322,8 @@
     const ws=workshopSites();ws.forEach(function(s){scheduleCurrent(String(s.id));});
     let known=0,done=0;
     Array.from(main.querySelectorAll('[data-weekly-site]')).forEach(function(btn){
-      const sid=String(btn.getAttribute('data-weekly-site')||''),site=siteFor(sid);if(!currentCache.has(sid))return;known++;
-      const rec=currentCache.get(sid),ok=isComplete(rec,site);if(ok)done++;
+      const sid=String(btn.getAttribute('data-weekly-site')||''),site=siteFor(sid);if(!currentCache.has(cacheKey(sid)))return;known++;
+      const rec=currentCache.get(cacheKey(sid)),ok=isComplete(rec,site);if(ok)done++;
       const tr=btn.closest('tr');if(!tr)return;const pill=tr.querySelector('.pill');if(pill){pill.className='pill '+(ok?'pill-approved':rec?'pill-pending':'pill-rejected');pill.textContent=ok?'Done':rec?'Draft':'Not done';}
       if(tr.cells[2])tr.cells[2].textContent=ok?fmtDateTime(rec&&rec.submitted_at):(rec?'Draft · '+fmtDateTime(rec.updated_at||rec.submitted_at):'—');
     });
@@ -332,8 +335,8 @@
 
   function patchReminder(main,site){
     if(!state.admin||state.admin.role!=='site'||!isWorkshop(site))return;
-    const sid=String(site.id||'');scheduleCurrent(sid);if(!currentCache.has(sid))return;
-    const rec=currentCache.get(sid),complete=isComplete(rec,site);
+    const sid=String(site.id||'');scheduleCurrent(sid);if(!currentCache.has(cacheKey(sid)))return;
+    const rec=currentCache.get(cacheKey(sid)),complete=isComplete(rec,site);
     const btn=main.querySelector('[data-weekly-open]'),box=btn&&btn.closest('div[style*="border-left:5px"]');
     if(complete){if(box)box.remove();const own=main.querySelector('[data-wdf-draft-reminder]');if(own)own.remove();return;}
     if(box&&rec){const b=box.querySelector('b');if(b){b.textContent='Weekly checks saved as draft';b.style.color='var(--amber)';}const span=box.querySelector('span');if(span)span.textContent='Some sections are saved, but the weekly checks have not been finally submitted yet.';return;}
@@ -349,7 +352,7 @@
     if(state.admin.tab!==TAB_KEY){patchReminder(main,site);return wrap.innerHTML;}
     const sid=currentSiteId();if(sid&&isWorkshop(site))scheduleCurrent(sid);
     patchSummary(main);
-    const rec=currentCache.has(String(sid))?currentCache.get(String(sid)):null;
+    const rec=currentCache.has(cacheKey(sid))?currentCache.get(cacheKey(sid)):null;
     if(sid&&isWorkshop(site)){
       patchLoanCars(main,rec,site);patchCleaning(main);patchOxy(main);syncFields(main,rec,site);patchFormStatus(main,rec,site);
       const archive=main.querySelector('[data-wdf-archive]'),sel=archive&&archive.querySelector('[data-wdf-history-week]');if(sel&&rec&&!isComplete(rec,site)){const opt=Array.from(sel.options).find(function(o){return o.value===mondayIso();});if(opt)opt.remove();}

@@ -68,7 +68,8 @@
     return state.admin.role==='super'?String(state.admin.weeklySite||''):String(state.admin.scopeSite||'');
   }
   function isoLocal(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+day;}
-  function mondayIso(){const d=new Date(),diff=(d.getDay()+6)%7;d.setHours(12,0,0,0);d.setDate(d.getDate()-diff);return isoLocal(d);}
+  function mondayIso(){return typeof window.shiftboardWeeklyWeekStart==="function"?window.shiftboardWeeklyWeekStart():isoLocal((function(){const d=new Date();d.setDate(d.getDate()-((d.getDay()+6)%7));return d;})());}
+  function cacheKey(siteId){return String(siteId)+'|'+mondayIso();}
   function fmtDate(v){if(!v)return '—';const d=new Date(String(v).length===10?v+'T12:00:00':v);return Number.isNaN(d.getTime())?String(v):d.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});}
   function fmtDateTime(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
   function fileExt(name){const p=String(name||'').toLowerCase().split('.');return p.length>1?p.pop():'';}
@@ -83,12 +84,13 @@
 
   async function fetchCurrent(siteId){
     if(!siteId)return null;
+    const week=mondayIso(),key=String(siteId)+'|'+week;
     const headers=await authHeaders();
-    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(siteId)+'&week_start=eq.'+encodeURIComponent(mondayIso())+'&limit=1';
+    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(siteId)+'&week_start=eq.'+encodeURIComponent(week)+'&limit=1';
     const res=await fetch(url,{headers,cache:'no-store'});
     if(!res.ok)throw new Error('Weekly checks '+res.status);
     const rows=await res.json(),row=rows[0]||null;
-    currentCache.set(String(siteId),row);
+    currentCache.set(key,row);
     return row;
   }
 
@@ -105,9 +107,10 @@
 
   function scheduleLoads(siteId){
     if(!siteId)return;
-    if(!currentCache.has(siteId)&&!loadingCurrent.has(siteId)){
-      loadingCurrent.add(siteId);
-      setTimeout(function(){fetchCurrent(siteId).catch(function(){}).finally(function(){loadingCurrent.delete(siteId);try{render();}catch(_e){}});},0);
+    if(!currentCache.has(cacheKey(siteId))&&!loadingCurrent.has(cacheKey(siteId))){
+      loadingCurrent.add(cacheKey(siteId));
+      const pendingKey=cacheKey(siteId);
+      setTimeout(function(){fetchCurrent(siteId).catch(function(){}).finally(function(){loadingCurrent.delete(pendingKey);try{render();}catch(_e){}});},0);
     }
     if(!historyCache.has(siteId)&&!loadingHistory.has(siteId)){
       loadingHistory.add(siteId);
@@ -208,7 +211,7 @@
     const sid=currentSiteId();
     if(sid&&isWorkshop(siteFor(sid))){
       scheduleLoads(sid);
-      const rec=currentCache.get(String(sid))||null;
+      const rec=currentCache.get(cacheKey(sid))||null;
       const form=main.querySelector('#weekly-check-form');
       if(form){
         ['wc-car','wc-site','wc-oxy'].forEach(function(id){const el=form.querySelector('#'+id);if(el){const label=el.closest('label');if(label)label.style.display='none';}});
@@ -297,14 +300,14 @@
       const headers=await authHeaders();headers['Content-Type']='application/json';headers['Prefer']='resolution=merge-duplicates,return=representation';
       const res=await fetch(SUPABASE_URL+'/rest/v1/weekly_site_checks?on_conflict=site_id,week_start',{method:'POST',headers,body:JSON.stringify(payload)});
       if(!res.ok){const text=await res.text().catch(function(){return '';});throw new Error(text||('Save failed ('+res.status+')'));}
-      currentCache.delete(siteId);historyCache.delete(siteId);showToast('Weekly checks and digital forms submitted.');
+      currentCache.delete(cacheKey(siteId));historyCache.delete(siteId);showToast('Weekly checks and digital forms submitted.');
       await fetchCurrent(siteId).catch(function(){});await fetchHistory(siteId).catch(function(){});if(typeof render==='function')render();
     }catch(e){showToast('Could not save weekly checks — '+(e&&e.message?e.message:'unknown error'),true);}
     finally{saving=false;if(btn){btn.disabled=false;btn.textContent='Submit weekly checks & digital forms';}}
   }
 
   function selectedArchiveRow(){
-    const sid=currentSiteId(),rows=historyCache.get(String(sid))||[];const sel=document.querySelector('[data-wdf-history-week]');const wk=sel?sel.value:mondayIso();return rows.find(function(r){return String(r.week_start)===String(wk);})||currentCache.get(String(sid))||null;
+    const sid=currentSiteId(),rows=historyCache.get(String(sid))||[];const sel=document.querySelector('[data-wdf-history-week]');const wk=sel?sel.value:mondayIso();return rows.find(function(r){return String(r.week_start)===String(wk);})||currentCache.get(cacheKey(sid))||null;
   }
 
   function printableHtml(row,siteName){

@@ -17,7 +17,7 @@
     x.setDate(x.getDate()-((x.getDay()+6)%7));
     return x;
   }
-  function currentWeekStart(){ return isoLocal(mondayFor(new Date())); }
+  function currentWeekStart(){ return typeof window.shiftboardWeeklyWeekStart==="function"?window.shiftboardWeeklyWeekStart():isoLocal(mondayFor(new Date())); }
   function fmtDate(v){
     if(!v) return '—';
     const d=new Date(String(v).length===10?v+'T12:00:00':v);

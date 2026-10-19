@@ -41,10 +41,7 @@
   function isoLocal(d){
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   }
-  function mondayIso(){
-    const d=new Date(),diff=(d.getDay()+6)%7;
-    d.setHours(12,0,0,0);d.setDate(d.getDate()-diff);return isoLocal(d);
-  }
+  function mondayIso(){return typeof window.shiftboardWeeklyWeekStart==="function"?window.shiftboardWeeklyWeekStart():(function(){const d=new Date(),diff=(d.getDay()+6)%7;d.setDate(d.getDate()-diff);return isoLocal(d);})();}
   function jsonObj(v){return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}
   function valueOf(el){return el?(el.type==='checkbox'?!!el.checked:String(el.value||'').trim()):'';}
   function fileExt(name){const p=String(name||'').toLowerCase().split('.');return p.length>1?p.pop():'';}
@@ -63,15 +60,15 @@
     return 'application/octet-stream';
   }
 
-  async function fetchRow(sid){
+  async function fetchRow(sid,week){week=week||mondayIso();
     const headers=await authHeaders();
-    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(sid)+'&week_start=eq.'+encodeURIComponent(mondayIso())+'&limit=1';
+    const url=SUPABASE_URL+'/rest/v1/weekly_site_checks?select=*&site_id=eq.'+encodeURIComponent(sid)+'&week_start=eq.'+encodeURIComponent(week)+'&limit=1';
     const res=await fetch(url,{headers:headers,cache:'no-store'});
     if(!res.ok)throw new Error('Weekly checks '+res.status);
     const rows=await res.json();return rows[0]||null;
   }
-  async function savePatch(sid,patch){
-    let row=await fetchRow(sid);
+  async function savePatch(sid,patch,week){
+    week=week||mondayIso();let row=await fetchRow(sid,week);
     const headers=await authHeaders();
     headers['Content-Type']='application/json';
     headers['Prefer']='return=representation';
@@ -81,12 +78,12 @@
         method:'PATCH',headers:headers,body:JSON.stringify(patch)
       });
     }else{
-      const payload=Object.assign({site_id:sid,week_start:mondayIso()},patch);
+      const payload=Object.assign({site_id:sid,week_start:week},patch);
       res=await fetch(SUPABASE_URL+'/rest/v1/weekly_site_checks',{
         method:'POST',headers:headers,body:JSON.stringify(payload)
       });
       if(res.status===409){
-        row=await fetchRow(sid);
+        row=await fetchRow(sid,week);
         if(row&&row.id){
           res=await fetch(SUPABASE_URL+'/rest/v1/weekly_site_checks?id=eq.'+encodeURIComponent(row.id),{
             method:'PATCH',headers:headers,body:JSON.stringify(patch)
@@ -323,7 +320,7 @@
   }
 
   async function saveEvent(snapshot){
-    const sid=snapshot.sid,row=await fetchRow(sid)||{};
+    const sid=snapshot.sid,row=await fetchRow(sid,snapshot.week)||{};
     let patch=managerPatch(snapshot.id,snapshot.value);
     if(!patch){
       const cl=parseCleaning(snapshot.id);
@@ -364,7 +361,7 @@
       }
     }
     if(!patch)return row;
-    return savePatch(sid,patch);
+    return savePatch(sid,patch,snapshot.week);
   }
 
   function schedule(el,immediate){
@@ -372,10 +369,10 @@
     const id=el.id,sid=siteId();if(!sid)return;
     const relevant=!!(managerPatch(id,valueOf(el))||parseCleaning(id)||parseOxy(id)||parseCar(id));
     if(!relevant)return;
-    const key=sid+'|'+id;
+    const key=sid+'|'+mondayIso()+'|'+id;
     if(timers.has(key)){clearTimeout(timers.get(key));timers.delete(key);}
     paintGlobal('saving');paintControl(el,'saving');
-    const snapshot={sid:sid,id:id,value:valueOf(el)};
+    const snapshot={sid:sid,week:mondayIso(),id:id,value:valueOf(el)};
     const run=function(){
       timers.delete(key);userSaving++;
       queue=queue.catch(function(){}).then(function(){return saveEvent(snapshot);}).then(function(row){
@@ -401,12 +398,12 @@
   async function autoUploadStock(input){
     if(!weeklyOpen()||!input||!input.files||!input.files.length)return;
     const sid=siteId();if(!sid)return;
-    const chosen=Array.from(input.files);
+    const week=mondayIso(),chosen=Array.from(input.files);
     paintGlobal('saving','Uploading stock sheet…');paintControl(input,'saving');userSaving++;
     queue=queue.catch(function(){}).then(async function(){
-      const row=await fetchRow(sid)||{},files=Array.isArray(row.stock_files)?row.stock_files.slice():[];
+      const row=await fetchRow(sid,week)||{},files=Array.isArray(row.stock_files)?row.stock_files.slice():[];
       for(const file of chosen)files.push(await uploadOne(sid,file));
-      const saved=await savePatch(sid,{stock_files:files,stock_take_done:files.length>0});
+      const saved=await savePatch(sid,{stock_files:files,stock_take_done:files.length>0},week);
       try{input.value='';}catch(_e){}
       paintControl(input,'saved');hydrate(saved);
     }).catch(function(err){

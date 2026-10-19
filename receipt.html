@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Confirm email receipt | Shiftboard</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:#f2f3f5;font-family:Arial,Helvetica,sans-serif;color:#283644;display:flex;align-items:center;justify-content:center;padding:20px}
+    main{background:white;width:100%;max-width:520px;padding:30px 30px 36px;border-radius:12px;border-top:8px solid #b7192b;box-shadow:0 12px 40px rgba(25,35,50,.10)}
+    .logo{color:#b7192b;font-weight:900;letter-spacing:1.5px;font-size:28px}
+    h1{font-size:23px;margin:23px 0 10px}
+    p{line-height:1.55;font-size:16px;color:#526171}
+    button{border:0;background:#b7192b;color:white;font-weight:700;border-radius:7px;padding:14px 24px;font-size:16px;cursor:pointer;min-height:48px;margin-top:14px}
+    button:disabled{background:#9a9ca2;cursor:wait}
+    .state{padding:13px 16px;border-radius:6px;background:#f0f3f6;color:#26415b;margin-top:17px;line-height:1.5}
+    .success{background:#e7f5ed;color:#175b37}
+    .error{background:#fff2ef;color:#9c3528}
+    footer{margin-top:27px;color:#758390;font-size:12px}
+  </style>
+</head>
+<body>
+<main>
+  <div class="logo">SHIFTBOARD</div>
+  <h1>Confirm your centre email</h1>
+  <p>Please select <strong>Confirm received</strong> to let Shiftboard know this mailbox received its one-time activation message.</p>
+  <button type="button" id="confirm" disabled>Confirm received</button>
+  <div id="status" class="state" role="status" aria-live="polite">Checking your confirmation link…</div>
+  <footer>North East Auto Services · One-time centre email confirmation</footer>
+</main>
+<script>
+(function(){
+  'use strict';
+  const status=document.getElementById('status');
+  const button=document.getElementById('confirm');
+  const hash=new URLSearchParams(location.hash.replace(/^#/,'')); 
+  const token=hash.get('token') || '';
+  // Keep the one-time token out of the address bar and the browser's navigation history.
+  history.replaceState(null,'',location.pathname);
+  const valid=/^[A-Za-z0-9_-]{32,128}$/.test(token);
+  if(!valid){status.textContent='This confirmation link is invalid. Please reopen the original Shiftboard email.';status.classList.add('error');return;}
+  button.disabled=false;
+  status.textContent='Link ready. Click the button to confirm this mailbox.';
+  button.addEventListener('click',async function(){
+    button.disabled=true;
+    status.textContent='Recording confirmation…';
+    status.classList.remove('error','success');
+    try{
+      const endpoint='https://disgpocvqitpeceqhuim.supabase.co/functions/v1/shiftboard-site-receipt?token='+encodeURIComponent(token);
+      const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store',mode:'cors',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(res.ok){status.textContent='Receipt confirmed. Thank you — Shiftboard has recorded this mailbox.';status.classList.add('success');button.hidden=true;}
+      else {status.textContent=res.status===410?'This link has expired. Please request a new confirmation email.':res.status===404?'This confirmation link was not recognised.':'Confirmation could not be saved. Please try again.';status.classList.add('error');button.disabled=false;}
+    }catch(err){status.textContent='Unable to reach Shiftboard. Please check your connection and try again.';status.classList.add('error');button.disabled=false;}
+  });
+})();
+</script>
+</body>
+</html>

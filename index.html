@@ -890,7 +890,7 @@ const ADMIN_TAB_OPTIONS=[
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['jobs','Jobs & Margins','Reports'],['checkstatus','Checklist Status','Reports'],['audit','Audit','Reports'],
-  ['cameras','Cameras','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
+  ['cameras','Cameras','System'],['autoworkcreds','Autowork Logins','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
 const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','locations','settings']);
@@ -924,7 +924,7 @@ function isPayRateLogin(){
 }
 function canAccessAdminTab(tab){
   if(tab==='checkstatus') return state.admin.role==='super';
-  if(tab==='tonydashboard') return isTonyLogin();
+  if(tab==='tonydashboard'||tab==='autoworkcreds') return isTonyLogin();
   if(tab==='holidayallowance') return state.admin.role==='super';
   if(tab==='targetsetup'||tab==='fullreport'||tab==='boardroom'||tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
@@ -3568,7 +3568,7 @@ function renderAdminAccess(){
   state.admin.permissionEmail=String(chosen.email||'').toLowerCase();
   const overrides=(state.admin.permissionRows||[]).filter(p=>String(p.email||'').toLowerCase()===state.admin.permissionEmail);
   const setting=(key)=>overrides.find(p=>p.tab_key===key);
-  const permissionOptions=ADMIN_TAB_OPTIONS.filter(([key])=>!['tonydashboard','targetsetup','fullreport','boardroom'].includes(key));
+  const permissionOptions=ADMIN_TAB_OPTIONS.filter(([key])=>!['tonydashboard','autoworkcreds','targetsetup','fullreport','boardroom'].includes(key));
   const grouped=[...new Set(permissionOptions.map(([, ,group])=>group))].map(group=>{
     const controls=permissionOptions.filter(([, ,g])=>g===group).map(([key,label])=>{
       const row=setting(key), on=row?row.allowed!==false:defaultTabAccessFor(chosen.role,chosen.siteId,chosen.email,key);
@@ -4706,6 +4706,7 @@ function renderAdmin(){
       (async()=>{ await loadAuditData(); state.admin._loadingAudit=false; render(); })();
     }
   }
+  else if(state.admin.tab==='autoworkcreds') body = window.NEASAutoworkCredentials?.render ? window.NEASAutoworkCredentials.render() : '<h2>Autowork Logins</h2><div class="card">Loading secure settings…</div>';
   else if(state.admin.tab==='settings') body = renderAdminSettings();
 
   const whoLabel = isSuper ? (state.admin.managerName ? `${state.admin.managerName} · ${isSeniorManagementLogin()?'Senior management':'Upper management'}` : `${isSeniorManagementLogin()?'Senior management':'Upper management'} — all sites`) : `${state.admin.managerName} · ${siteName(state.admin.scopeSite)} manager`;
@@ -9185,5 +9186,6 @@ init();
 <script src="./clocking-audit-core.js?v=1"></script>
 <script src="./clocking-audit-panel.js?v=1"></script>
 <script src="./director-email-prompt.js?v=1"></script>
+<script src="./autowork-credentials.js?v=1"></script>
 </body>
 </html>

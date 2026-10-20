@@ -832,7 +832,7 @@ const ADMIN_TAB_OPTIONS=[
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['audit','Audit','Reports'],
-  ['cameras','Cameras','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
+  ['cameras','Cameras','System'],['autoworkcreds','Autowork Logins','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
 const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
 const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','locations','settings']);
@@ -864,6 +864,7 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
+  if(tab==='autoworkcreds')return isTonyLogin();
   if(tab==='holidayallowance') return state.admin.role==='super';
   if(tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
@@ -4334,6 +4335,7 @@ function renderAdmin(){
       (async()=>{ await loadAuditData(); state.admin._loadingAudit=false; render(); })();
     }
   }
+  else if(state.admin.tab==='autoworkcreds') body = window.NEASAutoworkCredentials?.render ? window.NEASAutoworkCredentials.render() : '<h2>Autowork Logins</h2><div class="card">Loading secure settings…</div>';
   else if(state.admin.tab==='settings') body = renderAdminSettings();
 
   const whoLabel = isSuper ? (state.admin.managerName ? `${state.admin.managerName} · ${isSeniorManagementLogin()?'Senior management':'Upper management'}` : `${isSeniorManagementLogin()?'Senior management':'Upper management'} — all sites`) : `${state.admin.managerName} · ${siteName(state.admin.scopeSite)} manager`;
@@ -8781,5 +8783,6 @@ init();
 </script>
 <script src="./clocking-audit-core.js?v=1"></script>
 <script src="./clocking-audit-panel.js?v=1"></script>
+<script src="./autowork-credentials.js?v=3"></script>
 </body>
 </html>

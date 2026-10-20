@@ -14,7 +14,7 @@
   let selected='hartlepool', rows=null,loading=false,busy=false,error='';
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   function authorised(){return typeof window.isTonyLogin==='function'&&window.isTonyLogin();}
-  function redraw(){if(typeof window.render==='function'&&window.state?.admin?.tab==='autoworkcreds')window.render();}
+  function redraw(){if(typeof window.render==='function'&&typeof state!=='undefined'&&state.admin?.tab==='autoworkcreds')window.render();}
   async function call(action,extra={}){
     if(!authorised())throw Error('Tony login required');
     const response=await fetch(SUPABASE_URL+'/functions/v1/shiftboard-autowork-credentials',{

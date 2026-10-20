@@ -51,8 +51,8 @@
     return '<h2>Autowork Logins</h2>'
       +'<div class="head-sub">Tony only · Manage the usernames and passwords used by the automated Autowork runs</div>'
       +'<div class="card" style="border-left:4px solid var(--amber);">'
-      +'<b>Change one workshop at a time</b><p style="font-size:13px;color:var(--muted);line-height:1.6;">'
-      +'Enter a replacement username, password or both. Leave a field blank to keep its current setting. Saved details are encrypted and never displayed again. '
+      +'<b>Your current Autowork logins are already saved</b><p style="font-size:13px;color:var(--muted);line-height:1.6;">'
+      +'Nothing needs saving until the Autowork login changes. Enter a replacement username, password or both when ready; blank fields keep their current details. Updated details are encrypted and never displayed again. '
       +'The nightly sales and daytime jobs imports pick up the changes on their next run.</p>'
       +'<div class="field"><label for="autowork-site-key">Workshop</label><select id="autowork-site-key">'+options+'</select></div>'
       +'<div class="form-row" style="margin-top:12px;">'
@@ -64,7 +64,8 @@
       +'<input id="autowork-confirm-password" type="password" autocomplete="new-password" maxlength="512" placeholder="Re-enter new password if changing it"></div>'
       +'</div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
-      +'<button type="button" class="action-btn" data-autowork-action="save"'+(busy?' disabled':'')+'>Save '+esc(active[1])+' login details</button>'
+      +'<button type="button" class="action-btn" data-autowork-action="save"'+(busy?' disabled':'')+'>Save entered changes</button>'
+      +'<button type="button" class="action-btn secondary" data-autowork-action="keep">Keep current login</button>'
       +'<button type="button" class="action-btn secondary" data-autowork-action="refresh">Refresh status</button></div>'
       +'<div id="autowork-result" role="status" style="margin-top:10px;font-size:13px;color:var(--muted);"></div>'
       +(error?'<p style="color:var(--red);" role="alert">'+esc(error)+'</p>':'')
@@ -81,31 +82,49 @@
   });
   document.addEventListener('click',async e=>{
     const button=e.target.closest?.('[data-autowork-action]');
-    if(!button||!authorised())return;
+    if(!button)return;
+    const message=document.getElementById('autowork-result');
+    if(!authorised()){
+      if(message)message.textContent='Your Tony session has expired. Please sign in again.';
+      return;
+    }
     const action=button.dataset.autoworkAction;
+    if(action==='keep'){
+      ['autowork-new-username','autowork-new-password','autowork-confirm-password'].forEach(id=>{
+        const input=document.getElementById(id); if(input)input.value='';
+      });
+      if(message){message.style.color='var(--green)';message.textContent='Current login kept. It is already stored securely and will continue to be used by the automated runs.';}
+      return;
+    }
     if(action==='refresh'){await refresh();return;}
     if(action!=='save'||busy)return;
     const usernameInput=document.getElementById('autowork-new-username');
     const passwordInput=document.getElementById('autowork-new-password');
     const confirmInput=document.getElementById('autowork-confirm-password');
-    const message=document.getElementById('autowork-result');
     if(!usernameInput||!passwordInput||!confirmInput||!message)return;
     const username=usernameInput.value;
     const password=passwordInput.value;
-    if(!username&&!password){message.textContent='Enter a new username, password or both.';return;}
+    if(!username&&!password){message.textContent='No change entered. Your current login is already saved; choose Keep current login, or enter replacement details.';return;}
     if(password!==confirmInput.value){message.textContent='The passwords do not match.';return;}
-    if(!window.confirm('Update the Autowork login details for '+(sites.find(s=>s[0]===selected)?.[1]||'this workshop')+'?'))return;
     busy=true;button.disabled=true;
+    let saved=false;
     try{
       await call('save',{site_key:selected,username:username||null,password:password||null});
       // Clear secrets before any rerender; do not save in browser storage or logs.
       usernameInput.value='';passwordInput.value='';confirmInput.value='';
       if(typeof window.showToast==='function')window.showToast('Autowork login details securely updated.');
+      saved=true;
       rows=null;await refresh();
     }catch(err){
       message.textContent=err.message||'Save failed. Please try again.';
       message.style.color='var(--red)';
-    }finally{busy=false;button.disabled=false;}
+    }finally{
+      busy=false;
+      button.disabled=false;
+      // Refresh replaces the button while the request is busy. Re-render once
+      // more after clearing busy, otherwise the replacement remains disabled.
+      if(saved)redraw();
+    }
   });
   window.NEASAutoworkCredentials={render:renderPanel,refresh};
 })();

@@ -71,3 +71,8 @@ $$;
 
 revoke all on function public.kiosk_holidays_month(text,text) from public, anon, authenticated;
 grant execute on function public.kiosk_holidays_month(text,text) to anon, authenticated;
+
+-- Retire the superseded token-based API while retaining its audit trail.
+revoke all on function public.kiosk_holidays_month(text,text,text) from public, anon, authenticated;
+revoke all on function public.kiosk_holidays_enrol(text,text) from public, anon, authenticated;
+revoke all on function public.kiosk_holidays_revoke(text) from public, anon, authenticated;

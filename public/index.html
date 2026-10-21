@@ -6666,7 +6666,6 @@ async function submitManagerLogin(){
     state.admin.tab = s.mustChangePassword ? 'settings' : 'register';
     state.admin.forcePasswordChange = !!s.mustChangePassword;
     await loadAll();          // now signed in, pull the real data
-    if(window.shiftboardHolidayCalendar) window.shiftboardHolidayCalendar.afterLogin();
     render();
   }catch(err){
     state.admin.signingIn = false;
@@ -6832,8 +6831,7 @@ async function onAction(e){
   else if(action==='kiosk-holiday-next'){ window.shiftboardHolidayCalendar.change(1); }
   else if(action==='kiosk-holiday-day'){ window.shiftboardHolidayCalendar.choose(id); }
   else if(action==='kiosk-holiday-back'){ state.view='home'; }
-  else if(action==='kiosk-holiday-login'){ window.shiftboardHolidayCalendar.beginLogin(); return; }
-  else if(action==='kiosk-holiday-enrol'){ await window.shiftboardHolidayCalendar.enrol(); return; }
+  else if(action==='kiosk-holiday-retry'){ await window.shiftboardHolidayCalendar.load(); return; }
   else if(action==='go-home'){ state.view='home'; state.flow={mode:null,pin:'',employee:null,error:''}; }
   else if(action==='go-admin-pin'){ if(state.admin.authed && _session){ state.view='admin'; } else { state.admin.pin=''; state.admin.error=''; state.view='admin-pin'; } }
   else if(action==='submit-manager-login'){ await submitManagerLogin(); return; }
@@ -8795,7 +8793,7 @@ if('serviceWorker' in navigator){
 }
 init();
 </script>
-<script src="./kiosk-holiday-calendar.js?v=1"></script>
+<script src="./kiosk-holiday-calendar.js?v=2"></script>
 <script src="./clocking-audit-core.js?v=1"></script>
 <script src="./clocking-audit-panel.js?v=1"></script>
 <script src="./autowork-credentials.js?v=3"></script>

@@ -1,0 +1,37 @@
+name: Shiftboard site holiday kiosk checks
+on:
+  push:
+    paths:
+      - 'index.html'
+      - 'public/index.html'
+      - 'kiosk-holiday-calendar.js'
+      - 'public/kiosk-holiday-calendar.js'
+      - 'tests/kiosk-holiday-calendar.test.cjs'
+      - 'tests/kiosk-holidays.test.cjs'
+      - 'database/051_one_tap_kiosk_holidays.sql'
+      - 'public/sw.js'
+      - '.github/workflows/kiosk-holidays-tests.yml'
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'public/index.html'
+      - 'kiosk-holiday-calendar.js'
+      - 'public/kiosk-holiday-calendar.js'
+      - 'tests/kiosk-holiday-calendar.test.cjs'
+      - 'tests/kiosk-holidays.test.cjs'
+      - 'database/051_one_tap_kiosk_holidays.sql'
+      - 'public/sw.js'
+      - '.github/workflows/kiosk-holidays-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check kiosk-holiday-calendar.js && node --check public/kiosk-holiday-calendar.js
+      - run: node --test tests/kiosk-holiday-calendar.test.cjs tests/kiosk-holidays.test.cjs

@@ -1,61 +1,38 @@
-/* Site-scoped, read-only staff holiday kiosk. Manager enrolment is required. */
+/* Read-only kiosk holiday calendar: uses the kiosk's selected site, no staff PIN or manager sign-in. */
 (function(){
 'use strict';
-const KEY='sb_kiosk_holiday_grant_v1', VIEW='kiosk-holidays';
-const S={month:toMonth(new Date()),rows:[],selected:'',busy:false,error:'',refreshed:'',seq:0,pendingLogin:false};
+const VIEW='kiosk-holidays';
+const S={month:toMonth(new Date()),rows:[],selected:'',busy:false,error:'',refreshed:'',seq:0};
 function toMonth(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function grant(){try{const g=JSON.parse(localStorage.getItem(KEY)||'null');return g&&g.siteId===getKioskSite()&&/^[0-9a-f]{64}$/.test(g.token||'')?g:null;}catch(_){return null;}}
-function manager(){return !!(state.admin&&state.admin.authed&&typeof _session!=='undefined'&&_session);}
 function redraw(){if(state.view===VIEW)render();}
 function niceMonth(){const [y,m]=S.month.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('en-GB',{year:'numeric',month:'long'});}
 function niceDay(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});}
 function amount(e){const n=Number(e.amount);return e.unit==='hours'?' · '+n.toLocaleString('en-GB')+' hours':n<1?' · ½ day':'';}
-async function rpc(fn,payload,signed){
- const headers=signed?await authHeaders():{apikey:SUPABASE_KEY,Authorization:'Bearer '+SUPABASE_KEY,'Content-Type':'application/json'};
+async function rpc(fn,payload){
+ const headers={apikey:SUPABASE_KEY,Authorization:'Bearer '+SUPABASE_KEY,'Content-Type':'application/json'};
  const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers,body:JSON.stringify(payload)});
  const data=await res.json().catch(()=>({}));
  if(!res.ok)throw new Error(data.message||'Could not connect to holiday calendar');
  return data;
 }
 async function load(){
- const g=grant(), siteId=getKioskSite(), req=++S.seq,month=S.month;
- S.rows=[];S.error='';S.refreshed='';
- if(!g||!siteId){S.busy=false;redraw();return;}
+ const siteId=getKioskSite(),req=++S.seq,month=S.month;
+ // Never display cached names from another site or month during refresh.
+ S.rows=[];S.refreshed='';S.error='';
+ if(!siteId){S.rows=[];S.refreshed='';S.busy=false;redraw();return;}
  S.busy=true;redraw();
  try{
-  const d=await rpc('kiosk_holidays_month',{p_site_id:siteId,p_token:g.token,p_month:month},false);
+  const d=await rpc('kiosk_holidays_month',{p_site_id:siteId,p_month:month});
   if(req!==S.seq||state.view!==VIEW||siteId!==getKioskSite())return;
-  if(!d||!d.ok||d.siteId!==siteId||d.month!==month)throw new Error((d&&d.error)||'Kiosk authorisation failed');
+  if(!d||!d.ok||d.siteId!==siteId||d.month!==month)throw new Error((d&&d.error)||'Calendar data could not be loaded');
   S.rows=Array.isArray(d.entries)?d.entries:[];S.refreshed=d.updatedAt||'';
- }catch(e){if(req!==S.seq)return;S.rows=[];S.error=e.message||'Calendar unavailable';}
+ }catch(e){if(req!==S.seq)return;S.rows=[];S.refreshed='';S.error=e.message||'Calendar unavailable';}
  finally{if(req===S.seq){S.busy=false;redraw();}}
 }
 function open(){S.month=toMonth(new Date());S.selected='';state.view=VIEW;load();}
 function change(delta){const [y,m]=S.month.split('-').map(Number);S.month=toMonth(new Date(y,m-1+delta,1));S.selected='';load();}
 function choose(date){S.selected=S.selected===date?'':date;redraw();}
-function beginLogin(){
- const locked=typeof window.shiftboardKioskEnabled==='function' && window.shiftboardKioskEnabled() && !(typeof window.shiftboardKioskUnlocked==='function'&&window.shiftboardKioskUnlocked());
- if(locked){S.error='Supervisor: unlock kiosk mode from the home screen first, then reopen the holiday calendar.';redraw();return;}
- S.pendingLogin=true;state.admin.error='';state.view='admin-pin';render();
-}
-function afterLogin(){if(!S.pendingLogin)return false;S.pendingLogin=false;if(state.admin.forcePasswordChange)return false;state.view=VIEW;S.error='';return true;}
-async function enrol(){
- if(!manager()){S.error='A site manager must sign in first.';redraw();return;}
- const siteId=getKioskSite();
- if(!siteId||!window.crypto||!crypto.getRandomValues){S.error='Secure setup is unavailable on this kiosk.';redraw();return;}
- S.busy=true;S.error='';redraw();
- try{
-  const a=new Uint8Array(32);crypto.getRandomValues(a);const token=Array.from(a,n=>n.toString(16).padStart(2,'0')).join('');
-  const r=await rpc('kiosk_holidays_enrol',{p_site_id:siteId,p_token:token},true);
-  if(!r||!r.ok||r.siteId!==siteId)throw new Error('Site authorisation was unsuccessful');
-  try{localStorage.setItem(KEY,JSON.stringify({siteId,token}));}
-  catch(_){await rpc('kiosk_holidays_revoke',{p_token:token},true);throw new Error('Kiosk storage is unavailable');}
-  signOutManager(); // Do not leave a manager session open on an unattended kiosk.
-  state.view=VIEW;S.selected='';await load();
- }catch(e){S.error=e.message||'Manager authorisation failed';}
- finally{S.busy=false;redraw();}
-}
 function renderCalendar(){
  const [y,m]=S.month.split('-').map(Number),count=new Date(y,m,0).getDate(),offset=(new Date(y,m-1,1).getDay()+6)%7;
  const byDay=new Map();
@@ -71,12 +48,12 @@ function renderCalendar(){
  return '<div class="kh-tools"><button type="button" class="action-btn secondary" data-action="kiosk-holiday-prev" aria-label="Previous month">‹</button><h3>'+esc(niceMonth())+'</h3><button type="button" class="action-btn secondary" data-action="kiosk-holiday-next" aria-label="Next month">›</button></div><div class="kh-weekdays">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="kh-grid">'+cells.join('')+'</div>'+detail;
 }
 function view(){
- const siteId=getKioskSite(),site=siteId?siteName(siteId):'Location not set',g=grant();
- let contents='';
- if(!siteId)contents='<p>Select a kiosk location first.</p>';
- else if(!g)contents='<section class="kh-setup"><h3>Manager setup required</h3><p>To protect employee information, a manager for <b>'+esc(site)+'</b> must authorise this kiosk once. Afterwards staff can view approved holidays without a PIN.</p>'+(manager()?'<button type="button" class="action-btn" data-action="kiosk-holiday-enrol" '+(S.busy?'disabled':'')+'>Enable for this kiosk</button>':'<button type="button" class="action-btn" data-action="kiosk-holiday-login">Manager sign in</button>')+'</section>';
- else contents=renderCalendar();
- const status=S.busy?'<p class="kh-status">Refreshing approved holidays…</p>':S.error?'<p role="alert" class="kh-error">'+esc(S.error)+'</p>':g&&S.refreshed?'<p class="kh-status">Updated '+esc(new Date(S.refreshed).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+' · Approved holidays only · Read-only</p>':'';
+ const siteId=getKioskSite(),site=siteId?siteName(siteId):'Location not set';
+ let contents=(!siteId)?'<p>Select the kiosk location first.</p>':
+   S.error?'<section class="kh-setup"><h3>Calendar unavailable</h3><p>'+esc(S.error)+'</p><button type="button" class="action-btn secondary" data-action="kiosk-holiday-retry">Try again</button></section>':
+   renderCalendar();
+ const status=S.busy?'<p class="kh-status">Refreshing approved holidays…</p>':
+   siteId&&S.refreshed?'<p class="kh-status">Updated '+esc(new Date(S.refreshed).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+' · Approved holidays only · Read-only</p>':'';
  return topstrip()+'<main class="kh-page"><header class="kh-heading"><div><span>'+esc(site)+'</span><h2>Authorised Holidays</h2><p>Approved annual leave for colleagues at this location.</p></div><button type="button" class="action-btn secondary" data-action="kiosk-holiday-back">← Back to kiosk</button></header>'+status+contents+'</main>';
 }
 const style=document.createElement('style');
@@ -88,7 +65,7 @@ style.textContent=[
 '@media(max-width:680px){.kh-page{width:100%;padding:12px 7px 30px}.kh-heading h2{font-size:23px}.kh-weekdays,.kh-grid{gap:2px}.kh-cell{padding:3px;min-height:66px;gap:2px}.kh-cell b{font-size:12px}.kh-name{font-size:9px;padding:2px}.kh-more{font-size:9px}}'
 ].join('');
 document.head.appendChild(style);
-setInterval(()=>{if(state.view===VIEW&&grant()&&!S.busy)load();},90000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.view===VIEW&&grant())load();});
-window.shiftboardHolidayCalendar={open,change,choose,beginLogin,afterLogin,enrol,view,load};
+setInterval(()=>{if(state.view===VIEW&&!S.busy)load();},90000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.view===VIEW)load();});
+window.shiftboardHolidayCalendar={open,change,choose,view,load};
 })();

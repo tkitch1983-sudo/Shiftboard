@@ -7038,8 +7038,11 @@ async function submitManagerLogin(){
     // A new account can't do anything until its starting password is changed.
     state.admin.tab = s.mustChangePassword ? 'settings' : 'register';
     state.admin.forcePasswordChange = !!s.mustChangePassword;
-    await loadAll();          // now signed in, pull the real data
-    if(window.shiftboardHolidayCalendar) window.shiftboardHolidayCalendar.afterLogin();
+    // One-time kiosk enrolment requires the manager JWT, not private staff data.
+    // Do not cache the full management record on the shared kiosk.
+    const kioskEnrolment=window.shiftboardHolidayCalendar && window.shiftboardHolidayCalendar.afterLogin();
+    if(kioskEnrolment){ render(); return; }
+    await loadAll();          // normal management login only
     render();
   }catch(err){
     state.admin.signingIn = false;
@@ -9197,7 +9200,7 @@ init();
 <script src="./jobs-report.js?v=6"></script>
 <script src="./profit-review.js?v=6"></script>
 <script src="./checklist-status.js?v=1"></script>
-<script src="./kiosk-holiday-calendar.js?v=1"></script>
+<script src="./kiosk-holiday-calendar.js?v=3"></script>
 <script src="./clocking-audit-core.js?v=1"></script>
 <script src="./clocking-audit-panel.js?v=1"></script>
 <script src="./director-email-prompt.js?v=1"></script>

@@ -9,6 +9,10 @@ on:
       - 'public/clocking-audit-core.js'
       - 'public/clocking-audit-panel.js'
       - 'tests/clocking-audit.test.cjs'
+      - 'tests/kiosk-holidays.test.cjs'
+      - 'kiosk-holiday-calendar.js'
+      - 'public/kiosk-holiday-calendar.js'
+      - 'database/049_kiosk_site_authorised_holidays.sql'
       - 'sw.js'
       - 'public/sw.js'
       - '.github/workflows/clocking-audit-tests.yml'
@@ -21,6 +25,10 @@ on:
       - 'public/clocking-audit-core.js'
       - 'public/clocking-audit-panel.js'
       - 'tests/clocking-audit.test.cjs'
+      - 'tests/kiosk-holidays.test.cjs'
+      - 'kiosk-holiday-calendar.js'
+      - 'public/kiosk-holiday-calendar.js'
+      - 'database/049_kiosk_site_authorised_holidays.sql'
       - 'sw.js'
       - 'public/sw.js'
       - '.github/workflows/clocking-audit-tests.yml'
@@ -36,8 +44,8 @@ jobs:
         with:
           node-version: '22'
       - name: Check syntax
-        run: node --check clocking-audit-core.js && node --check clocking-audit-panel.js && node --check sw.js && node --check public/sw.js
+        run: node --check clocking-audit-core.js && node --check clocking-audit-panel.js && node --check kiosk-holiday-calendar.js && node --check public/kiosk-holiday-calendar.js && node --check sw.js && node --check public/sw.js
       - name: Check attribution and access boundaries
-        run: node --test tests/clocking-audit.test.cjs
+        run: node --test tests/clocking-audit.test.cjs tests/kiosk-holidays.test.cjs
       - name: Confirm both deployed copies are equal
-        run: cmp -s clocking-audit-core.js public/clocking-audit-core.js && cmp -s clocking-audit-panel.js public/clocking-audit-panel.js
+        run: cmp -s clocking-audit-core.js public/clocking-audit-core.js && cmp -s clocking-audit-panel.js public/clocking-audit-panel.js && cmp -s kiosk-holiday-calendar.js public/kiosk-holiday-calendar.js

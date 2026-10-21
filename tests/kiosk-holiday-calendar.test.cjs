@@ -50,7 +50,7 @@ test('root and deployed calendar files match and app JavaScript has valid syntax
     const inline=[...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).filter(Boolean);
     inline.forEach(js=>new Function(js));
     assert.match(html,/data-action="open-kiosk-holidays"/);
-    assert.match(html,/src="\.\/kiosk-holiday-calendar\.js\?v=2"/);
+    assert.match(html,/src="\.\/kiosk-holiday-calendar\.js\?v=4"/);
     assert.match(html,/action==='kiosk-holiday-retry'/);
     assert.doesNotMatch(html,/kiosk-holiday-(login|enrol)/);
   }

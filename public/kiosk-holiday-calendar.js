@@ -18,7 +18,8 @@ async function rpc(fn,payload){
 }
 async function load(){
  const siteId=getKioskSite(),req=++S.seq,month=S.month;
- S.error='';
+ // Never display cached names from another site or month during refresh.
+ S.rows=[];S.refreshed='';S.error='';
  if(!siteId){S.rows=[];S.refreshed='';S.busy=false;redraw();return;}
  S.busy=true;redraw();
  try{

@@ -7040,8 +7040,6 @@ async function submitManagerLogin(){
     state.admin.forcePasswordChange = !!s.mustChangePassword;
     // One-time kiosk enrolment requires the manager JWT, not private staff data.
     // Do not cache the full management record on the shared kiosk.
-    const kioskEnrolment=window.shiftboardHolidayCalendar && window.shiftboardHolidayCalendar.afterLogin();
-    if(kioskEnrolment){ render(); return; }
     await loadAll();          // normal management login only
     render();
   }catch(err){
@@ -7208,8 +7206,7 @@ async function onAction(e){
   else if(action==='kiosk-holiday-next'){ window.shiftboardHolidayCalendar.change(1); }
   else if(action==='kiosk-holiday-day'){ window.shiftboardHolidayCalendar.choose(id); }
   else if(action==='kiosk-holiday-back'){ state.view='home'; }
-  else if(action==='kiosk-holiday-login'){ window.shiftboardHolidayCalendar.beginLogin(); return; }
-  else if(action==='kiosk-holiday-enrol'){ await window.shiftboardHolidayCalendar.enrol(); return; }
+  else if(action==='kiosk-holiday-retry'){ await window.shiftboardHolidayCalendar.load(); return; }
   else if(action==='go-home'){ state.view='home'; state.flow={mode:null,pin:'',employee:null,error:''}; }
   else if(action==='go-admin-pin'){ if(state.admin.authed && _session){ state.view='admin'; } else { state.admin.pin=''; state.admin.error=''; state.view='admin-pin'; } }
   else if(action==='submit-manager-login'){ await submitManagerLogin(); return; }
@@ -9200,7 +9197,7 @@ init();
 <script src="./jobs-report.js?v=6"></script>
 <script src="./profit-review.js?v=6"></script>
 <script src="./checklist-status.js?v=1"></script>
-<script src="./kiosk-holiday-calendar.js?v=1"></script>
+<script src="./kiosk-holiday-calendar.js?v=2"></script>
 <script src="./clocking-audit-core.js?v=1"></script>
 <script src="./clocking-audit-panel.js?v=1"></script>
 <script src="./director-email-prompt.js?v=1"></script>

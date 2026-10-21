@@ -34,7 +34,11 @@ async function load(){
 function open(){S.month=toMonth(new Date());S.selected='';state.view=VIEW;load();}
 function change(delta){const [y,m]=S.month.split('-').map(Number);S.month=toMonth(new Date(y,m-1+delta,1));S.selected='';load();}
 function choose(date){S.selected=S.selected===date?'':date;redraw();}
-function beginLogin(){S.pendingLogin=true;state.admin.error='';state.view='admin-pin';render();}
+function beginLogin(){
+ const locked=typeof window.shiftboardKioskEnabled==='function' && window.shiftboardKioskEnabled() && !(typeof window.shiftboardKioskUnlocked==='function'&&window.shiftboardKioskUnlocked());
+ if(locked){S.error='Supervisor: unlock kiosk mode from the home screen first, then reopen the holiday calendar.';redraw();return;}
+ S.pendingLogin=true;state.admin.error='';state.view='admin-pin';render();
+}
 function afterLogin(){if(!S.pendingLogin)return false;S.pendingLogin=false;if(state.admin.forcePasswordChange)return false;state.view=VIEW;S.error='';return true;}
 async function enrol(){
  if(!manager()){S.error='A site manager must sign in first.';redraw();return;}

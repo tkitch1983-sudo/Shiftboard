@@ -96,7 +96,7 @@ test('root and public deployed copies remain aligned with no-login flow',()=>{
   const html=fs.readFileSync(__dirname+'/../'+path,'utf8');
   assert.match(html,/data-action="open-kiosk-holidays"/);
   assert.match(html,/state\.view==='kiosk-holidays'/);
-  assert.match(html,/kiosk-holiday-calendar\.js\?v=2/);
+  assert.match(html,/kiosk-holiday-calendar\.js\?v=4/);
   assert.match(html,/kiosk-holiday-retry/);
   assert.doesNotMatch(html,/kiosk-holiday-login|kiosk-holiday-enrol|afterLogin\(\)/);
  }

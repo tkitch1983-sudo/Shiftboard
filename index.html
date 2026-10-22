@@ -914,6 +914,9 @@ function defaultTabAccessFor(role,siteId,email,tab){
 function isTonyLogin(){
   return state.admin.role==='super' && !!_session && String(_session.email||'').trim().toLowerCase()==='tony@neautoservices.com';
 }
+function isBoardroomLogin(){
+  return isTonyLogin() || (state.admin.role==='super' && !!_session && String(_session.email||'').trim().toLowerCase()==='neil@neautoservices.com');
+}
 function isSeniorManagementLogin(){
   const email=String(_session?.email||'').trim().toLowerCase();
   return _session?.managementLevel==='senior' || ['tony@neautoservices.com','jack@neautoservices.com','john@neautoservices.com','zara@neautoservices.com'].includes(email);
@@ -926,7 +929,8 @@ function canAccessAdminTab(tab){
   if(tab==='checkstatus') return state.admin.role==='super';
   if(tab==='tonydashboard'||tab==='autoworkcreds') return isTonyLogin();
   if(tab==='holidayallowance') return state.admin.role==='super';
-  if(tab==='targetsetup'||tab==='fullreport'||tab==='boardroom'||tab==='cameras') return isTonyLogin();
+  if(tab==='boardroom') return isBoardroomLogin();
+  if(tab==='targetsetup'||tab==='fullreport'||tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
   // never see the Pay Rates tab, even if their general role is "super".
   if(tab==='payrates') return isPayRateLogin();

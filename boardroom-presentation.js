@@ -140,6 +140,8 @@ function latestSnapshotDate(){
 
 function currentModel(){
   if(!R.cache||!R.cache.data)return null;
+  // Boardroom shares the reporting model, but Neil must not inherit cached payroll values.
+  if(typeof isTonyLogin!=='function'||!isTonyLogin())R.cache.data.rates=[];
   try{return R.model()}catch(err){console.error('Boardroom model failed',err);return null}
 }
 
@@ -328,7 +330,7 @@ function peopleSlide(model){
     const dinner=here.filter(x=>x.status==='dinner').length;
     const travelling=here.filter(x=>x.status==='travel').length;
     const clockedToday=here.filter(x=>x.status!=='not_clocked').length;
-    const issues=n(s.auto),missing=s.people.filter(x=>x.payRate==null).length;
+    const issues=n(s.auto),missing=(typeof isTonyLogin==='function'&&isTonyLogin())?s.people.filter(x=>x.payRate==null).length:0;
     return '<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;">'
       +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;"><div><div style="font-size:18px;font-weight:900;">'+e(s.name)+'</div><div style="font-size:12px;color:var(--muted);margin-top:3px;">'+s.people.length+' active staff assigned</div></div>'+pill(onSite+' on site',onSite?'var(--green)':'var(--muted)')+'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px;"><div><small style="color:var(--muted);">Clocked today</small><div class="mono" style="font-size:21px;font-weight:800;">'+clockedToday+'</div></div><div><small style="color:var(--muted);">Dinner</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(dinner?'var(--amber)':'var(--text)')+';">'+dinner+'</div></div><div><small style="color:var(--muted);">Travelling</small><div class="mono" style="font-size:21px;font-weight:800;">'+travelling+'</div></div><div><small style="color:var(--muted);">Auto-close</small><div class="mono" style="font-size:21px;font-weight:800;color:'+(issues?'var(--red)':'var(--text)')+';">'+issues+'</div></div></div>'

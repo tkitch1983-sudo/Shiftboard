@@ -99,7 +99,9 @@ R.load=async function(force){
    R.api('monthly_hs_checks?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
    R.api('monthly_hs_acknowledgements?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
    R.api('mot_monthly_qc?select=*&month_start=eq.'+encodeURIComponent(p.month+'-01')),
-   R.api('staff_pay_rates?select=employee_id,pay_rate')
+   (typeof isTonyLogin==='function'&&isTonyLogin())
+     ?R.api('staff_pay_rates?select=employee_id,pay_rate')
+     :Promise.resolve([])
   ]);
   const stock=new Map();q[1].forEach(r=>{if(!stock.has(String(r.site_key)))stock.set(String(r.site_key),r)});
   R.cache.data={p,sales:q[0],stock,weekly:q[2],hs:q[3],acks:q[4],mot:q[5],rates:q[6]||[]};

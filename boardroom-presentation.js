@@ -30,7 +30,7 @@ function dec(v,d){return R.dec(v,d==null?0:d)}
 function pct(v){return R.pct(v)}
 function today(){return R.today()}
 function fmt(v){return R.fmt(v)}
-function isTony(){try{return typeof isTonyLogin==='function'&&isTonyLogin()}catch(_e){return false}}
+function isBoardroomAllowed(){try{return typeof canAccessAdminTab==='function'&&canAccessAdminTab(TAB)}catch(_e){return false}}
 
 function directBoardroomUrl(){
   const u=new URL(location.href);
@@ -565,7 +565,7 @@ function renderSlide(model){
 }
 
 function renderPanel(){
-  if(!isTony())return '<div class="card" style="color:var(--red);">Boardroom Presentation is currently available to Tony only.</div>';
+  if(!isBoardroomAllowed())return '<div class="card" style="color:var(--red);">Boardroom Presentation is available to authorised upper management only.</div>';
   ensureState();
   const desired=['day',today(),today(),today().slice(0,7)].join('|');
   const model=(R.cache&&R.cache.key===desired)?currentModel():null;
@@ -623,7 +623,7 @@ function refreshShell(){
 }
 
 async function load(force){
-  if(!isTony())return;
+  if(!isBoardroomAllowed())return;
   state.admin.reportPeriodMode='day';
   state.admin.reportPeriodDate=today();
   state.admin.reportPeriodSite='all';
@@ -672,7 +672,7 @@ function ensureTimers(){
 }
 
 async function loadAttendance(){
-  if(!isTony()||B.attendanceBusy)return;
+  if(!isBoardroomAllowed()||B.attendanceBusy)return;
   B.attendanceBusy=true;
   try{
     const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/manager_boardroom_clock_events',{
@@ -818,7 +818,7 @@ function openDirectBoardroomWhenReady(){
     if(tries>80){clearInterval(timer);return}
     if(typeof state==='undefined'||!state.admin)return;
     if(state.view==='loading')return;
-    if(_session&&isTony()){
+    if(_session&&isBoardroomAllowed()){
       clearInterval(timer);
       state.admin.tab=TAB;
       state.view='admin';
@@ -839,7 +839,7 @@ try{
     const oldSubmitManagerLogin=submitManagerLogin;
     submitManagerLogin=async function(){
       await oldSubmitManagerLogin();
-      if(B.directRequested&&_session&&isTony()&&!state.admin.forcePasswordChange){
+      if(B.directRequested&&_session&&isBoardroomAllowed()&&!state.admin.forcePasswordChange){
         state.admin.tab=TAB;
         state.view='admin';
         if(typeof render==='function')render();

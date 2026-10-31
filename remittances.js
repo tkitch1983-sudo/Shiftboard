@@ -269,7 +269,11 @@
       const evidence=t.matched_rule
         ? '<div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+esc(t.matched_rule)
           +(Number.isFinite(Number(t.matched_date_lag_days))?' · PDF '+Number(t.matched_date_lag_days)+' day'+(Number(t.matched_date_lag_days)===1?'':'s')+' before bank':'')
-          +(Number.isFinite(Number(t.matched_amount_difference_pence))&&Number(t.matched_amount_difference_pence)>0?' · '+Number(t.matched_amount_difference_pence)+'p difference':'')
+          +(Number.isFinite(Number(t.matched_amount_difference_pence))&&Number(t.matched_amount_difference_pence)>0
+            ?' · '+(Number(t.matched_amount_difference_pence)>=100
+              ?'£'+(Number(t.matched_amount_difference_pence)/100).toFixed(2)
+              :Number(t.matched_amount_difference_pence)+'p')+' difference'
+            :'')
           +'</div>'
         : '';
       return '<tr><td>'+status+'</td><td><b>'+esc(t.supplier)+'</b><div style="font-size:10px;color:var(--muted-2);">'+esc(t.source_text||t.source_subject||"Manual")+'</div>'+evidence+'</td>'

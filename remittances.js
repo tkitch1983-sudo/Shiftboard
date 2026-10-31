@@ -95,8 +95,8 @@
     try{
       const results = await Promise.all([
         api("status"),
-        rest("remittance_documents?select=id,supplier,payment_date,payment_amount,candidate_amounts,received_at,sender_email,sender_name,subject,attachment_name,attachment_size,indexed_at&order=received_at.desc&limit=1500"),
-        rest("remittance_targets?select=id,supplier,payment_date,amount,status,matched_document_id,source_subject,source_text,source_received_at,created_at,updated_at&order=payment_date.desc,amount.desc&limit=1500"),
+        rest("remittance_documents?select=id,supplier,site_hint,payment_date,payment_amount,candidate_amounts,received_at,sender_email,sender_name,subject,attachment_name,attachment_size,indexed_at&order=received_at.desc&limit=1500"),
+        rest("remittance_targets?select=id,supplier,payment_date,amount,status,matched_document_id,matched_amount_difference_pence,matched_date_lag_days,matched_rule,source_subject,source_text,source_received_at,created_at,updated_at&order=payment_date.desc,amount.desc&limit=1500"),
         rest("remittance_supplier_rules?select=supplier_key,display_name,deduction_percent,deduction_vat_percent,notes&active=eq.true&order=display_name.asc")
       ]);
       local.status=results[0]||{};
@@ -128,6 +128,33 @@
 
   function docById(id){ return (local.docs||[]).find(d=>d.id===id)||null; }
   function targetById(id){ return (local.targets||[]).find(t=>t.id===id)||null; }
+  function bankDateWindow(docDate,bankDate){
+    if(!docDate||!bankDate) return false;
+    const lag=(Date.parse(bankDate+"T12:00:00Z")-Date.parse(docDate+"T12:00:00Z"))/86400000;
+    return lag>=0&&lag<=7;
+  }
+  function amountEvidence(d,target,supplier){
+    const raw=[d.payment_amount].concat(Array.isArray(d.candidate_amounts)?d.candidate_amounts:[])
+      .map(Number).filter(Number.isFinite);
+    const vals=[];
+    raw.forEach(v=>{if(!vals.some(x=>Math.abs(x-v)<0.0001)) vals.push(v);});
+    if(vals.some(v=>Math.abs(v-target)<=0.021)) return true;
+    const shortlist=vals.slice(0,18);
+    const tests=[];
+    for(let i=0;i<shortlist.length;i++) tests.push([shortlist[i]]);
+    for(let i=0;i<shortlist.length;i++) for(let j=i+1;j<shortlist.length;j++) tests.push([shortlist[i],shortlist[j]]);
+    for(let i=0;i<shortlist.length;i++) for(let j=i+1;j<shortlist.length;j++) for(let k=j+1;k<shortlist.length;k++) tests.push([shortlist[i],shortlist[j],shortlist[k]]);
+    const rule=ruleForSupplier(supplier||d.supplier||"");
+    for(const arr of tests){
+      const sum=number2(arr.reduce((a,b)=>a+b,0));
+      if(Math.abs(sum-target)<=0.021) return true;
+      if(supplierKey(rule.supplier_key)==="arval"){
+        if(Math.abs(expectedNet(sum,rule)-target)<=0.021) return true;
+        if(Math.abs(expectedNetLinewise(arr,rule)-target)<=0.021) return true;
+      }
+    }
+    return false;
+  }
 
   function filteredDocs(){
     const f=local.filter||{};
@@ -137,13 +164,10 @@
     return (local.docs||[]).filter(d=>{
       if(f.date){
         const received=String(d.received_at||"").slice(0,10);
-        if(String(d.payment_date||"")!==f.date && received!==f.date) return false;
+        if(!bankDateWindow(String(d.payment_date||received),f.date)) return false;
       }
       if(Number.isFinite(amount)){
-        const candidates=Array.isArray(d.candidate_amounts)?d.candidate_amounts:[];
-        const exact=Number.isFinite(Number(d.payment_amount)) && Math.abs(Number(d.payment_amount)-amount)<=0.021;
-        const alternate=candidates.some(v=>Math.abs(Number(v)-amount)<=0.021);
-        if(!exact&&!alternate) return false;
+        if(!amountEvidence(d,amount,f.supplier||d.supplier||"")) return false;
       }
       if(supplier){
         const hay=supplierKey([d.supplier,d.sender_name,d.sender_email,d.subject].join(" "));
@@ -205,7 +229,7 @@
         ? '<button type="button" class="btn-sm approve" data-remit-action="match-doc" data-doc="'+esc(d.id)+'">Match this PDF</button>'
         : '';
       return '<tr>'
-        +'<td><b>'+(esc(d.supplier||"Unknown"))+'</b><div style="font-size:11px;color:var(--muted-2);">'+esc(d.subject||"")+'</div></td>'
+        +'<td><b>'+(esc(d.supplier||"Unknown"))+'</b>'+(d.site_hint?'<div style="font-size:11px;color:var(--muted);">'+esc(d.site_hint)+'</div>':'')+'<div style="font-size:11px;color:var(--muted-2);">'+esc(d.subject||"")+'</div></td>'
         +'<td class="mono">'+dateLabel(d.payment_date||String(d.received_at||"").slice(0,10))+'</td>'
         +'<td class="mono"><b>'+exact+'</b></td>'
         +'<td>'+esc(d.attachment_name||"remittance.pdf")+'</td>'
@@ -241,7 +265,13 @@
       const action=t.status==="found"&&doc
         ? '<button type="button" class="btn-sm" data-remit-action="open-pdf" data-doc="'+esc(doc.id)+'">Open / Print PDF</button>'
         : '<button type="button" class="btn-sm" data-remit-action="search-target" data-target="'+esc(t.id)+'">Find</button>';
-      return '<tr><td>'+status+'</td><td><b>'+esc(t.supplier)+'</b><div style="font-size:10px;color:var(--muted-2);">'+esc(t.source_text||t.source_subject||"Manual")+'</div></td>'
+      const evidence=t.matched_rule
+        ? '<div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+esc(t.matched_rule)
+          +(Number.isFinite(Number(t.matched_date_lag_days))?' · PDF '+Number(t.matched_date_lag_days)+' day'+(Number(t.matched_date_lag_days)===1?'':'s')+' before bank':'')
+          +(Number.isFinite(Number(t.matched_amount_difference_pence))&&Number(t.matched_amount_difference_pence)>0?' · '+Number(t.matched_amount_difference_pence)+'p difference':'')
+          +'</div>'
+        : '';
+      return '<tr><td>'+status+'</td><td><b>'+esc(t.supplier)+'</b><div style="font-size:10px;color:var(--muted-2);">'+esc(t.source_text||t.source_subject||"Manual")+'</div>'+evidence+'</td>'
         +'<td class="mono">'+dateLabel(t.payment_date)+'</td><td class="mono"><b>'+money(t.amount)+'</b></td><td>'+action+'</td></tr>';
     }).join("");
     return '<div class="card">'
@@ -250,10 +280,10 @@
       +'</div>'
       +'<div class="form-row" style="padding:10px;border:1px solid var(--line-soft);">'
       +'<div class="field"><label>Supplier</label><input id="remit-add-supplier" placeholder="Arval"></div>'
-      +'<div class="field"><label>Date</label><input id="remit-add-date" type="date"></div>'
+      +'<div class="field"><label>Bank date</label><input id="remit-add-date" type="date"></div>'
       +'<div class="field"><label>Amount</label><input id="remit-add-amount" inputmode="decimal" placeholder="636.80"></div>'
       +'<button type="button" class="add-btn" data-remit-action="add-target">Add manually</button></div>'
-      +'<div style="overflow:auto;"><table style="min-width:720px;"><thead><tr><th>Status</th><th>Supplier</th><th>Date</th><th>Payment</th><th>Action</th></tr></thead><tbody>'
+      +'<div style="overflow:auto;"><table style="min-width:720px;"><thead><tr><th>Status</th><th>Supplier / evidence</th><th>Bank date</th><th>Payment</th><th>Action</th></tr></thead><tbody>'
       +(rows||'<tr><td colspan="5" class="empty-state">No remittance requests have been imported yet.</td></tr>')
       +'</tbody></table></div></div>';
   }

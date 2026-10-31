@@ -342,18 +342,15 @@
   async function startConnection(){
     if(local.busy) return;
     local.busy=true; local.error="";
-    const w=window.open("about:blank","_blank");
     try{
       const result=await api("connect_start");
       local.connectSession=result.session_id;
       local.connectCode=result.user_code||"";
       local.connectUri=result.verification_uri||"https://microsoft.com/devicelogin";
       local.connectInterval=Math.max(6,Number(result.interval_seconds||5)+2);
-      if(w) w.location.href=local.connectUri;
       startPolling();
       renderNow();
     }catch(e){
-      if(w) w.close();
       local.error=e.message||String(e); renderNow();
     }finally{ local.busy=false; }
   }

@@ -52,8 +52,10 @@
     return body;
   }
   async function rest(path, options){
-    const headers = await authHeaders();
-    const opts = Object.assign({method:"GET",cache:"no-store",headers},options||{});
+    const baseHeaders = await authHeaders();
+    const opts = Object.assign({method:"GET",cache:"no-store"},options||{});
+    const headers = Object.assign({},baseHeaders,(options&&options.headers)||{});
+    opts.headers=headers;
     if(opts.body && typeof opts.body !== "string"){
       headers["Content-Type"]="application/json";
       opts.body=JSON.stringify(opts.body);
@@ -197,6 +199,7 @@
       +'<div class="field"><label>Date</label><input type="date" data-remit-filter="date" value="'+esc(local.filter.date)+'"></div>'
       +'<div class="field"><label>Payment value</label><input inputmode="decimal" placeholder="636.80" data-remit-filter="amount" value="'+esc(local.filter.amount)+'"></div>'
       +'<div class="field"><label>Supplier</label><select data-remit-filter="supplier">'+supplierOptions(local.filter.supplier,true)+'</select></div>'
+      +'<button type="button" class="add-btn" data-remit-action="apply-search">Search</button>'
       +'<button type="button" class="add-btn" data-remit-action="clear-search">Clear</button>'
       +'</div>'
       +'<div style="font-size:11px;color:var(--muted-2);margin-bottom:8px;">'+docs.length+' result'+(docs.length===1?"":"s")+(filteredDocs().length>50?" · showing first 50":"")+'</div>'
@@ -485,6 +488,7 @@
       if(action==="scan") return await runScan(false);
       if(action==="full-scan") return await runScan(true);
       if(action==="open-pdf") return await openPdf(el.dataset.doc);
+      if(action==="apply-search") return renderNow();
       if(action==="clear-search"){
         local.filter={date:"",amount:"",supplier:""}; local.selectedTargetId=null; return renderNow();
       }
@@ -505,7 +509,6 @@
     const filter=e.target.closest("[data-remit-filter]");
     if(filter){
       local.filter[filter.dataset.remitFilter]=filter.value;
-      renderNow();
       return;
     }
     const auto=e.target.closest("[data-remit-auto]");

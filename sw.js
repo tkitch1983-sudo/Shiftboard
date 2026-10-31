@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v141';
+const CACHE='neas-shift-board-shell-v142';
 const INJECT=[
   ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],
@@ -84,7 +84,7 @@ self.addEventListener('fetch',event=>{
   // Job reports change frequently. Network-first prevents a previously cached
   // jobs-report.js/profit-review.js file from hiding newly deployed dashboards.
   // The last verified copy remains available when the device is offline.
-  if(/^\/(?:jobs-report|profit-review)\.js$/.test(url.pathname)){
+  if(/^\/(?:jobs-report|profit-review|remittances)\.js$/.test(url.pathname)){
     event.respondWith((async()=>{
       try{
         const fresh=await fetch(req,{cache:'no-store'});

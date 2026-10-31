@@ -884,7 +884,7 @@ const state = {
 };
 
 const ADMIN_TAB_OPTIONS=[
-  ['tonydashboard','Tony Dashboard','Tony'],
+  ['tonydashboard','Tony Dashboard','Tony'],['remittances','Remittances','Tony'],
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['bankholidays','Bank Holidays','Holiday'],
   ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
@@ -927,7 +927,7 @@ function isPayRateLogin(){
 }
 function canAccessAdminTab(tab){
   if(tab==='checkstatus') return state.admin.role==='super';
-  if(tab==='tonydashboard'||tab==='autoworkcreds') return isTonyLogin();
+  if(tab==='tonydashboard'||tab==='autoworkcreds'||tab==='remittances') return isTonyLogin();
   if(tab==='holidayallowance') return state.admin.role==='super';
   if(tab==='boardroom') return isBoardroomLogin();
   if(tab==='targetsetup'||tab==='fullreport'||tab==='cameras') return isTonyLogin();
@@ -2963,6 +2963,7 @@ function renderTonyDashboard(){
       <div class="tony-chart-card"><div class="tony-chart-head"><div><div class="tony-chart-title">Sales by workshop</div><div class="tony-chart-sub">Latest month-to-date NET sales snapshot. Tap a bar to filter.</div></div><div class="mono" style="font-size:12px;">${salesValue}</div></div>${state.admin.salesRows===null?'<div class="empty-state">Loading live sales…</div>':tonyDashboardBars(salesBars,'money')}</div>
       <div class="tony-chart-card wide"><div class="tony-chart-head"><div><div class="tony-chart-title">Cumulative wage-saving trend</div><div class="tony-chart-sub">Selected period · completed workshop days only. Hover/tap chart points for dated values.</div></div><div class="mono" style="font-size:12px;">${tonyDashboardMoney(wage.totalSaving,2)}</div></div>${tonyDashboardTrend(wage.series)}</div>
       <div class="tony-chart-card"><div class="tony-chart-head"><div><div class="tony-chart-title">Tony tools</div><div class="tony-chart-sub">Jump straight into the detailed private reports behind this summary.</div></div></div><div class="tony-quick-links">
+        <button type="button" class="tony-quick-link" data-admin-tab="remittances"><b>Remittances</b><span>Find, match and print remittance PDFs</span></button>
         <button type="button" class="tony-quick-link" data-admin-tab="analysis"><b>Sales Analysis</b><span>Monthly / yearly site performance</span></button>
         <button type="button" class="tony-quick-link" data-admin-tab="salesvs"><b>Sales VS</b><span>Compare periods and sites</span></button>
         <button type="button" class="tony-quick-link" data-admin-tab="stock"><b>Stock Value</b><span>Latest and historical stock</span></button>
@@ -4570,6 +4571,7 @@ function renderAdmin(){
       (async ()=>{ await loadStockData(false); render(); })();
     }
   }
+  else if(state.admin.tab==='remittances') body=window.NEASRemittances?.render?window.NEASRemittances.render():'<div class="card">Remittance Finder loading…</div>';
   else if(state.admin.tab==='register') body = renderAdminRegister();
   else if(state.admin.tab==='sickness') body = renderAdminSickness();
   else if(state.admin.tab==='bradford') body = renderAdminBradford();
@@ -9206,5 +9208,6 @@ init();
 <script src="./clocking-audit-panel.js?v=1"></script>
 <script src="./director-email-prompt.js?v=1"></script>
 <script src="./autowork-credentials.js?v=3"></script>
+<script src="./remittances.js?v=1"></script>
 </body>
 </html>

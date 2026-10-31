@@ -141,8 +141,8 @@
       }
       if(Number.isFinite(amount)){
         const candidates=Array.isArray(d.candidate_amounts)?d.candidate_amounts:[];
-        const exact=Number.isFinite(Number(d.payment_amount)) && Math.abs(Number(d.payment_amount)-amount)<0.011;
-        const alternate=candidates.some(v=>Math.abs(Number(v)-amount)<0.011);
+        const exact=Number.isFinite(Number(d.payment_amount)) && Math.abs(Number(d.payment_amount)-amount)<=0.021;
+        const alternate=candidates.some(v=>Math.abs(Number(v)-amount)<=0.021);
         if(!exact&&!alternate) return false;
       }
       if(supplier){

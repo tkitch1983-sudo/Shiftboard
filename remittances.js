@@ -222,8 +222,15 @@
   }
 
   function renderSearch(){
-    const docs=filteredDocs().slice(0,50);
     const selected=local.selectedTargetId?targetById(local.selectedTargetId):null;
+    const hasSearch=Boolean(
+      selected ||
+      String(local.filter.date||"").trim() ||
+      String(local.filter.amount||"").trim() ||
+      String(local.filter.supplier||"").trim()
+    );
+    const allMatches=hasSearch?filteredDocs():[];
+    const docs=allMatches.slice(0,50);
     const rows=docs.map(d=>{
       const exact=Number.isFinite(Number(d.payment_amount))?money(d.payment_amount):"Amount not extracted";
       const matchButton=selected
@@ -237,9 +244,15 @@
         +'<td style="white-space:nowrap;"><button type="button" class="btn-sm" data-remit-action="open-pdf" data-doc="'+esc(d.id)+'">Open / Print PDF</button>'+matchButton+'</td>'
         +'</tr>';
     }).join("");
+    const results=hasSearch
+      ? '<div style="font-size:11px;color:var(--muted-2);margin-bottom:8px;">'+docs.length+' result'+(docs.length===1?"":"s")+(allMatches.length>50?" · showing first 50":"")+'</div>'
+        +'<div style="overflow:auto;"><table style="min-width:850px;"><thead><tr><th>Supplier</th><th>Payment date</th><th>Value</th><th>PDF</th><th>Action</th></tr></thead><tbody>'
+        +(rows||'<tr><td colspan="5" class="empty-state">No indexed remittance matches those filters.</td></tr>')
+        +'</tbody></table></div>'
+      : '<div class="empty-state" style="padding:16px 10px;">Remittance library hidden. Search above, or press <b>Find</b> on a payment, to show matching PDFs only.</div>';
     return '<div class="card">'
       +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px;">'
-      +'<div><b style="font-size:15px;">Find a remittance</b><div style="font-size:11px;color:var(--muted-2);margin-top:3px;">Search by payment date, value, supplier, or any combination.</div></div>'
+      +'<div><b style="font-size:15px;">Find a remittance</b><div style="font-size:11px;color:var(--muted-2);margin-top:3px;">Search by payment date, value, supplier, or any combination. The full library stays hidden.</div></div>'
       +(selected?'<div class="pill pill-pending">Matching: '+esc(selected.supplier)+' '+money(selected.amount)+' · '+dateLabel(selected.payment_date)+'</div>':'')
       +'</div>'
       +'<div class="form-row">'
@@ -249,10 +262,7 @@
       +'<button type="button" class="add-btn" data-remit-action="apply-search">Search</button>'
       +'<button type="button" class="add-btn" data-remit-action="clear-search">Clear</button>'
       +'</div>'
-      +'<div style="font-size:11px;color:var(--muted-2);margin-bottom:8px;">'+docs.length+' result'+(docs.length===1?"":"s")+(filteredDocs().length>50?" · showing first 50":"")+'</div>'
-      +'<div style="overflow:auto;"><table style="min-width:850px;"><thead><tr><th>Supplier</th><th>Payment date</th><th>Value</th><th>PDF</th><th>Action</th></tr></thead><tbody>'
-      +(rows||'<tr><td colspan="5" class="empty-state">No indexed remittance matches those filters.</td></tr>')
-      +'</tbody></table></div></div>';
+      +results+'</div>';
   }
 
   function renderTargets(){

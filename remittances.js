@@ -400,24 +400,45 @@
     await load(true);
   }
 
+  function showPdfViewer(url,title){
+    if(!url) throw new Error("No PDF URL returned.");
+    const existing=document.getElementById("remit-pdf-viewer");
+    if(existing) existing.remove();
+
+    const overlay=document.createElement("div");
+    overlay.id="remit-pdf-viewer";
+    overlay.setAttribute("role","dialog");
+    overlay.setAttribute("aria-modal","true");
+    overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(8,12,18,.86);display:flex;flex-direction:column;padding:max(10px,env(safe-area-inset-top)) 10px max(10px,env(safe-area-inset-bottom));";
+    overlay.innerHTML=
+      '<div style="display:flex;align-items:center;gap:8px;justify-content:space-between;background:var(--panel,#151a21);padding:10px 12px;border-radius:10px 10px 0 0;">'
+      +'<b style="font-size:13px;">'+esc(title||"PDF")+'</b>'
+      +'<div style="display:flex;gap:7px;align-items:center;">'
+      +'<a class="btn-sm" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Open separately</a>'
+      +'<button type="button" class="btn-sm" data-remit-viewer-close>Close</button>'
+      +'</div></div>'
+      +'<iframe title="'+esc(title||"PDF")+'" src="'+esc(url)+'" style="width:100%;flex:1;border:0;background:#fff;border-radius:0 0 10px 10px;min-height:0;"></iframe>';
+
+    overlay.addEventListener("click",e=>{
+      if(e.target===overlay || e.target.closest("[data-remit-viewer-close]")) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+  }
+
   async function openPdf(id){
-    const w=window.open("about:blank","_blank");
     try{
       const result=await api("pdf_url",{document_id:id});
-      if(w) w.location.href=result.url; else window.open(result.url,"_blank","noopener");
+      showPdfViewer(result&&result.url,"Remittance PDF");
     }catch(e){
-      if(w) w.close();
       showToast(e.message||"Could not open PDF.",true);
     }
   }
 
   async function openInvoice(targetId){
-    const w=window.open("about:blank","_blank");
     try{
       const result=await api("invoice_url",{target_id:targetId});
-      if(w) w.location.href=result.url; else window.open(result.url,"_blank","noopener");
+      showPdfViewer(result&&result.url,"Possible invoice");
     }catch(e){
-      if(w) w.close();
       showToast(e.message||"Invoice PDF is not stored in Shift Board yet.",true);
     }
   }

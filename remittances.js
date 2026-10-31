@@ -7,6 +7,7 @@
     status:null, docs:[], targets:[], rules:[],
     filter:{date:"",amount:"",supplier:""},
     selectedTargetId:null,
+    showCleared:false,
     connectSession:null, connectCode:"", connectUri:"", connectInterval:8,
     notice:"",
     autoSupplier:"arval", autoPayment:"", autoValues:"", autoResults:[], autoGrossTarget:null,
@@ -266,19 +267,26 @@
   }
 
   function renderTargets(){
-    const rows=(local.targets||[]).slice(0,250).map(t=>{
+    const clearedCount=(local.targets||[]).filter(t=>t.status==="ignored").length;
+    const foundCount=(local.targets||[]).filter(t=>t.status==="found").length;
+    const visible=(local.targets||[]).filter(t=>local.showCleared ? true : t.status!=="ignored");
+    const rows=visible.slice(0,250).map(t=>{
       const doc=t.matched_document_id?docById(t.matched_document_id):null;
       const status=t.status==="found"
         ? '<span class="pill pill-approved">FOUND</span>'
         : t.status==="review"
           ? '<span class="pill pill-pending">REVIEW</span>'
-          : '<span class="pill pill-rejected">TO FIND</span>';
+          : t.status==="ignored"
+            ? '<span class="pill">CLEARED</span>'
+            : '<span class="pill pill-rejected">TO FIND</span>';
       const invoiceButton=t.possible_invoice_number
         ? '<button type="button" class="btn-sm" data-remit-action="open-invoice" data-target="'+esc(t.id)+'">Open invoice</button>'
         : '';
       const action=t.status==="found"&&doc
-        ? '<button type="button" class="btn-sm" data-remit-action="open-pdf" data-doc="'+esc(doc.id)+'">Open / Print PDF</button>'
-        : '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn-sm" data-remit-action="search-target" data-target="'+esc(t.id)+'">Find</button>'+invoiceButton+'</div>';
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn-sm" data-remit-action="open-pdf" data-doc="'+esc(doc.id)+'">Open / Print PDF</button><button type="button" class="btn-sm approve" data-remit-action="clear-target" data-target="'+esc(t.id)+'">Printed & clear</button></div>'
+        : t.status==="ignored"
+          ? '<button type="button" class="btn-sm" data-remit-action="restore-target" data-target="'+esc(t.id)+'">Restore</button>'
+          : '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn-sm" data-remit-action="search-target" data-target="'+esc(t.id)+'">Find</button>'+invoiceButton+'</div>';
       const evidence=t.matched_rule
         ? '<div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+esc(t.matched_rule)
           +(Number.isFinite(Number(t.matched_date_lag_days))?' · PDF '+Number(t.matched_date_lag_days)+' day'+(Number(t.matched_date_lag_days)===1?'':'s')+' before bank':'')
@@ -306,8 +314,11 @@
     }).join("");
     return '<div class="card">'
       +'<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px;">'
-      +'<div><b style="font-size:15px;">Remittances to find</b><div style="font-size:11px;color:var(--muted-2);margin-top:3px;">Forward Jack’s list to Shiftboard and these entries are created automatically.</div></div>'
-      +'</div>'
+      +'<div><b style="font-size:15px;">Remittances to find</b><div style="font-size:11px;color:var(--muted-2);margin-top:3px;">Forward Jack’s list to Shiftboard and these entries are created automatically. Once printed, clear completed matches to keep this list tidy.</div></div>'
+      +'<div style="display:flex;gap:7px;flex-wrap:wrap;">'
+      +(foundCount?'<button type="button" class="btn-sm approve" data-remit-action="clear-all-found">Clear all '+foundCount+' found</button>':'')
+      +(clearedCount?'<button type="button" class="btn-sm" data-remit-action="toggle-cleared">'+(local.showCleared?'Hide cleared':'Show cleared ('+clearedCount+')')+'</button>':'')
+      +'</div></div>'
       +'<div class="form-row" style="padding:10px;border:1px solid var(--line-soft);">'
       +'<div class="field"><label>Supplier</label><input id="remit-add-supplier" placeholder="Arval"></div>'
       +'<div class="field"><label>Bank date</label><input id="remit-add-date" type="date"></div>'
@@ -536,6 +547,48 @@
     }catch(e){ showToast(e.message||"Could not add payment.",true); }
   }
 
+  async function clearTarget(id){
+    const t=targetById(id);
+    if(!t || t.status!=="found") return;
+    try{
+      await rest("remittance_targets?id=eq."+encodeURIComponent(t.id),{
+        method:"PATCH",
+        headers:Object.assign(await authHeaders(),{"Prefer":"return=minimal"}),
+        body:{status:"ignored",updated_at:new Date().toISOString()}
+      });
+      local.notice="Cleared "+t.supplier+" "+money(t.amount)+" after printing. The record is still kept in cleared history.";
+      local.loaded=false; await load(true);
+    }catch(e){ showToast(e.message||"Could not clear remittance.",true); }
+  }
+
+  async function clearAllFound(){
+    const found=(local.targets||[]).filter(t=>t.status==="found");
+    if(!found.length) return;
+    try{
+      await rest("remittance_targets?status=eq.found",{
+        method:"PATCH",
+        headers:Object.assign(await authHeaders(),{"Prefer":"return=minimal"}),
+        body:{status:"ignored",updated_at:new Date().toISOString()}
+      });
+      local.notice="Cleared "+found.length+" printed remittance"+(found.length===1?"":"s")+". They remain available under Show cleared.";
+      local.loaded=false; await load(true);
+    }catch(e){ showToast(e.message||"Could not clear completed remittances.",true); }
+  }
+
+  async function restoreTarget(id){
+    const t=targetById(id);
+    if(!t || t.status!=="ignored") return;
+    try{
+      await rest("remittance_targets?id=eq."+encodeURIComponent(t.id),{
+        method:"PATCH",
+        headers:Object.assign(await authHeaders(),{"Prefer":"return=minimal"}),
+        body:{status:"found",updated_at:new Date().toISOString()}
+      });
+      local.notice="Restored "+t.supplier+" "+money(t.amount)+" to the live list.";
+      local.loaded=false; await load(true);
+    }catch(e){ showToast(e.message||"Could not restore remittance.",true); }
+  }
+
   function searchTarget(id){
     const t=targetById(id); if(!t) return;
     local.selectedTargetId=id;
@@ -611,6 +664,10 @@
       if(action==="full-scan") return await runScan(true);
       if(action==="open-pdf") return await openPdf(el.dataset.doc);
       if(action==="open-invoice") return await openInvoice(el.dataset.target);
+      if(action==="clear-target") return await clearTarget(el.dataset.target);
+      if(action==="clear-all-found") return await clearAllFound();
+      if(action==="restore-target") return await restoreTarget(el.dataset.target);
+      if(action==="toggle-cleared"){ local.showCleared=!local.showCleared; return renderNow(); }
       if(action==="apply-search") return renderNow();
       if(action==="clear-search"){
         local.filter={date:"",amount:"",supplier:""}; local.selectedTargetId=null; return renderNow();

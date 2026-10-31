@@ -70,7 +70,7 @@ function build(month,targets,batches,snapshots){
  const plan=targets[month];if(!plan||!plan.sites)throw Error("No approved target sheet exists for "+monthName(month)+".");
  const satDates=satsForMonth(month),rows=[],centres=[];
  for(const site of Object.values(plan.sites)){
-  const key=normalKey(site.siteKey);
+  const key=normalKey(site.siteKey)==="chester"?"chester-le-street":normalKey(site.siteKey);
   const days=(site.days||[]).filter(d=>d.saturday===true&&d.open===true);
   const detail=[];
   for(const d of days){

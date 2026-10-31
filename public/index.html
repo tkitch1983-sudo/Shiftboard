@@ -5583,6 +5583,12 @@ function holidayAllowanceMonthlyRate(emp){
 }
 function holidayAllowanceMonthStartBalance(emp,monthKey){
   const b=holidayMonthBounds(monthKey);
+  // From the month after an Employees balance correction, carry its actual
+  // closing balance forward instead of replaying an older monthly snapshot.
+  if(holidayAllowanceHasNewerEmployeeBalance(emp,monthKey) &&
+     String(emp.openingBalanceDate||'')<b.start){
+    return availableBalance(emp,addIsoDaysPure(b.start,-1));
+  }
   const history=state.config.holidayAllowanceHistory||{};
   const keys=Object.keys(history).filter(k=>/^\d{4}-\d{2}$/.test(k)&&k<monthKey).sort().reverse();
   for(const key of keys){
@@ -5634,6 +5640,14 @@ function holidayAllowanceLiveRowsForMonth(monthKey){
   return (state.config.employees||[]).filter(e=>e.active!==false).map(e=>{
     const allowance=Number(e.allowanceDays||state.config.settings.defaultAnnualEntitlement||20);
     const u=unitLabel(e);
+    const taken=holidayBookedBetween(e,b.start,asOf);
+    const monthStart=holidayAllowanceMonthStartBalance(e,monthKey);
+    const currentBalance=holidayAllowanceMonthEndBalance(e,monthKey);
+    // Show an explicit adjustment so month start + accrual - holiday +
+    // manual correction exactly reconciles to the current month end.
+    const balanceAdjustment=holidayAllowanceHasNewerEmployeeBalance(e,monthKey) &&
+      String(e.openingBalanceDate||'').slice(0,7)===monthKey
+      ? currentBalance-(monthStart+holidayAllowanceMonthlyRate(e)-taken) : 0;
     return {
       employeeId:e.id,
       name:e.name,
@@ -5642,9 +5656,10 @@ function holidayAllowanceLiveRowsForMonth(monthKey){
       unit:u,
       allowance,
       monthlyRate:Number(e.monthlyRate!==undefined?e.monthlyRate:(state.config.settings.monthlyAccrualRate||1.66)),
-      taken:holidayBookedBetween(e,b.start,asOf),
-      monthStart:holidayAllowanceMonthStartBalance(e,monthKey),
-      currentBalance:holidayAllowanceMonthEndBalance(e,monthKey),
+      taken,
+      monthStart,
+      currentBalance,
+      balanceAdjustment,
       bookedToYearEnd:asOf<yearEnd?holidayBookedBetween(e,addIsoDaysPure(asOf,1),yearEnd):0,
       projectedYearEnd:holidayAllowanceMonthEndBalance(e,String(b.year)+'-12'),
       nextYearBooked:holidayBookedBetween(e,nextYearStart,nextYearEnd)
@@ -5727,6 +5742,7 @@ function renderAdminHolidayAllowance(){
     const taken=Number(r.taken||0);
     const monthStart=Number(r.monthStart||0);
     const balance=Number(r.currentBalance||0);
+    const adjustment=Number(r.balanceAdjustment||0);
     const booked=Number(r.bookedToYearEnd||0);
     const projected=Number(r.projectedYearEnd||0);
     const nextBooked=Number(r.nextYearBooked||0);
@@ -5735,6 +5751,7 @@ function renderAdminHolidayAllowance(){
       +'<td class="mono">'+allowance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+taken.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(monthStart<0?'color:var(--red);':'')+'">'+monthStart.toFixed(2)+' '+u+'</td>'
+      +(isCurrent?'<td class="mono" style="'+(adjustment<0?'color:var(--red);':'')+'">'+(adjustment>0.005?'+':'')+adjustment.toFixed(2)+' '+u+'</td>':'')
       +'<td class="mono" style="'+(balance<0?'color:var(--red);':'')+'">'+balance.toFixed(2)+' '+u+'</td>'
       +'<td class="mono">'+booked.toFixed(2)+' '+u+'</td>'
       +'<td class="mono" style="'+(projected<0?'color:var(--red);':'')+'">'+projected.toFixed(2)+' '+u+'</td>'
@@ -5767,10 +5784,10 @@ function renderAdminHolidayAllowance(){
     +'<div id="holiday-allowance-site-output" class="card" style="margin-top:0;">'
       +'<div style="margin-bottom:12px;"><div style="font-family:Oswald,sans-serif;font-size:20px;font-weight:600;">Holiday Allowance / Taken — '+salesHtml(siteLabel)+'</div>'
       +'<div style="font-size:12px;color:var(--muted);">'+holidayMonthLabel(selectedMonth)+(isCurrent?' · Month-end balance at '+fmtDate(monthBounds.end)+' · updated live':' · Archived month')+'</div></div>'
-      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Approved this month</th><th>Month start</th><th>Month-end balance</th><th>Booked after month end</th><th>Projected year-end balance</th><th>Next year booked</th></tr></thead>'
-      +'<tbody>'+(tableRows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No saved holiday data for this selection.</td></tr>')+'</tbody></table>'
+      +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Approved this month</th><th>Month start</th>'+(isCurrent?'<th>Manual correction</th>':'')+'<th>Month-end balance</th><th>Booked after month end</th><th>Projected year-end balance</th><th>Next year booked</th></tr></thead>'
+      +'<tbody>'+(tableRows||'<tr><td colspan="'+(selected==='all'?(isCurrent?10:9):(isCurrent?9:8))+'" class="empty-state">No saved holiday data for this selection.</td></tr>')+'</tbody></table>'
     +'</div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start carries forward the previous month’s closing balance. Month-end balance adds that allowance once and deducts all approved holidays through the last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live, including employee balance corrections saved after the last monthly snapshot; year-end projections carry those corrections forward. Saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start carries forward the previous month’s closing balance. Any balance correction saved in Employees during the current month is shown separately and carried forward thereafter. Month-end balance adds that month’s accrual once, applies any correction, and deducts approved holidays through the last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live, including employee balance corrections saved after the last monthly snapshot; year-end projections carry those corrections forward. Saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
 }
 
 function renderAdminEmployees(){

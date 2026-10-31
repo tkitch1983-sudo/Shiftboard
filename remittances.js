@@ -13,6 +13,28 @@
     ocrBusy:false, ocrMessage:""
   };
   let pollTimer = null;
+  const CONNECT_STORE = "neas-remittance-connect-v1";
+  function saveConnectState(){
+    try{
+      if(!local.connectSession){ localStorage.removeItem(CONNECT_STORE); return; }
+      localStorage.setItem(CONNECT_STORE,JSON.stringify({
+        session:local.connectSession,code:local.connectCode,uri:local.connectUri,
+        interval:local.connectInterval,savedAt:Date.now()
+      }));
+    }catch(_e){}
+  }
+  function restoreConnectState(){
+    try{
+      const raw=localStorage.getItem(CONNECT_STORE); if(!raw) return;
+      const x=JSON.parse(raw);
+      if(!x||!x.session||Date.now()-Number(x.savedAt||0)>30*60*1000){ localStorage.removeItem(CONNECT_STORE); return; }
+      local.connectSession=String(x.session);
+      local.connectCode=String(x.code||"");
+      local.connectUri=String(x.uri||"https://microsoft.com/devicelogin");
+      local.connectInterval=Math.max(6,Number(x.interval||8));
+    }catch(_e){}
+  }
+  restoreConnectState();
 
   function esc(v){
     return String(v == null ? "" : v).replace(/[&<>"']/g, c => ({
@@ -348,6 +370,7 @@
       local.connectCode=result.user_code||"";
       local.connectUri=result.verification_uri||"https://microsoft.com/devicelogin";
       local.connectInterval=Math.max(6,Number(result.interval_seconds||5)+2);
+      saveConnectState();
       startPolling();
       renderNow();
     }catch(e){
@@ -368,6 +391,7 @@
       if(result.status==="connected"){
         if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
         local.connectSession=null; local.connectCode="";
+        saveConnectState();
         local.notice="Remittance mailbox connected. Shift Board can now build the PDF library.";
         local.loaded=false; await load(true);
       }else if(!silent){
@@ -375,6 +399,7 @@
       }
     }catch(e){
       if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+      saveConnectState();
       local.error=e.message||String(e);
       renderNow();
     }finally{ local.busy=false; }
@@ -533,6 +558,20 @@
       if(file) ocrImage(file);
     }
   });
+
+  document.addEventListener("visibilitychange",()=>{
+    if(!document.hidden && local.connectSession){
+      startPolling();
+      setTimeout(()=>pollConnection(true),150);
+    }
+  });
+  window.addEventListener("focus",()=>{
+    if(local.connectSession) setTimeout(()=>pollConnection(true),150);
+  });
+  if(local.connectSession){
+    startPolling();
+    setTimeout(()=>pollConnection(true),500);
+  }
 
   window.NEASRemittances = {
     render: renderPanel,

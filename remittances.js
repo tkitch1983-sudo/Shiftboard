@@ -96,7 +96,7 @@
       const results = await Promise.all([
         api("status"),
         rest("remittance_documents?select=id,supplier,site_hint,payment_date,payment_amount,candidate_amounts,received_at,sender_email,sender_name,subject,attachment_name,attachment_size,indexed_at&order=received_at.desc&limit=1500"),
-        rest("remittance_targets?select=id,supplier,payment_date,amount,status,matched_document_id,matched_amount_difference_pence,matched_date_lag_days,matched_rule,source_subject,source_text,source_received_at,created_at,updated_at&order=payment_date.desc,amount.desc&limit=1500"),
+        rest("remittance_targets?select=id,supplier,payment_date,amount,status,matched_document_id,matched_amount_difference_pence,matched_date_lag_days,matched_rule,possible_invoice_site,possible_invoice_number,possible_job_number,possible_invoice_date,possible_invoice_amount,possible_invoice_account,possible_invoice_confidence,possible_invoice_reason,source_subject,source_text,source_received_at,created_at,updated_at&order=payment_date.desc,amount.desc&limit=1500"),
         rest("remittance_supplier_rules?select=supplier_key,display_name,deduction_percent,deduction_vat_percent,notes&active=eq.true&order=display_name.asc")
       ]);
       local.status=results[0]||{};
@@ -263,9 +263,12 @@
         : t.status==="review"
           ? '<span class="pill pill-pending">REVIEW</span>'
           : '<span class="pill pill-rejected">TO FIND</span>';
+      const invoiceButton=t.possible_invoice_number
+        ? '<button type="button" class="btn-sm" data-remit-action="open-invoice" data-target="'+esc(t.id)+'">Open invoice</button>'
+        : '';
       const action=t.status==="found"&&doc
         ? '<button type="button" class="btn-sm" data-remit-action="open-pdf" data-doc="'+esc(doc.id)+'">Open / Print PDF</button>'
-        : '<button type="button" class="btn-sm" data-remit-action="search-target" data-target="'+esc(t.id)+'">Find</button>';
+        : '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn-sm" data-remit-action="search-target" data-target="'+esc(t.id)+'">Find</button>'+invoiceButton+'</div>';
       const evidence=t.matched_rule
         ? '<div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+esc(t.matched_rule)
           +(Number.isFinite(Number(t.matched_date_lag_days))?' · PDF '+Number(t.matched_date_lag_days)+' day'+(Number(t.matched_date_lag_days)===1?'':'s')+' before bank':'')
@@ -276,7 +279,19 @@
             :'')
           +'</div>'
         : '';
-      return '<tr><td>'+status+'</td><td><b>'+esc(t.supplier)+'</b><div style="font-size:10px;color:var(--muted-2);">'+esc(t.source_text||t.source_subject||"Manual")+'</div>'+evidence+'</td>'
+      const possibleInvoice=t.possible_invoice_number
+        ? '<div style="margin-top:7px;padding:7px 8px;border:1px solid var(--line-soft);border-radius:8px;background:var(--panel-2);">'
+          +'<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;"><span class="pill pill-pending">POSSIBLE INVOICE</span><b class="mono">'+esc(t.possible_invoice_number)+'</b>'
+          +(t.possible_job_number?'<span class="mono" style="font-size:11px;color:var(--muted);">Job '+esc(t.possible_job_number)+'</span>':'')+'</div>'
+          +'<div style="font-size:10px;color:var(--muted);margin-top:5px;">'
+          +(t.possible_invoice_site?esc(String(t.possible_invoice_site).replace(/(^|-)([a-z])/g,(_,a,b)=>(a?"-":"")+b.toUpperCase()))+' · ':'')
+          +(t.possible_invoice_date?dateLabel(t.possible_invoice_date)+' · ':'')
+          +(Number.isFinite(Number(t.possible_invoice_amount))?money(t.possible_invoice_amount)+' · ':'')
+          +esc(t.possible_invoice_account||'AutoWork candidate')+'</div>'
+          +(t.possible_invoice_reason?'<div style="font-size:10px;color:var(--muted-2);margin-top:4px;">'+esc(t.possible_invoice_reason)+'</div>':'')
+          +'</div>'
+        : '';
+      return '<tr><td>'+status+'</td><td><b>'+esc(t.supplier)+'</b><div style="font-size:10px;color:var(--muted-2);">'+esc(t.source_text||t.source_subject||"Manual")+'</div>'+evidence+possibleInvoice+'</td>'
         +'<td class="mono">'+dateLabel(t.payment_date)+'</td><td class="mono"><b>'+money(t.amount)+'</b></td><td>'+action+'</td></tr>';
     }).join("");
     return '<div class="card">'
@@ -393,6 +408,17 @@
     }catch(e){
       if(w) w.close();
       showToast(e.message||"Could not open PDF.",true);
+    }
+  }
+
+  async function openInvoice(targetId){
+    const w=window.open("about:blank","_blank");
+    try{
+      const result=await api("invoice_url",{target_id:targetId});
+      if(w) w.location.href=result.url; else window.open(result.url,"_blank","noopener");
+    }catch(e){
+      if(w) w.close();
+      showToast(e.message||"Invoice PDF is not stored in Shift Board yet.",true);
     }
   }
 
@@ -553,6 +579,7 @@
       if(action==="scan") return await runScan(false);
       if(action==="full-scan") return await runScan(true);
       if(action==="open-pdf") return await openPdf(el.dataset.doc);
+      if(action==="open-invoice") return await openInvoice(el.dataset.target);
       if(action==="apply-search") return renderNow();
       if(action==="clear-search"){
         local.filter={date:"",amount:"",supplier:""}; local.selectedTargetId=null; return renderNow();

@@ -399,8 +399,16 @@
       }
     }catch(e){
       if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
-      saveConnectState();
-      local.error=e.message||String(e);
+      const msg=e.message||String(e);
+      if(/expired|declined|invalid connection session/i.test(msg)){
+        local.connectSession=null;
+        local.connectCode="";
+        local.connectUri="";
+        saveConnectState();
+      }else{
+        saveConnectState();
+      }
+      local.error=msg;
       renderNow();
     }finally{ local.busy=false; }
   }

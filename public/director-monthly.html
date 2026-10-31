@@ -4,6 +4,13 @@
 @media(max-width:950px){.hero,.rows,.grid2{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:580px){.shell{padding:15px 12px 35px}.mast{align-items:flex-start}.mast .badge{font-size:9px}.hero-main,.verdict,.section{padding:17px}.kpi{padding:14px;min-height:120px}.kpis{gap:9px}.toolbar{gap:7px}.week{grid-template-columns:58px 1fr 80px;gap:7px}.metric-strip{grid-template-columns:1fr 1fr 1fr}}
 @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{background:#fff;color:#142037;font-size:11px}.shell{max-width:100%;padding:0}.mast{margin-bottom:12px}.mast .badge{color:#304154}.toolbar,#error{display:none!important}.hero{grid-template-columns:1.4fr 1fr;gap:10px;margin-bottom:10px}.hero-main,.verdict,.kpi,.section{box-shadow:none;background:#f3f6f9!important;color:#142037;border-color:#cfd7e0;break-inside:avoid;padding:13px}.hero-main{background:#ecf6f7!important}.eyebrow{color:#267e7e}.hero-main h1{font-size:27px}.verdict p,.sub,.section-top p,.sidebox p,.footnote,.action p{color:#526071}.kpi{min-height:90px}.kpi .cap,.kpi .foot{color:#526071}.kpi .value{font-size:24px}.kpis{gap:7px;margin-bottom:10px}.section{margin-bottom:10px}.sidebox,.metric-strip div{background:#e8eff4;color:#122039;border-color:#ced8e1}.sidebox .big,.negative{color:#bb3044!important}.positive{color:#117a65!important}.amber{color:#a66d12!important}.flag{background:#fbe4e5;color:#a02031}.barwrap{background:#d8e3eb!important}.bar{background:#58bdb2!important}.status{border:1px solid #c8d1db}.status.red{background:#fce5e7;color:#a51d31}.status.ok{background:#def8ed;color:#14694f}.status.warn{background:#fff1d5;color:#986818}th{background:#e8eef5;color:#35485a}td{border-color:#ccd6df}tr:hover td{background:none}th,td{padding:7px}.footer{color:#516072}.section-top{margin-bottom:9px}.grid2,.rows{grid-template-columns:1fr 1fr;gap:10px}a{color:inherit}}
+
+[hidden]{display:none!important}
+#report-login-form{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+#report-login-form label{display:flex;flex-direction:column;gap:5px;min-width:180px;flex:1;color:var(--text)}
+#report-login-form input{min-height:42px;width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 10px;background:var(--panel2);color:var(--text);font:inherit}
+#report-login-form button{min-height:42px}
+#login-error{color:var(--red);margin:10px 0 0}
 </style></head><body>
 <div class="shell">
   <header class="mast"><div class="logo"><div class="mark">S<span style="font-size:14px">B</span></div><div>Shift Board<div style="font-size:10px;color:#80e7d0;letter-spacing:.14em;text-transform:uppercase">Business Intelligence</div></div></div><span class="badge">Directors • Live source review</span></header>
@@ -15,6 +22,17 @@
     <a class="btn" style="text-decoration:none" href="./index.html">Back to Shift Board</a>
   </div>
   <div class="notice" id="status" role="status">Checking your management session and loading source records…</div>
+  <section class="section" id="login-panel" hidden>
+    <h2>Sign in to view the Director’s Report</h2>
+    <p>The report uses the same Upper Management login as Shift Board. Your existing session may not carry across to this address.</p>
+    <form id="report-login-form" autocomplete="on">
+      <label>Email <input id="report-email" type="email" autocomplete="username" inputmode="email" required></label>
+      <label>Password <input id="report-password" type="password" autocomplete="current-password" required></label>
+      <button type="submit" class="btn primary" id="report-sign-in">Sign in securely</button>
+    </form>
+    <p id="login-error" role="alert" hidden></p>
+    <p class="footnote">Use your existing Shift Board account. Access is restricted to Upper Management; this screen does not send reports.</p>
+  </section>
   <div id="report" aria-live="polite"></div>
   <div class="footer"><span>North East Auto Services Group • Shift Board</span><span>Confidential • Draft only • Email dispatch disabled</span></div>
 </div>
@@ -35,11 +53,60 @@ function setStatus(msg,ok){const e=document.getElementById("status");e.textConte
 function firstDate(m){return m+"-01";}
 function lastDate(m){let [y,mo]=m.split("-").map(Number);return m+"-"+String(new Date(Date.UTC(y,mo,0)).getUTCDate()).padStart(2,"0");}
 function satsForMonth(m){const a=[];let d=new Date(firstDate(m)+"T12:00:00Z");let e=new Date(lastDate(m)+"T12:00:00Z");while(d<=e){if(d.getUTCDay()===6)a.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}return a;}
+const SESSION_NAME="shiftboard_session_v1";
+function tokenInfo(token){
+ try{
+  const part=token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+  const obj=JSON.parse(atob(part));
+  return {role:obj.app_metadata?.role||null,email:obj.email||""};
+ }catch(_){return {role:null,email:""};}
+}
+function currentStoredSession(){
+ try{return JSON.parse(localStorage.getItem(SESSION_NAME)||"null");}catch(_){return null;}
+}
 function session(){
- let s=null;try{s=JSON.parse(localStorage.getItem("shiftboard_session_v1")||"null");}catch(_){}
- if(!s||!s.access_token||s.role!=="super"||Date.now()-Number(s.lastActive||0)>3600000)return null;
- if(s.expires_at && Date.now()>=Number(s.expires_at)-30000)return null;
+ const s=currentStoredSession();
+ if(!s||!s.access_token)return null;
+ if(Date.now()-Number(s.lastActive||0)>3600000)return null;
+ if(tokenInfo(s.access_token).role!=="super")return null;
+ if(s.expires_at&&Date.now()>=Number(s.expires_at)-30000)return null;
  return s;
+}
+async function getSession(){
+ const ready=session();if(ready)return ready;
+ const s=currentStoredSession();
+ if(!s||!s.refresh_token||Date.now()-Number(s.lastActive||0)>3600000)return null;
+ if(tokenInfo(s.access_token||"").role!=="super")return null;
+ try{
+  const response=await fetch(HOST+"/auth/v1/token?grant_type=refresh_token",{
+   method:"POST",headers:{"apikey":KEY,"Content-Type":"application/json"},
+   body:JSON.stringify({refresh_token:s.refresh_token})
+  });
+  if(!response.ok)return null;
+  const data=await response.json();
+  const info=tokenInfo(data.access_token||"");
+  if(info.role!=="super")return null;
+  const next={...s,access_token:data.access_token,refresh_token:data.refresh_token||s.refresh_token,expires_at:Date.now()+(Number(data.expires_in||3600)*1000),role:info.role,email:info.email||s.email,lastActive:Date.now()};
+  localStorage.setItem(SESSION_NAME,JSON.stringify(next));
+  return next;
+ }catch(_){return null;}
+}
+function showLogin(show){
+ document.getElementById("login-panel").hidden=!show;
+ if(!show)document.getElementById("login-error").hidden=true;
+}
+async function reportSignIn(email,password){
+ const response=await fetch(HOST+"/auth/v1/token?grant_type=password",{
+  method:"POST",headers:{"apikey":KEY,"Content-Type":"application/json"},
+  body:JSON.stringify({email,password})
+ });
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw Error(data.error_description||data.msg||data.message||"Email or password not recognised.");
+ const info=tokenInfo(data.access_token||"");
+ if(info.role!=="super")throw Error("This report requires an Upper Management account.");
+ const next={access_token:data.access_token,refresh_token:data.refresh_token,expires_at:Date.now()+Number(data.expires_in||3600)*1000,role:info.role,email:info.email||email,lastActive:Date.now()};
+ localStorage.setItem(SESSION_NAME,JSON.stringify(next));
+ return next;
 }
 async function api(table,params,s){
  const url=HOST+"/rest/v1/"+table+"?"+new URLSearchParams(params);
@@ -143,7 +210,7 @@ function emailHtml(d){
  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Shift Board '+esc(d.month)+' Director Draft</title></head><body style="font-family:Arial,sans-serif;line-height:1.5;background:#eef3f6;padding:20px;color:#13243a"><div style="max-width:700px;margin:auto;background:#fff;padding:28px"><div style="background:#17273d;color:#fff;padding:22px"><strong>SHIFT BOARD</strong><h1>Director’s Month-End Report</h1><p>'+esc(monthName(d.month))+' • North East Auto Services Group</p></div><p style="padding:12px;background:#fff0d6;color:#784d00"><strong>DRAFT — NOT APPROVED FOR AUTOMATIC DELIVERY.</strong> Saturday records include staged imports; recipients and final figures require sign-off.</p><h2>Executive summary</h2><p>AutoWork MTD sales '+money(d.monthlySales)+' (snapshot '+esc(d.latest||"unavailable")+'). Saturday actuals entered '+money(d.sales)+' against '+money(d.target)+' comparable target. '+d.misses+' Saturday site-days below target, with combined individual-day target shortfall '+money(d.shortfall)+'. This is not proven lost revenue.</p><h2>Saturday centre comparison</h2><table style="border-collapse:collapse;width:100%"><tr><th style="text-align:left">Centre</th><th>Entered</th><th>Target</th><th>Attainment</th></tr>'+rows+'</table><h2>Outstanding checks</h2><p>'+d.confirmed+' of '+d.rows.length+' Saturday records fully verified; '+d.sourceMatched+' source-matched but staged; '+d.sourceConflicts.length+' exceptions.</p><ul>'+(problems||'<li>No other critical exceptions identified.</li>')+'</ul><p style="font-size:12px;color:#526271">Saturday sales come from Targets entries cross-checked against available source records; monthly sales from the latest AutoWork snapshot. Missing dates are not zero. No individual pay, private remittance, operating profit or unverified savings figures are included.</p><p><strong>Next action:</strong> reconcile exceptions and approve figures before director distribution.</p></div></body></html>';
 }
 async function load(){
- const s=session();if(!s){setStatus("You need an active Upper Management session. Sign in through Shift Board and reopen this report.",false);document.getElementById("report").innerHTML="";return;}
+ const s=await getSession();if(!s){showLogin(true);setStatus("Sign in using your Shift Board Upper Management account to load the report.",false);document.getElementById("report").innerHTML="";payload=null;return;}showLogin(false);
  const month=document.getElementById("month").value;if(!/^\d{4}-\d{2}$/.test(month))return;
  setStatus("Loading live targets, day-sheet source checks and AutoWork snapshots…",false);
  try{
@@ -160,6 +227,25 @@ async function load(){
  }catch(err){payload=null;document.getElementById("report").innerHTML="";setStatus("Could not prepare report: "+err.message,false);}
 }
 document.getElementById("month").value=new Date().toLocaleDateString("en-CA",{timeZone:"Europe/London"}).slice(0,7);
+document.getElementById("report-login-form").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const button=document.getElementById("report-sign-in");
+ const error=document.getElementById("login-error");
+ const email=document.getElementById("report-email").value.trim();
+ const pass=document.getElementById("report-password");
+ button.disabled=true;error.hidden=true;
+ try{
+  await reportSignIn(email,pass.value);
+  pass.value="";
+  showLogin(false);
+  await load();
+ }catch(err){
+  pass.value="";
+  error.textContent=err.message||"Unable to sign in.";
+  error.hidden=false;
+  setStatus("Unable to sign in: "+error.textContent,false);
+ }finally{button.disabled=false;}
+});
 document.getElementById("refresh").addEventListener("click",load);
 document.getElementById("month").addEventListener("change",load);
 document.getElementById("email").addEventListener("click",()=>{if(!payload){setStatus("Load the report before exporting an email.",false);return;}download("shiftboard-director-email-DRAFT-"+payload.month+".html",emailHtml(payload));});

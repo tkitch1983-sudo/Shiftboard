@@ -5600,8 +5600,27 @@ function holidayAllowanceMonthStartBalance(emp,monthKey){
   const previousEnd=addIsoDaysPure(b.start,-1);
   return accruedToDate(emp,previousEnd)-holidayApprovedSinceOpening(emp,previousEnd);
 }
+// An employee balance saved in Employees is a new as-of-date starting point.
+// Prefer it over a monthly closing snapshot saved before that correction.
+// Archived month rows remain untouched; later months inherit the correction.
+function holidayAllowanceHasNewerEmployeeBalance(emp,monthKey){
+  const b=holidayMonthBounds(monthKey);
+  const balanceDate=String(emp.openingBalanceDate||'');
+  if(!b || !/^\d{4}-\d{2}-\d{2}$/.test(balanceDate) || balanceDate>b.end) return false;
+  const history=state.config.holidayAllowanceHistory||{};
+  const latestKey=Object.keys(history)
+    .filter(k=>/^\d{4}-\d{2}$/.test(k) && k<monthKey && (history[k]?.rows||[]).some(r=>r.employeeId===emp.id))
+    .sort().pop();
+  if(!latestKey) return true;
+  const savedDate=String(history[latestKey].savedAt||'').slice(0,10);
+  const cutoff=/^\d{4}-\d{2}-\d{2}$/.test(savedDate) ? savedDate : holidayMonthBounds(latestKey).end;
+  return balanceDate>cutoff;
+}
 function holidayAllowanceMonthEndBalance(emp,monthKey){
   const b=holidayMonthBounds(monthKey);
+  if(holidayAllowanceHasNewerEmployeeBalance(emp,monthKey)){
+    return availableBalance(emp,b.end);
+  }
   return holidayAllowanceMonthStartBalance(emp,monthKey)+holidayAllowanceMonthlyRate(emp)-holidayBookedBetween(emp,b.start,b.end);
 }
 function holidayAllowanceLiveRowsForMonth(monthKey){
@@ -5751,7 +5770,7 @@ function renderAdminHolidayAllowance(){
       +'<table><thead><tr><th>Name</th>'+(selected==='all'?'<th>Site</th>':'')+'<th>Allowance</th><th>Approved this month</th><th>Month start</th><th>Month-end balance</th><th>Booked after month end</th><th>Projected year-end balance</th><th>Next year booked</th></tr></thead>'
       +'<tbody>'+(tableRows||'<tr><td colspan="'+(selected==='all'?9:8)+'" class="empty-state">No saved holiday data for this selection.</td></tr>')+'</tbody></table>'
     +'</div>'
-    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start carries forward the previous month’s closing balance. Month-end balance adds that allowance once and deducts all approved holidays through the last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live; saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
+    +'<div style="font-size:11px;color:var(--muted-2);line-height:1.5;">Month start carries forward the previous month’s closing balance. Month-end balance adds that allowance once and deducts all approved holidays through the last day. Booked after month end covers the following day through 31 December; projected year-end balance includes the remaining monthly allowance and those bookings. Next year’s bookings are separate. Petrol balances show hours; workshop balances show days, both to two decimal places. The current month updates live, including employee balance corrections saved after the last monthly snapshot; year-end projections carry those corrections forward. Saved previous months keep their original figures. Print and Save use the selected site and month.</div>';
 }
 
 function renderAdminEmployees(){

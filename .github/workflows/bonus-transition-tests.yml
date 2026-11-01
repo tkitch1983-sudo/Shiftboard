@@ -1,0 +1,31 @@
+name: Shiftboard bonus transition tests
+on:
+  push:
+    paths:
+      - 'bonus-prediction-lido.js'
+      - 'public/bonus-prediction-lido.js'
+      - 'tests/bonus-lee-dunn-transition.test.cjs'
+      - '.github/workflows/bonus-transition-tests.yml'
+  pull_request:
+    paths:
+      - 'bonus-prediction-lido.js'
+      - 'public/bonus-prediction-lido.js'
+      - 'tests/bonus-lee-dunn-transition.test.cjs'
+      - '.github/workflows/bonus-transition-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate bonus script syntax
+        run: node --check bonus-prediction-lido.js && node --check public/bonus-prediction-lido.js
+      - name: Verify both deployed copies match
+        run: cmp -s bonus-prediction-lido.js public/bonus-prediction-lido.js
+      - name: Check Lee Dunn bonus transition
+        run: node --test tests/bonus-lee-dunn-transition.test.cjs

@@ -36,7 +36,7 @@ function setup() {
     bonusMonthData: () => ({sitePredictions:{}}),
     bonusSnapshotsForMonth: () => snapshots,
     bonusSiteKey: name => String(name || '').toLowerCase(),
-    bonusRole: emp => emp.name.includes('Dunn') ? 'reception' : 'workshop',
+    bonusRole: emp => emp.bonusRole || (emp.name.includes('Dunn') ? 'reception' : 'workshop'),
     bonusEmployeeCalc: originalCalc,
     document: { addEventListener() {}, querySelectorAll() { return []; } },
     window: {},

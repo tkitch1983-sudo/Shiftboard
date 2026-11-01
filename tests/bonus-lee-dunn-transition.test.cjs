@@ -13,7 +13,7 @@ function setup() {
     siteKey: siteCalc.siteKey,
     base: siteCalc.staffBonus,
     davanti: siteCalc.davantiBonus,
-    addOn: siteCalc.addOnBonus,
+    addOn: siteCalc.addOnBonus / receptionCount,
     receptionCount
   });
   const rules = {
@@ -56,21 +56,28 @@ function setup() {
   return context;
 }
 
-test('Lee Dunn uses Fairfield bonus during Sep–Dec 2026, not Lee Hornsey', () => {
+test('Lee Dunn takes only Fairfield base Sep–Dec 2026, while Davanti and add-on remain Lido', () => {
   const ctx = setup(), draft = {employees:{}};
   const lido = {siteKey:'lido',staffBonus:450,davantiBonus:88,addOnBonus:200};
   const middlesbrough = {siteKey:'middlesbrough',staffBonus:550,davantiBonus:0,addOnBonus:234};
   for (const name of ['Lee Dunn','L Dunn']) {
     const actual = ctx.bonusEmployeeCalc({name},lido,'2026-10',draft,1);
-    assert.equal(actual.siteKey,'fairfield');
+    assert.equal(actual.siteKey,'lido');
     assert.equal(actual.base,650);
-    assert.equal(actual.davanti,50);
-    assert.equal(actual.receptionCount,2);
+    assert.equal(actual.davanti,88);
+    assert.equal(actual.addOn,200);
+    assert.equal(actual.receptionCount,1);
+    const withTwoReceptionists = ctx.bonusEmployeeCalc({name},lido,'2026-10',draft,2);
+    assert.equal(withTwoReceptionists.base,650);
+    assert.equal(withTwoReceptionists.davanti,88);
+    assert.equal(withTwoReceptionists.addOn,100);
+    assert.equal(withTwoReceptionists.receptionCount,2);
   }
   for (const name of ['Lee Hornsey','L Hornsey','L Hornsley']) {
     const actual = ctx.bonusEmployeeCalc({name},middlesbrough,'2026-10',draft,2);
     assert.equal(actual.siteKey,'middlesbrough');
     assert.equal(actual.base,550);
+    assert.equal(actual.addOn,117);
   }
 });
 
@@ -82,6 +89,8 @@ test('Lee Dunn uses Lido bonus from January 2027 onward', () => {
   assert.equal(actual.siteKey,'lido');
   assert.equal(actual.base,450);
   assert.equal(actual.davanti,88);
+  assert.equal(actual.addOn,200);
+  assert.equal(actual.receptionCount,1);
 });
 
 test('Lee Dunn is not backdated to Fairfield before September 2026', () => {
@@ -94,6 +103,7 @@ test('Lee Dunn is not backdated to Fairfield before September 2026', () => {
 });
 
 test('Bonus Levels wording names Lee Dunn', () => {
-  assert.match(script, /Lee Dunn follows Fairfield bonus calculations/);
+  assert.match(script, /Lee Dunn receives the Fairfield base staff bonus/);
+  assert.match(script, /his Davanti bonus and add-on share remain based on Lido/);
   assert.doesNotMatch(script, /Lee Hornsey follows Fairfield bonus calculations/);
 });

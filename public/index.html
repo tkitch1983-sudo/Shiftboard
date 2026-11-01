@@ -6127,6 +6127,42 @@ function renderAdminSites(){
   <div class="card"><div class="form-row"><div class="field"><label>New site name</label><input type="text" id="new-site-name" placeholder="e.g. Sunderland"></div><button type="button" class="add-btn" data-action="add-site">+ Add site</button></div></div>`;
 }
 
+const CLOSURE_SITES = [
+ ['chester-le-street','Chester-le-Street'],['fairfield','Fairfield'],['gateshead','Gateshead'],
+ ['hartlepool','Hartlepool'],['lido','Lido'],['middlesbrough','Middlesbrough'],['peterlee','Peterlee'],['seaham','Seaham']
+];
+async function closureRequest(query='',options={}){
+ const response=await fetch(SUPABASE_URL+'/rest/v1/site_one_off_closures'+query,{
+  ...options,headers:{...await authHeaders(),...(options.headers||{})}
+ });
+ if(!response.ok)throw Error('Could not sync closures (HTTP '+response.status+'). Please retry.');
+ const text=await response.text();
+ return text?JSON.parse(text):null;
+}
+async function loadOneOffClosures(){
+ if(state.admin._loadingClosures)return;
+ state.admin._loadingClosures=true;
+ try{
+  state.admin.oneOffClosures=await closureRequest('?select=site_key,closure_date&order=closure_date.desc,site_key.asc');
+  state.admin.closureError='';
+ }catch(e){state.admin.closureError=e.message;}
+ finally{state.admin._loadingClosures=false;if(state.admin.tab==='bankholidays')render();}
+}
+function renderOneOffClosures(){
+ if(!state.admin.oneOffClosures&&!state.admin._loadingClosures&&!state.admin.closureError)loadOneOffClosures();
+ const rows=(state.admin.oneOffClosures||[]).map(c=>`<tr><td>${salesHtml((CLOSURE_SITES.find(s=>s[0]===c.site_key)||[c.site_key,c.site_key])[1])}</td><td class="mono">${fmtDate(c.closure_date)}</td><td><button type="button" class="icon-btn" data-action="remove-closure" data-site="${salesHtml(c.site_key)}" data-date="${salesHtml(c.closure_date)}">Remove</button></td></tr>`).join('');
+ return `<h2 style="margin-top:28px;">One-off site closures</h2>
+ <div class="head-sub">Choose a workshop and one closed date. Normal opening days stay unchanged. The jobs importer will mark this date Closed instead of expecting a daily report. This does not change staff holiday allowances or saved targets.</div>
+ <div class="form-row">
+ <div class="field"><label for="closure-site">Site</label><select id="closure-site">${CLOSURE_SITES.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
+ <div class="field"><label for="closure-date">Closed date</label><input type="date" id="closure-date"></div>
+ <button type="button" class="add-btn" data-action="add-closure">+ Add closure</button></div>
+ ${state.admin.closureError?`<div role="alert">${salesHtml(state.admin.closureError)}</div>`:''}
+ <button type="button" class="icon-btn" data-action="refresh-closures">Refresh closures</button>
+ <div class="card"><table><thead><tr><th>Site</th><th>Date</th><th></th></tr></thead>
+ <tbody>${rows||`<tr><td colspan="3">${state.admin._loadingClosures?'Loading closures…':state.admin.closureError?'Closures unavailable. Please retry.':'No one-off closures saved.'}</td></tr>`}</tbody></table></div>`;
+}
+
 function renderAdminBankHolidays(){
   const rows = state.config.bankHolidays.slice().sort().map(d=>`
     <tr><td class="mono">${fmtDate(d)}</td><td><button type="button" class="icon-btn" data-action="remove-bh" data-date="${d}">Remove</button></td></tr>
@@ -6141,7 +6177,7 @@ function renderAdminBankHolidays(){
   <div class="form-row">
     <div class="field"><label>Add date</label><input type="date" id="new-bh-date"></div>
     <button type="button" class="add-btn" data-action="add-bh">+ Add bank holiday</button>
-  </div>`;
+  </div>${renderOneOffClosures()}`;
 }
 
 function renderClockPhotoModal(){
@@ -8651,6 +8687,34 @@ async function onAction(e){
     const date = e.currentTarget.dataset.date;
     state.config.bankHolidays = state.config.bankHolidays.filter(d=>d!==date);
     await saveConfig(); showToast('Bank holiday removed.');
+  }
+
+  else if(action==='refresh-closures'){
+    if(!requireSuper())return render();
+    await loadOneOffClosures();
+  }
+  else if(action==='add-closure'||action==='remove-closure'){
+    if(!requireSuper())return render();
+    if(state.admin._savingClosure)return;
+    const adding=action==='add-closure';
+    const site=adding?document.getElementById('closure-site').value:e.currentTarget.dataset.site;
+    const date=adding?document.getElementById('closure-date').value:e.currentTarget.dataset.date;
+    const parsed=new Date(date+'T12:00:00Z');
+    if(!CLOSURE_SITES.some(s=>s[0]===site)||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(parsed.getTime())||parsed.toISOString().slice(0,10)!==date){
+      showToast('Choose a site and a valid date.',true);return;
+    }
+    if(!adding&&!confirm('Remove this one-off closure? The importer will expect a report if this is normally an open day.'))return;
+    state.admin._savingClosure=true;
+    try{
+      if(adding)await closureRequest('?on_conflict=site_key,closure_date',{
+        method:'POST',headers:{Prefer:'resolution=ignore-duplicates,return=minimal'},
+        body:JSON.stringify({site_key:site,closure_date:date})
+      });
+      else await closureRequest('?site_key=eq.'+encodeURIComponent(site)+'&closure_date=eq.'+encodeURIComponent(date),{method:'DELETE',headers:{Prefer:'return=minimal'}});
+      showToast(adding?'Closure saved online.':'Closure removed online.');
+      await loadOneOffClosures();
+    }catch(err){showToast(err.message,true);}
+    finally{state.admin._savingClosure=false;}
   }
 
   else if(action==='save-company-name'){

@@ -87,24 +87,24 @@
       return state.config.employees.filter(e=>String(e.siteId)===String(site.id)&&e.active!==false&&bonusRole(e)==='reception').length;
     }catch(_e){return 0;}
   }
-  function isLee(emp){
+  function isLeeDunn(emp){
     const key=String(emp&&emp.name||'').toLowerCase().replace(/[^a-z]/g,'');
-    return ['leehornsey','lhornsey','lhornsley','leehornsley'].includes(key);
+    return ['leedunn','ldunn'].includes(key);
   }
-  function leeScheme(month){
+  function leeDunnScheme(month){
     month=String(month||'');
     if(month>='2026-09' && month<'2027-01') return 'fairfield';
     if(month>='2027-01') return 'lido';
     return null;
   }
 
-  // Lee follows Fairfield for Sep-Dec 2026, then Lido from Jan 2027 onward.
+  // Lee Dunn follows Fairfield for Sep-Dec 2026, then Lido from Jan 2027 onward.
   try{
     if(typeof bonusEmployeeCalc==='function'){
       const originalEmployeeCalc=bonusEmployeeCalc;
       bonusEmployeeCalc=function(emp,siteCalc,month,draft,receptionCount){
-        if(isLee(emp)){
-          const key=leeScheme(month), replacement=key?calcForSite(key,month):null;
+        if(isLeeDunn(emp)){
+          const key=leeDunnScheme(month), replacement=key?calcForSite(key,month):null;
           if(replacement) return originalEmployeeCalc.call(this,emp,replacement,month,draft,receptionCountFor(key));
         }
         return originalEmployeeCalc.apply(this,arguments);
@@ -151,7 +151,7 @@
       });
     }catch(_e){}
     if(rendered.includes('<h2>Bonus Levels</h2>')){
-      rendered+='<div class="card" style="border-left:4px solid var(--green);"><b>2026/27 transition</b><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;">Lido uses the same staff, Davanti and Tony site-sales bonus levels as Seaham. Lee Hornsey follows Fairfield bonus calculations from September through December 2026, then Lido calculations from January 2027 onward.</div></div>';
+      rendered+='<div class="card" style="border-left:4px solid var(--green);"><b>2026/27 transition</b><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;">Lido uses the same staff, Davanti and Tony site-sales bonus levels as Seaham. Lee Dunn follows Fairfield bonus calculations from September through December 2026, then Lido calculations from January 2027 onward.</div></div>';
     }
     return rendered;
   }

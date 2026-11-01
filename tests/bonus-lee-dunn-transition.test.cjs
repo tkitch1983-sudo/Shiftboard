@@ -13,7 +13,7 @@ function setup() {
     siteKey: siteCalc.siteKey,
     base: siteCalc.staffBonus,
     davanti: siteCalc.davantiBonus,
-    addOn: siteCalc.addOnBonus,
+    addOn: siteCalc.addOnBonus / receptionCount,
     receptionCount
   });
   const rules = {
@@ -67,12 +67,17 @@ test('Lee Dunn takes only Fairfield base Sep–Dec 2026, while Davanti and add-o
     assert.equal(actual.davanti,88);
     assert.equal(actual.addOn,200);
     assert.equal(actual.receptionCount,1);
+    const withTwoReceptionists = ctx.bonusEmployeeCalc({name},lido,'2026-10',draft,2);
+    assert.equal(withTwoReceptionists.base,650);
+    assert.equal(withTwoReceptionists.davanti,88);
+    assert.equal(withTwoReceptionists.addOn,100);
+    assert.equal(withTwoReceptionists.receptionCount,2);
   }
   for (const name of ['Lee Hornsey','L Hornsey','L Hornsley']) {
     const actual = ctx.bonusEmployeeCalc({name},middlesbrough,'2026-10',draft,2);
     assert.equal(actual.siteKey,'middlesbrough');
     assert.equal(actual.base,550);
-    assert.equal(actual.addOn,234);
+    assert.equal(actual.addOn,117);
   }
 });
 

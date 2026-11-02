@@ -2,9 +2,38 @@
 (function(){
 'use strict';
 const VIEW='kiosk-holidays';
-const S={month:toMonth(new Date()),rows:[],selected:'',busy:false,error:'',refreshed:'',seq:0};
+const S={month:toMonth(new Date()),rows:[],selected:'',busy:false,error:'',refreshed:'',seq:0,scope:''};
 function toMonth(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function allSites(){return typeof _session!=='undefined'&&!!_session&&_session.role==='super'&&state.admin.authed&&!sessionExpired();}
+function scope(){return allSites()?'all':getKioskSite();}
+// Use the existing authenticated read endpoint; never store management data
+// in kiosk storage or change the device's selected location.
+async function managementMonth(month){
+ const res=await fetch(SUPABASE_URL+'/rest/v1/rpc/manager_shiftboard_read',{
+  method:'POST',headers:await authHeaders(),body:'{}'
+ });
+ if(!res.ok)throw new Error('Could not load all-site holidays. Please sign in again or retry.');
+ const data=await res.json(),config=data.config||{};
+ if(!Array.isArray(config.employees)||!Array.isArray(data.holidayRequests))throw new Error('Holiday data could not be loaded');
+ const employees=new Map(config.employees.filter(e=>e&&e.active!==false).map(e=>[e.id,e]));
+ const sites=new Map((config.sites||[]).map(s=>[s.id,s.name]));
+ const totals=new Map();
+ for(const r of data.holidayRequests){
+  if(!r||r.status!=='approved')continue;
+  const e=employees.get(r.employeeId);if(!e)continue;
+  for(const d of r.dates||[]){
+   const date=typeof d==='string'?d:d&&d.date;
+   const amount=typeof d==='object'?Number(d.amount??1):1;
+   if(typeof date!=='string'||date.slice(0,7)!==month||!Number.isFinite(amount)||amount<=0)continue;
+   const key=e.id+'|'+date,unit=e.holidayUnit==='hours'?'hours':'days';
+   const row=totals.get(key)||{date,name:e.name,siteName:sites.get(e.siteId)||'Unknown site',unit,amount:0};
+   row.amount=unit==='days'?Math.min(1,row.amount+amount):row.amount+amount;
+   totals.set(key,row);
+  }
+ }
+ return {ok:true,siteId:'all',month,entries:[...totals.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name)),updatedAt:new Date().toISOString()};
+}
 function redraw(){if(state.view===VIEW)render();}
 function niceMonth(){const [y,m]=S.month.split('-').map(Number);return new Date(y,m-1,1).toLocaleDateString('en-GB',{year:'numeric',month:'long'});}
 function niceDay(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});}
@@ -17,14 +46,15 @@ async function rpc(fn,payload){
  return data;
 }
 async function load(){
- const siteId=getKioskSite(),req=++S.seq,month=S.month;
+ const siteId=scope(),req=++S.seq,month=S.month;
+ S.scope=siteId;
  // Never display cached names from another site or month during refresh.
  S.rows=[];S.refreshed='';S.error='';
  if(!siteId){S.rows=[];S.refreshed='';S.busy=false;redraw();return;}
  S.busy=true;redraw();
  try{
-  const d=await rpc('kiosk_holidays_month',{p_site_id:siteId,p_month:month});
-  if(req!==S.seq||state.view!==VIEW||siteId!==getKioskSite())return;
+  const d=siteId==='all'?await managementMonth(month):await rpc('kiosk_holidays_month',{p_site_id:siteId,p_month:month});
+  if(req!==S.seq||state.view!==VIEW||siteId!==scope())return;
   if(!d||!d.ok||d.siteId!==siteId||d.month!==month)throw new Error((d&&d.error)||'Calendar data could not be loaded');
   S.rows=Array.isArray(d.entries)?d.entries:[];S.refreshed=d.updatedAt||'';
  }catch(e){if(req!==S.seq)return;S.rows=[];S.refreshed='';S.error=e.message||'Calendar unavailable';}
@@ -44,17 +74,20 @@ function renderCalendar(){
  }
  while(cells.length%7)cells.push('<div class="kh-cell kh-empty"></div>');
  const people=S.selected?byDay.get(S.selected)||[]:[];
- const detail=S.selected?'<div class="kh-detail"><strong>'+esc(niceDay(S.selected))+'</strong>'+(people.length?people.map(e=>'<div class="kh-person"><span>'+esc(e.name)+'</span><span>'+esc(amount(e))+'</span></div>').join(''):'<p>No authorised holidays.</p>')+'</div>':'';
+ const detail=S.selected?'<div class="kh-detail"><strong>'+esc(niceDay(S.selected))+'</strong>'+(people.length?people.map(e=>'<div class="kh-person"><span>'+esc(e.name)+(e.siteName?' · '+esc(e.siteName):'')+'</span><span>'+esc(amount(e))+'</span></div>').join(''):'<p>No authorised holidays.</p>')+'</div>':'';
  return '<div class="kh-tools"><button type="button" class="action-btn secondary" data-action="kiosk-holiday-prev" aria-label="Previous month">‹</button><h3>'+esc(niceMonth())+'</h3><button type="button" class="action-btn secondary" data-action="kiosk-holiday-next" aria-label="Next month">›</button></div><div class="kh-weekdays">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="kh-grid">'+cells.join('')+'</div>'+detail;
 }
 function view(){
- const siteId=getKioskSite(),site=siteId?siteName(siteId):'Location not set';
+ const siteId=scope(),site=siteId==='all'?'All sites · Upper Management':siteId?siteName(siteId):'Location not set';
+ // Clear protected names synchronously on logout/expiry, including pending requests.
+ if(S.scope!==siteId){S.rows=[];S.refreshed='';S.error='';S.seq++;S.scope=siteId;S.busy=false;Promise.resolve().then(load);}
  let contents=(!siteId)?'<p>Select the kiosk location first.</p>':
+   S.busy?'<p class="kh-status">Loading holidays…</p>':
    S.error?'<section class="kh-setup"><h3>Calendar unavailable</h3><p>'+esc(S.error)+'</p><button type="button" class="action-btn secondary" data-action="kiosk-holiday-retry">Try again</button></section>':
    renderCalendar();
  const status=S.busy?'<p class="kh-status">Refreshing approved holidays…</p>':
    siteId&&S.refreshed?'<p class="kh-status">Updated '+esc(new Date(S.refreshed).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}))+' · Approved holidays only · Read-only</p>':'';
- return topstrip()+'<main class="kh-page"><header class="kh-heading"><div><span>'+esc(site)+'</span><h2>Authorised Holidays</h2><p>Approved annual leave for colleagues at this location.</p></div><button type="button" class="action-btn secondary" data-action="kiosk-holiday-back">← Back to kiosk</button></header>'+status+contents+'</main>';
+ return topstrip()+'<main class="kh-page"><header class="kh-heading"><div><span>'+esc(site)+'</span><h2>Authorised Holidays</h2><p>'+(siteId==='all'?'Approved annual leave across every site. Select a date to see names and locations.':'Approved annual leave for colleagues at this location.')+'</p></div><button type="button" class="action-btn secondary" data-action="kiosk-holiday-back">← Back to kiosk</button></header>'+status+contents+'</main>';
 }
 const style=document.createElement('style');
 style.textContent=[
@@ -65,6 +98,7 @@ style.textContent=[
 '@media(max-width:680px){.kh-page{width:100%;padding:12px 7px 30px}.kh-heading h2{font-size:23px}.kh-weekdays,.kh-grid{gap:2px}.kh-cell{padding:3px;min-height:66px;gap:2px}.kh-cell b{font-size:12px}.kh-name{font-size:9px;padding:2px}.kh-more{font-size:9px}}'
 ].join('');
 document.head.appendChild(style);
+setInterval(()=>{if(state.view===VIEW&&S.scope!==scope())load();},1000);
 setInterval(()=>{if(state.view===VIEW&&!S.busy)load();},90000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.view===VIEW)load();});
 window.shiftboardHolidayCalendar={open,change,choose,view,load};

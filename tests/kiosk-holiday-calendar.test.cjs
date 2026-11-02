@@ -12,9 +12,12 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
 function kiosk(options={}){
   const device={site:options.site||'s1'};
   const requests=[];
-  const state={view:'home',admin:{authed:false}};
+  const state={view:'home',admin:{authed:!!options.role}};
   const context={
     window:{}, state,
+    _session:options.role?{role:options.role}:null,
+    sessionExpired:()=>!!options.expired,
+    authHeaders:async()=>({Authorization:'Bearer manager-test-token'}),
     SUPABASE_URL:'https://example.invalid',SUPABASE_KEY:'public-test-key',
     getKioskSite:()=>device.site,
     siteName:id=>id==='s1'?'Seaham':'Peterlee',
@@ -38,7 +41,7 @@ function kiosk(options={}){
     }
   };
   vm.runInNewContext(source,context,{filename:'kiosk-holiday-calendar.js'});
-  return {api:context.window.shiftboardHolidayCalendar,device,requests,state};
+  return {api:context.window.shiftboardHolidayCalendar,device,requests,state,context};
 }
 
 test('root and deployed calendar files match and app JavaScript has valid syntax',()=>{
@@ -50,7 +53,7 @@ test('root and deployed calendar files match and app JavaScript has valid syntax
     const inline=[...html.matchAll(/<script(?:\s+[^>]*)?>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).filter(Boolean);
     inline.forEach(js=>new Function(js));
     assert.match(html,/data-action="open-kiosk-holidays"/);
-    assert.match(html,/src="\.\/kiosk-holiday-calendar\.js\?v=4"/);
+    assert.match(html,/src="\.\/kiosk-holiday-calendar\.js\?v=5"/);
     assert.match(html,/action==='kiosk-holiday-retry'/);
     assert.doesNotMatch(html,/kiosk-holiday-(login|enrol)/);
   }
@@ -118,4 +121,50 @@ test('read-only migration projects only site-approved holiday names and dates',(
   assert.match(migration,/jsonb_build_object\(\s*'date',date_iso,'name',display_name,'amount',amount,'unit',unit/s);
   assert.match(migration,/grant execute on function public\.kiosk_holidays_month\(text,text\) to anon, authenticated/);
   assert.doesNotMatch(migration,/grant execute on function public\.kiosk_holidays_enrol/);
+});
+
+function managementData(month){return {
+ config:{sites:[{id:'s1',name:'Seaham'},{id:'s2',name:'Lido'}],employees:[
+  {id:'e1',name:'Local Person',siteId:'s1'}, {id:'e2',name:'Other Person',siteId:'s2',holidayUnit:'hours'},
+  {id:'e3',name:'Inactive Person',siteId:'s2',active:false}]},
+ holidayRequests:[
+  {employeeId:'e1',status:'approved',dates:[{date:month+'-23',amount:1}]},
+  {employeeId:'e2',status:'approved',dates:[{date:month+'-23',amount:4.5}]},
+  {employeeId:'e3',status:'approved',dates:[{date:month+'-23',amount:1}]},
+  {employeeId:'e1',status:'pending',dates:[{date:month+'-24',amount:1}]}]
+};}
+const currentMonth=()=>new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0');
+test('upper management reads live all-site approved holidays using authenticated endpoint',async()=>{
+ const month=currentMonth();
+ const k=kiosk({role:'super',response:()=>managementData(month)});
+ k.api.open();await flush();k.api.choose(month+'-23');
+ assert.equal(k.requests[0].fn,'manager_shiftboard_read');
+ assert.equal(k.requests[0].auth,'Bearer manager-test-token');
+ assert.match(k.api.view(),/All sites · Upper Management/);
+ assert.match(k.api.view(),/Other Person · Lido/);
+ assert.match(k.api.view(),/Local Person · Seaham/);
+ assert.doesNotMatch(k.api.view(),/Inactive Person/);
+ assert.equal(k.device.site,'s1');
+});
+test('site managers and expired upper sessions retain normal site-only RPC',async()=>{
+ for(const options of [{role:'site'},{role:'super',expired:true}]){
+  const k=kiosk(options);k.api.open();await flush();
+  assert.equal(k.requests[0].fn,'kiosk_holidays_month');
+  assert.equal(k.requests[0].args.p_site_id,'s1');
+  assert.doesNotMatch(k.api.view(),/All sites/);
+ }
+});
+test('logout clears management names before rendering and reloads the kiosk site',async()=>{
+ const month=currentMonth();
+ const k=kiosk({role:'super',response:(fn,args)=>fn==='manager_shiftboard_read'?managementData(month):{ok:true,siteId:args.p_site_id,month:args.p_month,entries:[]}});
+ k.api.open();await flush();assert.match(k.api.view(),/Other Person/);
+ k.context._session=null;
+ assert.doesNotMatch(k.api.view(),/Other Person/);
+ await flush();assert.equal(k.requests.at(-1).fn,'kiosk_holidays_month');
+});
+test('all-site request finishing after logout cannot reveal other-site names',async()=>{
+ const month=currentMonth();
+ const k=kiosk({role:'super',response:()=>managementData(month)});
+ k.api.open();k.context._session=null;await flush();
+ assert.doesNotMatch(k.api.view(),/Other Person/);
 });

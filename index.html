@@ -1549,11 +1549,23 @@ function selectedReportHtml(selector, title, orientation){
     .bonus-print-brand{display:flex;align-items:center;gap:14px;border-bottom:3px solid #ed1c2e;padding:0 0 9px;margin:0 0 12px}.bonus-print-brand img{width:170px;height:auto}.bonus-print-brand b{display:block;font-size:17px}.bonus-print-brand span{display:block;font-size:11px;color:#555;margin-top:3px}
     .card{border:1px solid #aaa;border-radius:6px;padding:8px;margin:0 0 8px;background:#fff;color:#000}.admin-actions,.no-print,.screen-role-col{display:none!important}
     table:not(.att-table){width:100%;border-collapse:collapse;font-size:8px}table:not(.att-table) th,table:not(.att-table) td{border:1px solid #aaa;padding:4px;text-align:left;color:#000}table:not(.att-table) th{background:#eee;font-weight:700}
+
+    /* Bonus tables must fit the printable page, not the screen's 1210px minimum. */
+    .bonus-report table{width:100%!important;min-width:0!important;max-width:100%!important;table-layout:fixed;font-size:8px!important}
+    .bonus-report th,.bonus-report td{white-space:normal!important;overflow-wrap:anywhere;padding:4px!important;vertical-align:top}
+    .bonus-report th:first-child,.bonus-report td:first-child{width:16%}
+    .bonus-report th:last-child,.bonus-report td:last-child{width:9%}
+    .bonus-report td label{font-size:8px!important}
+    .bonus-report .report-field-value{min-width:0;min-height:0;font-size:8px}
+    .bonus-report .card{overflow:visible!important;max-width:100%}
+    .bonus-report [id^="bonus-site-"]{break-before:page;page-break-before:always;break-inside:auto!important}
+    .bonus-report thead{display:table-header-group}
+    .bonus-report tr{break-inside:avoid;page-break-inside:avoid}
     .mot-print-source thead{display:table-header-group}.mot-print-source tr{break-inside:avoid;page-break-inside:avoid}
     .report-field-value{display:block;min-height:13px;white-space:pre-wrap;color:#000}.empty-state{padding:16px;color:#555}
   `;
   const safeTitle=String(title||'Form').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>${css}</style></head><body>${clone.innerHTML}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><style>${css}</style></head><body class="${(source.id==='bonus-sheet-output'||String(source.id||'').startsWith('bonus-site-'))?'bonus-report':''}">${clone.innerHTML}</body></html>`;
 }
 function printSelectedReport(selector, title, orientation){
   const html=selectedReportHtml(selector,title,orientation);

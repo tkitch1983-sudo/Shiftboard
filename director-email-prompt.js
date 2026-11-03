@@ -57,3 +57,12 @@
   s.dataset.remitLiveLoader='1';
   document.head.appendChild(s);
 })();
+
+
+;(() => {
+  if(document.querySelector('script[data-remit-print-loader]')) return;
+  const s=document.createElement('script');
+  s.src='./remittance-print-found.js?v=1';
+  s.dataset.remitPrintLoader='1';
+  document.head.appendChild(s);
+})();

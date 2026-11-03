@@ -39,3 +39,12 @@
   finally{busy=false;if(allowed())render();}
  });
 })();
+
+
+;(() => {
+  if(document.querySelector('script[data-remit-ask-loader]')) return;
+  const s=document.createElement('script');
+  s.src='./remittance-ask.js?v=1';
+  s.dataset.remitAskLoader='1';
+  document.head.appendChild(s);
+})();

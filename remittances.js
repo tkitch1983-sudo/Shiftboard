@@ -737,3 +737,18 @@
     load: ()=>load(true)
   };
 })();
+
+;(() => {
+  const helpers=[
+    ["./remittance-ask.js?v=1","remitAskDirectLoader"],
+    ["./remittance-live-refresh.js?v=1","remitLiveDirectLoader"],
+    ["./remittance-print-found.js?v=1","remitPrintDirectLoader"]
+  ];
+  for(const [src,key] of helpers){
+    if(document.querySelector('script[data-'+key+']')) continue;
+    const s=document.createElement("script");
+    s.src=src;
+    s.dataset[key]="1";
+    document.head.appendChild(s);
+  }
+})();

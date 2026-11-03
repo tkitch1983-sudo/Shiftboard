@@ -48,3 +48,12 @@
   s.dataset.remitAskLoader='1';
   document.head.appendChild(s);
 })();
+
+
+;(() => {
+  if(document.querySelector('script[data-remit-live-loader]')) return;
+  const s=document.createElement('script');
+  s.src='./remittance-live-refresh.js?v=1';
+  s.dataset.remitLiveLoader='1';
+  document.head.appendChild(s);
+})();

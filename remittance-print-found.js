@@ -56,10 +56,10 @@
   }
 
   async function getPdfUrl(documentId){
-    if(typeof window.authHeaders!=="function" || !window.SUPABASE_URL) throw new Error("Shift Board sign-in is not available.");
-    const res=await fetch(window.SUPABASE_URL+"/functions/v1/shiftboard-remittances",{
+    if(typeof authHeaders!=="function" || typeof SUPABASE_URL==="undefined" || !SUPABASE_URL) throw new Error("Shift Board sign-in is not available.");
+    const res=await fetch(SUPABASE_URL+"/functions/v1/shiftboard-remittances",{
       method:"POST",
-      headers:await window.authHeaders(),
+      headers:await authHeaders(),
       body:JSON.stringify({action:"pdf_url",document_id:documentId}),
       cache:"no-store"
     });

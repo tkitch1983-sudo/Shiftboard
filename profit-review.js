@@ -175,6 +175,7 @@ function display(){
  if(invoiceViewer&&(!allowed()||invoiceViewer.identity!==owner()))closeInvoice();
  if(!allowed())return '<div class="card">Sign in through Management to view job margins.</div>';
  if(P.owner!==owner()){P.owner=owner();P.loaded='';P.rows=[];P.reports=[];P.statuses=[];P.invoices=[];P.error='';P.site='all';}
+ if(P.view==='invoice'&&!(typeof isTonyLogin==='function'&&isTonyLogin()))P.view='margins';
  const tabs='<div class="pr-tabs">'+button('margins','Low-margin jobs')+button('totals','Job totals & history')+(typeof isTonyLogin==='function'&&isTonyLogin()?button('invoice','Invoice Checker'):'')+'</div>';
  if(P.view==='invoice')return styles()+tabs+(window.NEASInvoiceLookup?.render?.()||'<div class="card">Invoice Checker loading…</div>');
  if(P.view==='totals')return styles()+tabs+original();
@@ -231,7 +232,7 @@ document.addEventListener('click',e=>{
  if(invoice&&allowed()&&state.admin.tab==='jobs'){openInvoice(invoice.dataset.profitInvoice,invoice);return;}
  const el=e.target.closest?.('[data-profit-action]');if(!el||!allowed()||state.admin.tab!=='jobs')return;
  const action=el.dataset.profitAction;
- if(action==='totals'||action==='margins'){P.view=action;redraw();}
+ if(action==='totals'||action==='margins'||action==='invoice'){P.view=action;redraw();}
  if(action==='refresh'){load(true);redraw();}
  if(action==='csv')exportCsv();if(action==='daily-csv')exportDailyCsv();if(action==='print')print();
 });

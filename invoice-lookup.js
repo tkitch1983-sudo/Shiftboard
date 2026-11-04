@@ -226,7 +226,7 @@ function render(){
     (V.message?'<div class="il-muted" role="status">'+E(V.message)+'</div>':'')+
     (V.searched&&V.results.length?'<div style="overflow:auto;margin-top:12px"><table><thead><tr><th>AutoWork invoice</th><th>Site</th><th>Invoice date</th><th>Export total</th><th>Net amount</th><th>Evidence</th></tr></thead><tbody>'+resultRows()+'</tbody></table></div>':'')+
     '<div class="il-divider"></div>'+
-    '<details><summary style="cursor:pointer;font-weight:650;font-size:13px">Add invoice records from an AutoWork export</summary>'+
+    '<details'+(V.importMessage?' open':'')+'><summary style="cursor:pointer;font-weight:650;font-size:13px">Add invoice records from an AutoWork export</summary>'+
     '<p class="il-muted">Shiftboard currently indexes job/invoice numbers from Profit Tracker, but not registrations. Upload an AutoWork invoice list (CSV or Excel) with <b>Registration</b> and <b>Invoice Number</b> columns; date, total, job and branch are used when supplied. Imported records are private to Tony and can be searched again later. Export one row per invoice.</p>'+
     '<div class="il-fields"><label>Workshop when no branch column exists<select data-il-field="importSite">'+siteOptions(V.importSite,false)+'</select></label>'+
     '<label>AutoWork invoice list<input id="il-import-file" type="file" accept=".csv,.xls,.xlsx,.txt"></label></div>'+

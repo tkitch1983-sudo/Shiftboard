@@ -412,7 +412,7 @@
       +'<button type="button" class="add-btn" data-admin-tab="tonydashboard">← Tony Dashboard</button></div>'
       +(local.notice?'<div class="card" style="border-left:4px solid var(--green);">'+esc(local.notice)+'</div>':'')
       +(local.error?'<div class="card" style="border-left:4px solid var(--red);color:var(--red);">'+esc(local.error)+'</div>':'')
-      +renderConnection()+renderKpis()+renderSearch()+renderTargets()+renderAutoWork()
+      +renderConnection()+renderKpis()+renderSearch()+renderTargets()+(window.NEASInvoiceLookup?.render?.()||'')+renderAutoWork()
       +'</div>';
   }
 

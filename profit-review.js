@@ -175,7 +175,8 @@ function display(){
  if(invoiceViewer&&(!allowed()||invoiceViewer.identity!==owner()))closeInvoice();
  if(!allowed())return '<div class="card">Sign in through Management to view job margins.</div>';
  if(P.owner!==owner()){P.owner=owner();P.loaded='';P.rows=[];P.reports=[];P.statuses=[];P.invoices=[];P.error='';P.site='all';}
- const tabs='<div class="pr-tabs">'+button('margins','Low-margin jobs')+button('totals','Job totals & history')+'</div>';
+ const tabs='<div class="pr-tabs">'+button('margins','Low-margin jobs')+button('totals','Job totals & history')+(typeof isTonyLogin==='function'&&isTonyLogin()?button('invoice','Invoice Checker'):'')+'</div>';
+ if(P.view==='invoice')return styles()+tabs+(window.NEASInvoiceLookup?.render?.()||'<div class="card">Invoice Checker loading…</div>');
  if(P.view==='totals')return styles()+tabs+original();
  if(P.loaded!==queryKey()&&!P.loading)setTimeout(()=>load(),0);
  const valid=P.loaded===queryKey()&&!P.loading&&!P.error,rows=valid?P.rows:[],reports=valid?P.reports:[];

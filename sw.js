@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v146';
+const CACHE='neas-shift-board-shell-v147';
 const INJECT=[
   ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],
@@ -53,6 +53,7 @@ const INJECT=[
   ['bonus-prediction-lido.js','3'],
   ['floater-bonus.js','1'],
   ['bonus-excel-export.js','1'],
+  ['invoice-lookup.js','1'],
   ['auto-update.js','1']
 ];
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png',...INJECT.map(([f])=>'./'+f)];
@@ -84,7 +85,7 @@ self.addEventListener('fetch',event=>{
   // Job reports change frequently. Network-first prevents a previously cached
   // jobs-report.js/profit-review.js file from hiding newly deployed dashboards.
   // The last verified copy remains available when the device is offline.
-  if(/^\/(?:jobs-report|profit-review|remittances)\.js$/.test(url.pathname)){
+  if(/^\/(?:jobs-report|profit-review|remittances|invoice-lookup)\.js$/.test(url.pathname)){
     event.respondWith((async()=>{
       try{
         const fresh=await fetch(req,{cache:'no-store'});

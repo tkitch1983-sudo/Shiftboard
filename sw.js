@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v147';
+const CACHE='neas-shift-board-shell-v148';
 const INJECT=[
   ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],

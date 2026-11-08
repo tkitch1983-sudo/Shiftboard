@@ -741,19 +741,26 @@ async function callRpc(fn, args){
 }
 let _lastKnownBin = null;
 
+// Keep an immutable server snapshot, separate from edited UI/local records.
+let _serverReadCache = null;
 async function jsonbinRead(){
-  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/manager_shiftboard_read', {
-    method:'POST',
-    headers: await authHeaders(),
-    body:'{}'
+  const headers = await authHeaders();
+  const identity = headers.Authorization || headers.authorization;
+  const cached = _serverReadCache && _serverReadCache.identity === identity ? _serverReadCache : null;
+  const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/manager_shiftboard_read_cached', {
+    method:'POST', headers,
+    body:JSON.stringify({p_hash:cached ? cached.hash : null})
   });
   if(!res.ok){
     let detail = '';
     try{ detail = (await res.json()).message || ''; }catch(_e){}
     throw new Error('read failed ('+res.status+')'+(detail?': '+detail:''));
   }
-  const record = await res.json();
+  const response = await res.json();
+  if(!response || typeof response.hash !== 'string') throw new Error('invalid server response');
+  const record = response.unchanged && cached ? JSON.parse(cached.json) : response.record;
   if(!record || typeof record!=='object' || Array.isArray(record)) throw new Error('invalid server response');
+  _serverReadCache = {identity, hash:response.hash, json:JSON.stringify(record)};
   _lastKnownBin = record;
   return record;
 }
@@ -828,25 +835,24 @@ async function trySyncPending(){
   return allOk;
 }
 
-async function storageGet(key, fallback){
-  // If a previous save was made while offline, try to push it first so a stale
-  // cloud copy cannot overwrite the newer local data.
+// Fetch one coherent snapshot for a screen load, preserving offline edits.
+async function storageReadRecord(){
   await trySyncPending();
   try{
     const record = await jsonbinRead();
-    const pending=readPendingChanges();
-    const merged=Object.assign({},record,pending);
+    const merged = Object.assign({}, record, readPendingChanges());
     writeLocalRecord(merged);
-    if(merged[key] === undefined || merged[key] === null) return fallback;
-    return merged[key];
+    return merged;
   }catch(e){
     console.error('Shift Board load failed:', e);
-    const local = Object.assign({},readLocalRecord()||{},readPendingChanges());
-    if(local && local[key] !== undefined && local[key] !== null) return local[key];
-    if(_lastKnownBin && _lastKnownBin[key] !== undefined) return _lastKnownBin[key];
-    return fallback;
+    return Object.assign({}, _lastKnownBin || {}, readLocalRecord() || {}, readPendingChanges());
   }
 }
+async function storageGet(key, fallback){
+  const record = await storageReadRecord();
+  return record[key] === undefined || record[key] === null ? fallback : record[key];
+}
+
 async function storageSet(key, value){
   let record = readLocalRecord() || _lastKnownBin || {};
   record[key] = value;
@@ -964,7 +970,9 @@ function canAccessBonusSheet(){
 
 async function loadAll(){
   if(_session) await loadPortalPermissions();
-  state.config = await storageGet('config', DEFAULT_CONFIG());
+  const record = await storageReadRecord();
+  const get = (key, fallback) => record[key] == null ? fallback : record[key];
+  state.config = get('config', DEFAULT_CONFIG());
   if(!state.config.settings) state.config.settings = {};
   if(state.config.settings.capOff===undefined) state.config.settings.capOff = 6;
   if(state.config.settings.companyName===undefined) state.config.settings.companyName = 'NORTH EAST AUTO SERVICES';
@@ -993,12 +1001,12 @@ async function loadAll(){
   if(!Array.isArray(state.config.bankHolidays)) state.config.bankHolidays = defaults.bankHolidays;
   state.config.sites.forEach(s=>{ if(s.tradingPattern===undefined) s.tradingPattern = 'standard'; });
 
-  state.requests = await storageGet('holidayRequests', []);
-  state.events = await storageGet('clockEvents', []);
-  state.timesheetExtras = await storageGet('timesheetExtras', {});
-  state.absences = await storageGet('absences', []);
-  state.bonusSheets = canAccessBonusSheet() ? await storageGet('bonusSheets', {}) : {};
-  state.targetSheets = await storageGet('targetSheets', {});
+  state.requests = get('holidayRequests', []);
+  state.events = get('clockEvents', []);
+  state.timesheetExtras = get('timesheetExtras', {});
+  state.absences = get('absences', []);
+  state.bonusSheets = canAccessBonusSheet() ? get('bonusSheets', {}) : {};
+  state.targetSheets = get('targetSheets', {});
   if(!Array.isArray(state.requests)) state.requests = [];
   if(!Array.isArray(state.events)) state.events = [];
   if(!state.timesheetExtras || typeof state.timesheetExtras!=='object' || Array.isArray(state.timesheetExtras)) state.timesheetExtras = {};
@@ -9261,9 +9269,17 @@ async function init(){
 
   // Keep the Register current. Anyone leaving it open on a desk should be
   // able to trust it without remembering to reload the page.
+  let refreshInFlight = false;
+  let lastBackgroundRefresh = 0;
   setInterval(async ()=>{
+    if(document.visibilityState === 'hidden' || refreshInFlight) return;
     if(state.view==='home'){ render(); }
     else if(state.view==='admin' && _session){
+      if(sessionExpired()) return;
+      const liveTab = ['register','requests','targets','sales'].includes(state.admin.tab);
+      if(!liveTab && Date.now() - lastBackgroundRefresh < 120000) return;
+      refreshInFlight = true;
+      lastBackgroundRefresh = Date.now();
       try{
         const beforeRequests = holidayRequestsNeedingAttention().length;
         const rec = await jsonbinRead();
@@ -9286,6 +9302,8 @@ async function init(){
         if(state.admin.tab==='register' || state.admin.tab==='requests' || viewingGroupTargets || viewingLiveSales || afterRequests!==beforeRequests) render();
       }catch(_e){
         state.admin.refreshFailed = true;
+      }finally{
+        refreshInFlight = false;
       }
     }
   }, 30000);

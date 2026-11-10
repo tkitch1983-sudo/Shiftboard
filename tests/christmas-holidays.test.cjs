@@ -16,5 +16,15 @@ for(const file of ['index.html','public/index.html']){
  test(file+': pending remains unapproved',()=>{const r=row({pending:true});assert.equal(r.extra,2);assert.equal(r.dates[0].pending,true);});
  test(file+': hourly staff need explicit scheduled hours',()=>{assert.equal(row({hourly:true}).after,null);const r=row({hourly:true,hours:{'e:2026-12-24':'8','e:2026-12-31':'0'},bookings:{'2026-12-24':4}});assert.equal(r.extra,4);});
  test(file+': inactive and non-working staff handled',()=>{assert.equal(row({active:false}),undefined);assert.equal(row({working:false}).extra,0);});
- assert.match(html,/if\(tab==='holidayallowance'\|\|tab==='christmasholidays'\) return state.admin.role==='super'/);
+ test(file+': Christmas tab is restricted to Tony',()=>{
+  const access=html.slice(html.indexOf('function canAccessAdminTab('),html.indexOf('function canViewPrivateTab('));
+  for(const allowed of [true,false]){
+   const ctx={state:{admin:{role:'super'}},isTonyLogin:()=>allowed};
+   vm.createContext(ctx);vm.runInContext(access,ctx);
+   assert.equal(ctx.canAccessAdminTab('christmasholidays'),allowed);
+  }
+  const render=html.slice(html.indexOf('function renderAdminChristmasHolidays('),html.indexOf("document.addEventListener('click',function(event){",html.indexOf('function renderAdminChristmasHolidays(')));
+  const ctx={isTonyLogin:()=>false};vm.createContext(ctx);vm.runInContext(render,ctx);
+  assert.match(ctx.renderAdminChristmasHolidays(),/Tony only/);
+ });
 }

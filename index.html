@@ -934,7 +934,8 @@ function isPayRateLogin(){
 function canAccessAdminTab(tab){
   if(tab==='checkstatus') return state.admin.role==='super';
   if(tab==='tonydashboard'||tab==='autoworkcreds'||tab==='remittances') return isTonyLogin();
-  if(tab==='holidayallowance'||tab==='christmasholidays') return state.admin.role==='super';
+  if(tab==='christmasholidays') return isTonyLogin();
+  if(tab==='holidayallowance') return state.admin.role==='super';
   if(tab==='boardroom') return isBoardroomLogin();
   if(tab==='targetsetup'||tab==='fullreport'||tab==='cameras') return isTonyLogin();
   // Payroll is private to Tony and Jack. Neil and every other manager must
@@ -6115,7 +6116,7 @@ function christmasHolidayRows(year){
   });
 }
 function renderAdminChristmasHolidays(){
-  if(state.admin.role!=='super') return '<h2>Christmas Holidays</h2><div class="card">Upper Management only.</div>';
+  if(!isTonyLogin()) return '<h2>Christmas Holidays</h2><div class="card">Tony only.</div>';
   const year=String(new Date().getFullYear());
   const selected=state.admin.christmasSite||'all';
   const rows=christmasHolidayRows(year).filter(r=>selected==='all'||r.emp.siteId===selected)
@@ -6134,13 +6135,13 @@ function renderAdminChristmasHolidays(){
 document.addEventListener('click',function(event){
   const site=event.target.closest('[data-christmas-site]');
   const print=event.target.closest('[data-christmas-print]');
-  if((!site&&!print)||state.view!=='admin'||state.admin.role!=='super') return;
+  if((!site&&!print)||state.view!=='admin'||!isTonyLogin()) return;
   if(site){state.admin.christmasSite=site.dataset.christmasSite;render();}
   if(print) printSelectedReport('#christmas-holiday-output','Christmas Holidays','landscape');
 });
 document.addEventListener('change',function(event){
   const input=event.target.closest('[data-christmas-hours]');
-  if(!input||state.view!=='admin'||state.admin.role!=='super') return;
+  if(!input||state.view!=='admin'||!isTonyLogin()) return;
   if(!input.checkValidity()){input.reportValidity();return;}
   state.admin.christmasHours=state.admin.christmasHours||{};
   state.admin.christmasHours[input.dataset.christmasHours]=input.value;

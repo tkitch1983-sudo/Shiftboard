@@ -5721,7 +5721,7 @@ async function ensurePreviousHolidayAllowanceSnapshot(){
   }
 }
 function christmasHolidayRows(year){
-  return (state.config.employees||[]).filter(e=>e.active!==false).map(emp=>{
+  return (state.config.employees||[]).filter(e=>e.active!==false && !isFillingStationSite(e.siteId)).map(emp=>{
     const approved=approvedDatesForEmployee(emp.id);
     const dates=[year+'-12-24',year+'-12-31'].map(date=>{
       const booked=Number(approved.get(date)||0);
@@ -5739,19 +5739,19 @@ function christmasHolidayRows(year){
 function renderAdminChristmasHolidays(){
   if(!isTonyLogin()) return '<h2>Christmas Holidays</h2><div class="card">Tony only.</div>';
   const year=String(new Date().getFullYear());
-  const selected=state.admin.christmasSite||'all';
+  const selected=isFillingStationSite(state.admin.christmasSite)?'all':(state.admin.christmasSite||'all');
   const rows=christmasHolidayRows(year).filter(r=>selected==='all'||r.emp.siteId===selected)
     .sort((a,b)=>siteName(a.emp.siteId).localeCompare(siteName(b.emp.siteId))||a.emp.name.localeCompare(b.emp.name));
   const esc=salesHtml;
   const amount=(v,u)=>v===null?'Check hours':Number(v).toFixed(2)+' '+u;
-  const sites=[{id:'all',name:'All Sites'},...(state.config.sites||[])];
+  const sites=[{id:'all',name:'All Workshops'},...(state.config.sites||[]).filter(s=>!isFillingStationSite(s.id))];
   const filters=sites.map(s=>`<button type="button" class="btn-sm" data-christmas-site="${esc(s.id)}" style="${selected===s.id?'border-color:var(--amber);color:var(--amber);':''}">${esc(s.name)}</button>`).join('');
   const table=rows.map(r=>{
     const e=r.emp,u=unitLabel(e);
     const cells=r.dates.map(d=>`<td>${d.booked>0?'Approved: '+amount(d.booked,u):'Not booked'}${d.pending?'<div style="color:var(--amber)">Pending request — not deducted</div>':''}${isHourly(e)?`<label style="display:block;font-size:11px;margin-top:5px;">Hours needed for closure<input aria-label="${esc(e.name)} ${d.date} closure hours" type="number" min="0" max="24" step="0.25" data-christmas-hours="${esc(e.id+':'+d.date)}" value="${d.required===null?'':d.required}" placeholder="Enter hours" style="width:100px;display:block;"></label>`:`<div style="font-size:11px;color:var(--muted)">${d.required===0?'Non-working day':d.extra===0?'Already covered':amount(d.extra,u)+' extra needed'}</div>`}</td>`).join('');
     return `<tr><td>${esc(e.name)}</td><td>${esc(siteName(e.siteId))}</td><td>${amount(e.allowanceDays??state.config.settings.defaultAnnualEntitlement??20,u)}</td><td>${amount(r.before,u)}</td>${cells}<td>${amount(r.extra,u)}</td><td style="${r.after!==null&&r.after<0?'color:var(--red);font-weight:700;':''}">${amount(r.after,u)}${r.after!==null&&r.after<0?'<div>Insufficient holiday</div>':''}</td></tr>`;
   }).join('');
-  return `<h2>Christmas Holidays · ${year}</h2><div class="head-sub">Planning for full-day closures on 24 and 31 December.</div><div class="card">${rows.length} active staff · <b>${rows.filter(r=>r.after!==null&&r.after<0).length} short of holiday</b> · ${rows.filter(r=>r.extra===null).length} need hours checking.<br><span style="font-size:12px;color:var(--muted)">Balances include approved holidays and accrual through 31 December, using the Holiday Allowance calculations. Only the extra amount needed for the closures is deducted in this preview. Pending requests are flagged separately.</span></div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;">${filters}<button type="button" class="btn-sm" data-christmas-print>Print</button></div><div id="christmas-holiday-output" class="card" style="overflow-x:auto;"><h3>Christmas holiday plan · ${year} · ${esc(selected==='all'?'All Sites':siteName(selected))}</h3><p>24 and 31 December — planning only; no bookings or allowances changed.</p><table><thead><tr><th>Name</th><th>Site</th><th>Annual allowance</th><th>Year-end balance before closure</th><th>24 December</th><th>31 December</th><th>Extra needed</th><th>Left after closure</th></tr></thead><tbody>${table||'<tr><td colspan="8">No active staff at this site.</td></tr>'}</tbody></table></div><p style="font-size:12px;color:var(--muted)">Approved full or half days are counted once. For staff whose allowance is in hours, enter the total scheduled hours affected on each date (0 if not working or the site stays open). These planning inputs last for this session only. This view does not approve pending requests or book holidays.</p>`;
+  return `<h2>Christmas Holidays · ${year}</h2><div class="head-sub">Workshops only · Planning for full-day closures on 24 and 31 December.</div><div class="card">${rows.length} active staff · <b>${rows.filter(r=>r.after!==null&&r.after<0).length} short of holiday</b> · ${rows.filter(r=>r.extra===null).length} need hours checking.<br><span style="font-size:12px;color:var(--muted)">Balances include approved holidays and accrual through 31 December, using the Holiday Allowance calculations. Only the extra amount needed for the closures is deducted in this preview. Pending requests are flagged separately.</span></div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;">${filters}<button type="button" class="btn-sm" data-christmas-print>Print</button></div><div id="christmas-holiday-output" class="card" style="overflow-x:auto;"><h3>Christmas holiday plan · ${year} · ${esc(selected==='all'?'All Workshops':siteName(selected))}</h3><p>24 and 31 December — planning only; no bookings or allowances changed.</p><table><thead><tr><th>Name</th><th>Site</th><th>Annual allowance</th><th>Year-end balance before closure</th><th>24 December</th><th>31 December</th><th>Extra needed</th><th>Left after closure</th></tr></thead><tbody>${table||'<tr><td colspan="8">No active workshop staff at this site.</td></tr>'}</tbody></table></div><p style="font-size:12px;color:var(--muted)">Approved full or half days are counted once. For staff whose allowance is in hours, enter the total scheduled hours affected on each date (0 if not working or the site stays open). These planning inputs last for this session only. This view does not approve pending requests or book holidays.</p>`;
 }
 document.addEventListener('click',function(event){
   const site=event.target.closest('[data-christmas-site]');

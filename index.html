@@ -2490,6 +2490,12 @@ function salesPct(v){
   return n.toLocaleString('en-GB',{minimumFractionDigits:0,maximumFractionDigits:2})+'%';
 }
 function salesNum(v){ const n=Number(v||0); return Number.isFinite(n)?n:0; }
+function salesDavanti(v,date){
+  const run=state.admin.salesRun||{};
+  const snapshot=date||state.admin.salesRows?.[0]?.snapshot_date;
+  if(run.run_date===snapshot && run.davanti_status && run.davanti_status!=='success') return 'Unavailable';
+  return salesNum(v);
+}
 function salesDateLabel(v){
   if(!v) return '—';
   const d=new Date(String(v)+'T12:00:00');
@@ -2596,7 +2602,7 @@ function renderSalesDateRange(rows){
         ${metric('Add-ons sold',qty,false,true,!result.addonCountReady)}
         ${metric('Add-on value',d.add_on_value,true,true)}
         ${metric('Total sales',d.total_current,true,true)}
-        ${metric('Davanti',d.davanti)}
+        ${metric('Davanti',d.davanti,false,false,salesDavanti(d.davanti,result.endDate)==='Unavailable' || (result.baseDate && salesDavanti(d.davanti,result.baseDate)==='Unavailable'))}
         ${metric('Tracking',d.tracking)}
         ${metric('BFC',d.bfc)}
         ${metric('Coolant',d.coolant)}
@@ -2629,7 +2635,7 @@ function downloadSalesCsv(){
   const year=Number(String(snap).slice(0,4))||new Date().getFullYear();
   const headers=['Site','Davanti','Tracking','BFC','Coolant','Pollen','AC','Diag','Cons','Full','Interim','Oil','ITMS','Add On','Margin '+year,'Margin '+(year-1),'Total '+year,'Total '+(year-1)];
   const body=[...rows,salesGroupRow(rows)].map(r=>[
-    r.site_name,r.davanti,r.tracking,r.bfc,r.coolant,r.pollen,r.ac,r.diag,r.cons,r.full_service,r.interim,r.oil,
+    r.site_name,salesDavanti(r.davanti,r.snapshot_date),r.tracking,r.bfc,r.coolant,r.pollen,r.ac,r.diag,r.cons,r.full_service,r.interim,r.oil,
     r.itms_value,r.add_on_value,r.margin_current,r.comparison_available?r.margin_prior:'',r.total_current,r.comparison_available?r.total_prior:''
   ].map(salesCsvCell).join(','));
   const csv='\uFEFF'+[headers.map(salesCsvCell).join(','),...body].join('\r\n');
@@ -2646,13 +2652,13 @@ function printSalesReport(){
   const snap=rows[0].snapshot_date||'';
   const year=Number(String(snap).slice(0,4))||new Date().getFullYear();
   const all=[...rows,salesGroupRow(rows)];
-  const table=all.map((r,i)=>`<tr${i===all.length-1?' class="group"':''}><td>${salesHtml(r.site_name)}</td><td>${salesNum(r.davanti)}</td><td>${salesNum(r.tracking)}</td><td>${salesNum(r.bfc)}</td><td>${salesNum(r.coolant)}</td><td>${salesNum(r.pollen)}</td><td>${salesNum(r.ac)}</td><td>${salesNum(r.diag)}</td><td>${salesNum(r.cons)}</td><td>${salesNum(r.full_service)}</td><td>${salesNum(r.interim)}</td><td>${salesNum(r.oil)}</td><td>${salesMoney(r.itms_value)}</td><td>${salesMoney(r.add_on_value)}</td><td>${salesPct(r.margin_current)}</td><td>${r.comparison_available?salesPct(r.margin_prior):'N/A'}</td><td>${salesMoney(r.total_current)}</td><td>${r.comparison_available?salesMoney(r.total_prior):'N/A'}</td></tr>`).join('');
+  const table=all.map((r,i)=>`<tr${i===all.length-1?' class="group"':''}><td>${salesHtml(r.site_name)}</td><td>${salesDavanti(r.davanti,r.snapshot_date)}</td><td>${salesNum(r.tracking)}</td><td>${salesNum(r.bfc)}</td><td>${salesNum(r.coolant)}</td><td>${salesNum(r.pollen)}</td><td>${salesNum(r.ac)}</td><td>${salesNum(r.diag)}</td><td>${salesNum(r.cons)}</td><td>${salesNum(r.full_service)}</td><td>${salesNum(r.interim)}</td><td>${salesNum(r.oil)}</td><td>${salesMoney(r.itms_value)}</td><td>${salesMoney(r.add_on_value)}</td><td>${salesPct(r.margin_current)}</td><td>${r.comparison_available?salesPct(r.margin_prior):'N/A'}</td><td>${salesMoney(r.total_current)}</td><td>${r.comparison_available?salesMoney(r.total_prior):'N/A'}</td></tr>`).join('');
   const run=state.admin.salesRun||{};
   const completed=salesCompletedLabel(run.completed_at);
   const g=salesGroupRow(rows);
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>NEAS Live Sales ${salesHtml(snap)}</title><style>
     @page{size:A4 landscape;margin:9mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:9px}h1{font-size:20px;margin:0 0 3px}.sub{font-size:10px;color:#555;margin-bottom:10px}.summary{display:flex;gap:8px;margin:8px 0 10px}.summary div{border:1px solid #bbb;border-radius:6px;padding:6px 8px;min-width:125px}.summary b{display:block;font-size:15px;margin-top:2px}table{border-collapse:collapse;width:100%;font-size:7.5px}th,td{border:1px solid #bbb;padding:4px 3px;text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}.group{font-weight:700;background:#eee}.foot{margin-top:8px;color:#666;font-size:8px}.no-print{margin-top:12px}.no-print button{font-size:14px;padding:8px 14px}@media print{.no-print{display:none}}
-  </style></head><body><h1>NEAS Live Sales</h1><div class="sub">Sales through ${salesDateLabel(snap)}${completed?' · Nightly run completed '+salesHtml(completed):''} · Month to date from ${salesDateLabel(rows[0].period_start)}</div><div class="summary"><div>Group sales MTD<b>${salesMoney(g.total_current)}</b></div><div>Group margin<b>${salesPct(g.margin_current)}</b></div><div>Add-on value<b>${salesMoney(g.add_on_value)}</b></div><div>Davanti<b>${salesNum(g.davanti)}</b></div></div><table><thead><tr><th>Site</th><th>Davanti</th><th>Tracking</th><th>BFC</th><th>Coolant</th><th>Pollen</th><th>AC</th><th>Diag</th><th>Cons</th><th>Full</th><th>Int</th><th>Oil</th><th>ITMS</th><th>Add On</th><th>Margin ${year}</th><th>Margin ${year-1}</th><th>Total ${year}</th><th>Total ${year-1}</th></tr></thead><tbody>${table}</tbody></table><div class="foot">Live Sales report generated ${salesHtml(new Date().toLocaleString('en-GB'))}.</div><div class="no-print"><button onclick="window.print()">Print</button></div></body></html>`;
+  </style></head><body><h1>NEAS Live Sales</h1><div class="sub">Sales through ${salesDateLabel(snap)}${completed?' · Nightly run completed '+salesHtml(completed):''} · Month to date from ${salesDateLabel(rows[0].period_start)}</div><div class="summary"><div>Group sales MTD<b>${salesMoney(g.total_current)}</b></div><div>Group margin<b>${salesPct(g.margin_current)}</b></div><div>Add-on value<b>${salesMoney(g.add_on_value)}</b></div><div>Davanti<b>${salesDavanti(g.davanti)}</b></div></div><table><thead><tr><th>Site</th><th>Davanti</th><th>Tracking</th><th>BFC</th><th>Coolant</th><th>Pollen</th><th>AC</th><th>Diag</th><th>Cons</th><th>Full</th><th>Int</th><th>Oil</th><th>ITMS</th><th>Add On</th><th>Margin ${year}</th><th>Margin ${year-1}</th><th>Total ${year}</th><th>Total ${year-1}</th></tr></thead><tbody>${table}</tbody></table><div class="foot">Live Sales report generated ${salesHtml(new Date().toLocaleString('en-GB'))}.</div><div class="no-print"><button onclick="window.print()">Print</button></div></body></html>`;
   const w=window.open('about:blank','_blank');
   if(!w){ showToast('Pop-ups are blocked. Allow pop-ups to print Live Sales.',true); return; }
   w.document.open(); w.document.write(html); w.document.close();
@@ -2704,7 +2710,7 @@ function renderAdminSales(){
   const avg=k=>{ const vals=dataRows.map(r=>r[k]).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number).filter(Number.isFinite); return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null; };
   const currentTotal=sum('total_current'), priorTotal=dataRows.reduce((a,r)=>a+(r.comparison_available?salesNum(r.total_prior):0),0);
   const groupMargin=avg('margin_current'), priorMargin=avg('margin_prior');
-  const addOn=sum('add_on_value'), davanti=sum('davanti');
+  const addOn=sum('add_on_value'), davanti=salesDavanti(sum('davanti'));
   const snap=rows[0].snapshot_date;
   const run=state.admin.salesRun||{};
   const runBad=run.status==='failed'||run.status==='partial'||rows.some(r=>r.import_status!=='ok');
@@ -2712,7 +2718,7 @@ function renderAdminSales(){
   const statusColor=runBad?'var(--red)':'var(--green)';
   const tableRows=dataRows.map(r=>`<tr>
     <td style="position:sticky;left:0;background:var(--panel);font-weight:600;white-space:nowrap;">${salesHtml(r.site_name)}</td>
-    <td>${salesNum(r.davanti)}</td><td>${salesNum(r.tracking)}</td><td>${salesNum(r.bfc)}</td><td>${salesNum(r.coolant)}</td><td>${salesNum(r.pollen)}</td><td>${salesNum(r.ac)}</td><td>${salesNum(r.diag)}</td>
+    <td>${salesDavanti(r.davanti,r.snapshot_date)}</td><td>${salesNum(r.tracking)}</td><td>${salesNum(r.bfc)}</td><td>${salesNum(r.coolant)}</td><td>${salesNum(r.pollen)}</td><td>${salesNum(r.ac)}</td><td>${salesNum(r.diag)}</td>
     <td>${salesNum(r.cons)}</td><td>${salesNum(r.full_service)}</td><td>${salesNum(r.interim)}</td><td>${salesNum(r.oil)}</td>
     <td class="mono">${salesMoney(r.itms_value)}</td><td class="mono">${salesMoney(r.add_on_value)}</td>
     <td class="mono">${salesPct(r.margin_current)}</td><td class="mono">${r.comparison_available?salesPct(r.margin_prior):'N/A'}</td>

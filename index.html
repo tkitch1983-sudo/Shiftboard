@@ -356,9 +356,11 @@
   .att-table,.att-sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .abs-select.abs-sick{color:#a15c00;}
   .abs-select.abs-authorised{color:#1a5da1;}
+  .abs-select.abs-paternity{color:#6f42a3;}
   .abs-select.abs-unauthorised{color:#b3261e;}
   .pill-sick{background:#4a3616;color:#e8a94a;}
   .pill-authorised{background:#16324a;color:#5aa3e8;}
+  .pill-paternity{background:#30244d;color:#c4adfa;}
   .pill-unauthorised{background:var(--red-dim);color:var(--red);}
   .reg-abs-actions{display:flex;gap:4px;margin-top:4px;}
   .reg-abs-btn{
@@ -1161,7 +1163,7 @@ function timesheetRowsForWeek(weekIso){
         if(isHol) { anyActivity = true; const holText=isHourly(emp) ? formatTimesheetHours(holAmt,emp,site.id)+'h Hol' : (holAmt===0.5 ? 'Half Hol' : 'Hol'); return hours>0 ? formatTimesheetHours(hours,emp,site.id)+' worked + '+holText : holText; }
         if(hours>0){ anyActivity = true; return formatTimesheetHours(hours,emp,site.id) + (pendingHol ? ' ⏳' : '') + (dayShifts.some(s=>s.autoClosed) && !hasOverride ? ' (est)' : '') + (hasOverride ? ' (edited)' : ''); }
         if(pendingHol){ anyActivity = true; return '⏳ Pending'; }
-        if(abs){ anyActivity = true; return abs.type; }
+        if(abs){ anyActivity = true; return abs.type==='paternity' ? 'Paternity Leave' : abs.type; }
         return '';
       });
       if(!anyActivity) return; // skip people with nothing that week
@@ -4959,7 +4961,7 @@ function renderAdminRegister(){
   }).length;
   const onHolidayCount = scopeActive.filter(e=>approvedDatesForEmployee(e.id).has(todayStr)).length;
 
-  const ABS_LABELS = { sick:'Sick', authorised:'Authorised absence', unauthorised:'Unauthorised absence' };
+  const ABS_LABELS = { sick:'Sick', authorised:'Authorised absence', unauthorised:'Unauthorised absence', paternity:'Paternity Leave' };
   const renderRegisterRow = (emp)=>{
     try{
     const status = isOnSiteNow(emp.id) ? 'in' : 'out';
@@ -5764,6 +5766,7 @@ function renderAdminTimesheets(){
             <option value="">–</option>
             <option value="sick" ${absType==='sick'?'selected':''}>Sick</option>
             <option value="authorised" ${absType==='authorised'?'selected':''}>Authorised</option>
+             <option value="paternity" ${absType==='paternity'?'selected':''}>Paternity Leave</option>
             <option value="unauthorised" ${absType==='unauthorised'?'selected':''}>Unauth.</option>
           </select>`;
           content = hrsBox + absBox;

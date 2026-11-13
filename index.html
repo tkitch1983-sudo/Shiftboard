@@ -6606,7 +6606,7 @@ async function loadOneOffClosures(){
   state.admin.oneOffClosures=await closureRequest('?select=site_key,closure_date&order=closure_date.desc,site_key.asc');
   state.admin.closureError='';
  }catch(e){state.admin.closureError=e.message;}
- finally{state.admin._loadingClosures=false;if(state.admin.tab==='bankholidays')render();}
+ finally{state.admin._loadingClosures=false;if(state.admin.tab==='settings')render();}
 }
 function renderOneOffClosures(){
  if(!state.admin.oneOffClosures&&!state.admin._loadingClosures&&!state.admin.closureError)loadOneOffClosures();
@@ -6637,7 +6637,7 @@ function renderAdminBankHolidays(){
   <div class="form-row">
     <div class="field"><label>Add date</label><input type="date" id="new-bh-date"></div>
     <button type="button" class="add-btn" data-action="add-bh">+ Add bank holiday</button>
-  </div>${renderOneOffClosures()}`;
+  </div>`;
 }
 
 function renderClockPhotoModal(){
@@ -6793,6 +6793,8 @@ function renderAdminSettings(){
   return `
   <h2>Settings</h2>
   <div class="head-sub">Changes save to this device immediately and sync online when the connection/storage service is available.</div>
+
+  ${renderOneOffClosures()}
 
   <h2 style="font-size:16px;">Your password</h2>
   <div class="card">

@@ -1,36 +1,30 @@
 (function(){
   'use strict';
-
   if(!('serviceWorker' in navigator)) return;
 
   const CHECK_EVERY_MS = 5 * 60 * 1000;
+  const RELOAD_KEY = 'shiftboard-last-auto-reloaded-worker';
   const editedControls = new Set();
-  let updatePending = false;
   let reloadStarted = false;
-  let banner = null;
+  let pendingVersion = null;
 
   function markEdited(event){
     if(!event || event.isTrusted===false) return;
     const el=event.target;
     if(el && el.matches && el.matches('input, textarea, select')) editedControls.add(el);
   }
-
-  document.addEventListener('input', markEdited, true);
-  document.addEventListener('change', markEdited, true);
+  document.addEventListener('input',markEdited,true);
+  document.addEventListener('change',markEdited,true);
 
   function hasUnsavedUserEdits(){
     let dirty=false;
     editedControls.forEach(el=>{
-      if(!document.contains(el)){
-        editedControls.delete(el);
-        return;
-      }
+      if(!document.contains(el)){ editedControls.delete(el); return; }
       if(el.disabled || el.readOnly) return;
       const tag=String(el.tagName||'').toLowerCase();
       const type=String(el.type||'').toLowerCase();
       if(tag==='select'){
-        const changed=Array.from(el.options||[]).some(o=>o.selected!==o.defaultSelected);
-        if(changed) dirty=true;
+        if(Array.from(el.options||[]).some(o=>o.selected!==o.defaultSelected)) dirty=true;
         return;
       }
       if(type==='checkbox' || type==='radio'){
@@ -47,34 +41,50 @@
     return dirty;
   }
 
-  function removeBanner(){
-    if(banner && banner.parentNode) banner.parentNode.removeChild(banner);
-    banner=null;
+  function storedVersion(){
+    try{ return sessionStorage.getItem(RELOAD_KEY); }catch(_e){}
+    try{ return localStorage.getItem(RELOAD_KEY); }catch(_e){}
+    return null;
+  }
+  function rememberVersion(version){
+    try{ sessionStorage.setItem(RELOAD_KEY,version); return true; }catch(_e){}
+    try{ localStorage.setItem(RELOAD_KEY,version); return true; }catch(_e){}
+    return false;
   }
 
-  function showBanner(){
-    if(banner || !document.body) return;
-    banner=document.createElement('div');
-    banner.id='shiftboard-update-banner';
-    banner.style.cssText='position:fixed;left:14px;right:14px;bottom:14px;z-index:2147483647;background:#151516;color:#f7f7f8;border:1px solid #e2222d;border-left:5px solid #e2222d;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:12px 14px;font-family:Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;';
-    const text=document.createElement('div');
-    text.innerHTML='<b style="display:block;font-size:13px;">Shiftboard update available</b><span style="display:block;margin-top:3px;font-size:11px;color:#b4b6b8;">Shiftboard will not reload automatically. Save your work, then choose Reload update.</span>';
-    const button=document.createElement('button');
-    button.type='button';
-    button.textContent='Reload update';
-    button.style.cssText='background:#e2222d;color:#fff;border:1px solid #e2222d;padding:9px 13px;font-weight:700;cursor:pointer;';
-    button.addEventListener('click',startReload);
-    banner.append(text,button);
-    document.body.appendChild(banner);
-  }
-
-  function startReload(){
-    // Only called from an explicit press of the Reload update button.
-    if(reloadStarted) return;
-    if(hasUnsavedUserEdits() && !window.confirm('You may have unsaved changes. Reload Shiftboard anyway?')) return;
+  function tryApplyUpdate(){
+    if(reloadStarted || !pendingVersion || hasUnsavedUserEdits()) return;
+    if(storedVersion()===pendingVersion){ pendingVersion=null; return; }
+    // If the browser cannot persist a reload guard, never risk a reload loop.
+    if(!rememberVersion(pendingVersion)) return;
     reloadStarted=true;
-    removeBanner();
     window.location.reload();
+  }
+
+  function workerVersion(worker){
+    if(!worker || typeof MessageChannel==='undefined') return Promise.resolve(null);
+    return new Promise(resolve=>{
+      const channel=new MessageChannel();
+      let done=false;
+      const finish=(version)=>{
+        if(done) return;
+        done=true;
+        clearTimeout(timeout);
+        channel.port1.close();
+        resolve(typeof version==='string' && version ? version : null);
+      };
+      const timeout=setTimeout(()=>finish(null),1200);
+      channel.port1.onmessage=e=>finish(e && e.data && e.data.version);
+      try{worker.postMessage({type:'SHIFTBOARD_GET_VERSION'},[channel.port2]);}
+      catch(_e){finish(null);}
+    });
+  }
+
+  async function onControllerChanged(){
+    const version=await workerVersion(navigator.serviceWorker.controller);
+    if(!version || version===storedVersion()) return;
+    pendingVersion=version;
+    tryApplyUpdate();
   }
 
   async function checkForUpdate(){
@@ -82,37 +92,28 @@
       const reg=await navigator.serviceWorker.getRegistration();
       if(!reg) return;
       await reg.update();
-      if(reg.waiting){
-        updatePending=true;
-        showBanner();
-      }
+      if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
     }catch(_e){}
   }
 
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    // A new worker must never force an unexpected reload (especially on kiosks).
-    updatePending=true;
-    showBanner();
-  });
-
+  // Updates still apply automatically, but at most once per installed worker version.
+  // A staff member entering data is not interrupted in the middle of an edit.
+  navigator.serviceWorker.addEventListener('controllerchange',onControllerChanged);
   navigator.serviceWorker.ready.then(reg=>{
     reg.addEventListener('updatefound',()=>{
       const worker=reg.installing;
       if(!worker) return;
       worker.addEventListener('statechange',()=>{
-        if(worker.state==='installed' && navigator.serviceWorker.controller && hasUnsavedUserEdits()){
-          updatePending=true;
-          showBanner();
-        }
+        if(worker.state==='installed' && reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
       });
     });
   }).catch(()=>{});
 
   window.setInterval(checkForUpdate,CHECK_EVERY_MS);
-
+  window.setInterval(tryApplyUpdate,15000);
   document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState==='visible') checkForUpdate();
+    if(document.visibilityState==='visible'){ tryApplyUpdate(); checkForUpdate(); }
   });
-  window.addEventListener('focus',checkForUpdate);
+  window.addEventListener('focus',()=>{ tryApplyUpdate(); checkForUpdate(); });
   window.setTimeout(checkForUpdate,5000);
 })();

@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v149';
+const CACHE='neas-shift-board-shell-v150';
 const INJECT=[
   ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],
@@ -54,7 +54,7 @@ const INJECT=[
   ['floater-bonus.js','1'],
   ['bonus-excel-export.js','1'],
   ['invoice-lookup.js','1'],
-  ['auto-update.js','2']
+  ['auto-update.js','3']
 ];
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png',...INJECT.map(([f])=>'./'+f)];
 
@@ -74,7 +74,12 @@ async function withAppScripts(response){
 }
 self.addEventListener('install',event=>{self.skipWaiting();event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).catch(()=>{}));});
 self.addEventListener('activate',event=>{event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim();})());});
-self.addEventListener('message',event=>{if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();});
+self.addEventListener('message',event=>{
+  if(event.data&&event.data.type==='SHIFTBOARD_GET_VERSION'&&event.ports&&event.ports[0]){
+    event.ports[0].postMessage({version:CACHE});
+  }
+  if(event.data&&event.data.type==='SKIP_WAITING')self.skipWaiting();
+});
 self.addEventListener('fetch',event=>{
   const req=event.request;if(req.method!=='GET')return;const url=new URL(req.url);if(url.origin!==self.location.origin)return;
   // Keep the standalone Microsoft sign-in page outside the PWA shell.

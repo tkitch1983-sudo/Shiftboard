@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v148';
+const CACHE='neas-shift-board-shell-v149';
 const INJECT=[
   ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],
@@ -54,7 +54,7 @@ const INJECT=[
   ['floater-bonus.js','1'],
   ['bonus-excel-export.js','1'],
   ['invoice-lookup.js','1'],
-  ['auto-update.js','1']
+  ['auto-update.js','2']
 ];
 const SHELL=['./','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png',...INJECT.map(([f])=>'./'+f)];
 

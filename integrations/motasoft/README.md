@@ -4,6 +4,13 @@ This folder records the eight VGM websites supplied for North East Auto Services
 
 **Status:** This is a non-operational foundation. No Motasoft authentication, browser extraction, data sync, Supabase migration, or Shiftboard diary UI is currently enabled by these files.
 
+## Authentication details confirmed by the user
+
+- All eight Motasoft websites use separate accounts.
+- On 16 Nov 2026 the user confirmed normal Motasoft sign-in asks for **username and password only**, not a verification code. This does not guarantee there are no session timeouts, challenges or future MFA requirements.
+- The user currently has access via **iPhone only**. Any setup must work on iPhone; the scheduled browser must run on a separate approved server, not on the phone.
+- Do not request credentials in chat; never store them in GitHub, public pages, or browser local storage. A server-side protected credential setup must be built and reviewed before use.
+
 ## Critical checks before activation
 
 1. Obtain Motasoft's permission for an unattended, rate-limited, read-only browser client. Respect provider restrictions, MFA and CAPTCHA; do not bypass access controls.

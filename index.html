@@ -892,6 +892,7 @@ const state = {
 };
 
 const ADMIN_TAB_OPTIONS=[
+  ['workdiaries','Work Diaries','Reports'],
   ['tonydashboard','Tony Dashboard','Tony'],['remittances','Remittances','Tony'],
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['christmasholidays','Christmas Holidays','Holiday'],['bankholidays','Bank Holidays','Holiday'],
@@ -934,6 +935,9 @@ function isPayRateLogin(){
   return email==='tony@neautoservices.com' || email==='jack@neautoservices.com';
 }
 function canAccessAdminTab(tab){
+  // The upper-management menu and link list must never be granted to site managers
+  // through the generic portal_tab_permissions overrides.
+  if(tab==='workdiaries') return !!_session && _session.role==='super' && state.admin.role==='super';
   if(tab==='checkstatus') return state.admin.role==='super';
   if(tab==='tonydashboard'||tab==='autoworkcreds'||tab==='remittances') return isTonyLogin();
   if(tab==='christmasholidays') return isTonyLogin();
@@ -4566,6 +4570,35 @@ function renderAdminCameras(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:12px;">'+(cards||'<div class="card">No sites available.</div>')+'</div>';
 }
 
+// Quick links only. Cross-origin Motasoft sign-in must use the destination browser's
+// password manager/session. Never store or expose Motasoft credentials in this page.
+function renderAdminWorkDiaries(){
+  if(!_session || _session.role!=='super' || state.admin.role!=='super')
+    return '<div class="card"><h2>Work Diaries</h2><p>Upper management only.</p></div>';
+  const sites = [
+    ['Seaham', 'https://northeastseaham.motasoftvgm.co.uk/Default.aspx'],
+    ['Middlesbrough', 'https://tyreandautocentremiddlesbrough.motasoftvgm.co.uk/Default.aspx'],
+    ['Fairfield', 'https://fairfieldgarage.motasoftvgm.co.uk/Default.aspx'],
+    ['Gateshead', 'https://negaragesgateshead.motasoftvgm.co.uk/Default.aspx'],
+    ['Peterlee (Easington Motasoft)', 'https://easingtontyreandautocentre.motasoftvgm.co.uk/Default.aspx'],
+    ['Chester-le-Street', 'https://northeastgarageschesterlestreet.motasoftvgm.co.uk/Default.aspx'],
+    ['Hartlepool', 'https://northeasthartlepool.motasoftvgm.co.uk/Default.aspx'],
+    ['Lido', 'https://northeastlido.motasoftvgm.co.uk/']
+  ];
+  return `<h2>Work Diaries</h2>
+    <div class="head-sub">Upper management only · MOT Tests and Service & Repairs · all eight garages</div>
+    <div class="card" style="border-left:4px solid var(--amber);margin-bottom:14px;">
+      <strong>Open a garage's Motasoft diary</strong>
+      <div style="color:var(--muted);font-size:13px;margin-top:6px;">A secure external link opens Motasoft in your browser. It does not automatically log you in or display live bookings. Use saved Safari/Apple Passwords credentials with Face ID if the session has expired. Do not enter Motasoft passwords into Shiftboard.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+      ${sites.map(([name,url])=>`<div class="card" style="margin:0;display:flex;flex-direction:column;gap:12px;justify-content:space-between;">
+        <div><strong>${name}</strong><div style="color:var(--muted);font-size:12px;margin-top:5px;">MOT Tests · Service & Repairs</div></div>
+        <a class="action-btn" href="${url}" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;text-decoration:none;">Open Motasoft ↗</a>
+      </div>`).join('')}
+    </div>`;
+}
+
 function renderAdmin(){
   const isSuper = state.admin.role==='super';
   const requestNoticeCount = holidayRequestsNeedingAttention().length;
@@ -4748,6 +4781,7 @@ function renderAdmin(){
       (async()=>{ await loadAuditData(); state.admin._loadingAudit=false; render(); })();
     }
   }
+  else if(state.admin.tab==='workdiaries') body = renderAdminWorkDiaries();
   else if(state.admin.tab==='autoworkcreds') body = window.NEASAutoworkCredentials?.render ? window.NEASAutoworkCredentials.render() : '<h2>Autowork Logins</h2><div class="card">Loading secure settings…</div>';
   else if(state.admin.tab==='settings') body = renderAdminSettings();
 

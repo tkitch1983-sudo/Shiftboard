@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "diaries": ["MOT Tests", "Service & Repairs"],
+  "syncIntervalMinutesTarget": 15,
+  "sites": [
+    {"id": "seaham", "label": "Seaham", "shiftboardSiteKey": "seaham", "url": "https://northeastseaham.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "middlesbrough", "label": "Middlesbrough", "shiftboardSiteKey": "middlesbrough", "url": "https://tyreandautocentremiddlesbrough.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "fairfield", "label": "Fairfield", "shiftboardSiteKey": "fairfield", "url": "https://fairfieldgarage.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "gateshead", "label": "Gateshead", "shiftboardSiteKey": "gateshead", "url": "https://negaragesgateshead.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "easington", "label": "Easington (Peterlee in Shiftboard)", "shiftboardSiteKey": "peterlee", "url": "https://easingtontyreandautocentre.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "chester-le-street", "label": "Chester-le-Street", "shiftboardSiteKey": "chester-le-street", "url": "https://northeastgarageschesterlestreet.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "hartlepool", "label": "Hartlepool", "shiftboardSiteKey": "hartlepool", "url": "https://northeasthartlepool.motasoftvgm.co.uk/Default.aspx"},
+    {"id": "lido", "label": "Lido", "shiftboardSiteKey": "lido", "url": "https://northeastlido.motasoftvgm.co.uk/"}
+  ]
+}

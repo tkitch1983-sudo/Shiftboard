@@ -1,0 +1,46 @@
+name: Work Diaries link safeguards
+
+on:
+  push:
+    branches:
+      - feature/upper-management-work-diaries-links-20261116
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'public/index.html'
+      - 'tests/motasoft-work-diaries-links.test.mjs'
+      - '.github/workflows/motasoft-work-diaries-links-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/motasoft-work-diaries-links.test.mjs
+      - name: Syntax-check main inline Shiftboard script
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import vm from 'node:vm';
+          for (const p of ['index.html', 'public/index.html']) {
+            const html = fs.readFileSync(p, 'utf8');
+            const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
+            let compiled = 0;
+            for (const [, body] of scripts) {
+              if (body.trim()) {
+                new vm.Script(body, { filename: p });
+                compiled++;
+              }
+            }
+            if (!compiled) throw new Error('No inline scripts found in ' + p);
+            console.log(p + ': ' + compiled + ' script(s) parsed');
+          }
+          NODE

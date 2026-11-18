@@ -16,7 +16,7 @@
   'hoses_good','clips_factory','spliced_hoses_checked','torch_condition','nozzle_seated'];
  const CARS=['rubbish','dashboard','centre_console','doors_pockets','steering_wheel','gear_stick',
   'seats_wipe','carpets','seats_hoover','mats','boot_space','outside','wheels_trims','windows','wipers'];
- const M={week:null,month:null,weekly:[],monthly:[],loading:false,error:'',updatedAt:0};
+ const M={week:null,month:null,weekly:[],monthly:[],loading:false,error:'',updatedAt:0,direct:null,directError:'',sending:false,notice:''};
  function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
  function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
  function period(){
@@ -63,6 +63,7 @@
    const [weekly,monthly]=await Promise.all([w.json(),m.json()]);
    if(!Array.isArray(weekly)||!Array.isArray(monthly))throw new Error('Invalid checklist data');
    M.week=week;M.month=month;M.weekly=weekly;M.monthly=monthly;M.updatedAt=Date.now();
+   try{M.direct=await directRequest({action:'status'});if(M.direct.week!==week||M.direct.month!==month)throw Error('Period mismatch');M.directError='';}catch(e){M.direct=null;M.directError='Direct email currently unavailable; the original email option still works.';}
   }catch(e){M.error=e&&e.message||'Checklist data unavailable';M.updatedAt=0;}
   finally{M.loading=false;if(visible()&&state.admin.tab==='checkstatus'&&typeof render==='function')render();}
  }
@@ -78,6 +79,31 @@
  }
  function pill(done){return '<span style="display:inline-block;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:800;color:'+
   (done?'#10783f':'#b02525')+';background:'+(done?'#e8f5ec':'#fff0ed')+';">'+(done?'DONE':'NOT DONE')+'</span>';}
+ async function directRequest(body){
+  const h=await authHeaders();
+  const res=await fetch(SUPABASE_URL+'/functions/v1/shiftboard-checklist-reminder',{method:'POST',headers:{...h,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok)throw Error(data.error||'Direct email unavailable');
+  return data;
+ }
+ function directButton(r){
+  const d=M.direct&&M.direct.rows.find(x=>x.id===r.id);
+  if(!d||!d.items.length)return '';
+  const test=M.direct.mode==='test';
+  if(!test&&!d.eligible)return '<span style="color:var(--muted);font-size:12px;">Email awaiting verification</span>';
+  if(d.last)return '<span style="font-size:12px;color:var(--muted);">'+(d.last.status==='submitted'?(test?'Test submitted today':'Reminder submitted today'):'Delivery needs checking — not resent')+'</span>';
+  return '<button type="button" class="btn-sm" data-checkstatus-direct="'+escapeHtml(r.id)+'" '+(M.sending?'disabled':'')+'>'+(test?'Send test to Tony':'Send reminder')+'</button>';
+ }
+ async function sendDirect(id){
+  if(!visible()||!M.direct||M.sending||M.loading)return;
+  if(id==='all'&&(M.direct.mode!=='live'||!window.confirm('Send reminders to all verified outstanding workshops?')))return;
+  M.sending=true;M.notice='';if(typeof render==='function')render();
+  try{
+   const result=await directRequest({action:'send',site_id:id,week:M.week,month:M.month});
+   M.notice=result.results.length?result.results.map(r=>r.name+': '+({submitted:result.mode==='test'?'test submitted to Tony':'submitted to Outlook',already_submitted:'already submitted today',already_claimed:'delivery needs checking',uncertain:'delivery uncertain; do not resend',unverified:'email not verified'}[r.status]||'unknown')).join(' · '):'No outstanding checks remain.';
+  }catch(e){M.notice=e.message;}
+  finally{M.sending=false;await load(true);}
+ }
  function renderStatus(){
   if(!visible())return '<div class="card">Upper Management access only.</div>';
   const p=period();
@@ -86,6 +112,9 @@
   return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">'+
    '<div><h2>Checklist Status</h2><div class="head-sub">Upper Management · all eight workshops</div></div>'+
    '<button type="button" class="btn-sm" data-checkstatus-refresh>Refresh</button></div>'+
+   (M.direct&&M.direct.mode==='test'?'<div class="card" style="margin-top:10px;">Direct email test mode — messages go only to Tony, never to sites.</div>':'')+
+   (M.direct&&M.direct.mode==='live'&&M.direct.rows.some(r=>r.eligible&&r.items.length&&!r.last)?'<button class="btn-sm" data-checkstatus-direct="all" '+(M.sending?'disabled':'')+'>Remind all outstanding sites</button>':'')+
+   (M.notice?'<div class="card" role="status">'+escapeHtml(M.notice)+'</div>':'')+(M.directError?'<div style="color:var(--muted);">'+escapeHtml(M.directError)+'</div>':'')+
    '<div style="color:var(--muted);font-size:12px;margin:12px 0;">Week commencing '+
    escapeHtml(dateLabel(p.week))+' · Monthly H&amp;S '+escapeHtml(new Date(p.month+'T12:00:00').toLocaleDateString('en-GB',{month:'long',year:'numeric'}))+
    ' · Current periods are still in progress.</div>'+
@@ -97,7 +126,7 @@
    '<div class="card"><div style="font-weight:700;margin-bottom:10px;">Workshop checklist completion</div>'+
    (M.updatedAt?all.map(r=>'<div style="border-top:1px solid var(--line);padding:12px 0;">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'+
-    '<strong>'+escapeHtml(r.name)+'</strong>'+
+    '<strong>'+escapeHtml(r.name)+'</strong>'+directButton(r)+
     ((!r.week||!r.month)?'<button type="button" class="btn-sm" data-checkstatus-remind="'+escapeHtml(r.id)+'">Email reminder <span style="font-weight:400;">↗</span></button>':'')+'</div>'+
     '<div style="display:flex;gap:9px;margin-top:8px;flex-wrap:wrap;align-items:center;">'+
     '<div style="min-width:123px;"><span style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">Weekly</span>'+pill(r.week)+'</div>'+
@@ -108,7 +137,7 @@
    '<div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:9px;">'+
    'DONE means the weekly form is fully complete, or the monthly H&amp;S inspection is published. '+
    'NOT DONE also includes draft and missing forms. Staff acknowledgements are tracked separately. '+
-   'Email reminder opens a pre-addressed message for you to review and send; it does not send automatically.</div>';
+   'The original Email reminder opens a draft. Direct email submits through Shiftboard’s Outlook mailbox and records the sender; submission is not proof of receipt.</div>';
  }
  function reminder(siteId){
   if(!visible()||!M.updatedAt)return;
@@ -124,6 +153,8 @@
  document.addEventListener('click',e=>{
   const refresh=e.target.closest&&e.target.closest('[data-checkstatus-refresh]');
   if(refresh&&visible()){e.preventDefault();load(true);return;}
+  const direct=e.target.closest&&e.target.closest('[data-checkstatus-direct]');
+  if(direct&&visible()){e.preventDefault();sendDirect(direct.getAttribute('data-checkstatus-direct'));return;}
   const button=e.target.closest&&e.target.closest('[data-checkstatus-remind]');
   if(button&&visible()){e.preventDefault();reminder(button.getAttribute('data-checkstatus-remind'));}
  });

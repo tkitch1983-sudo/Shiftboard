@@ -74,8 +74,8 @@
       const snaps=bonusSnapshotsForMonth(month)||{}, snap=snaps[key]||{};
       const sales=typeof bonusAmount==='function'?bonusAmount(snap.total_current):Number(snap.total_current||0);
       const units=typeof bonusAmount==='function'?bonusAmount(snap.davanti):Number(snap.davanti||0);
-      const staffBonus=rule.staffStart==null?0:bonusTier(sales,rule.staffStart,rule.staffBase);
-      const davantiBonus=rule.davantiTarget==null?0:bonusDavanti(units,rule.davantiTarget);
+      const staffBonus=window.ShiftboardBonusLevels?window.ShiftboardBonusLevels.siteTurnover(key,'staff',sales,month):(rule.staffStart==null?0:bonusTier(sales,rule.staffStart,rule.staffBase));
+      const davantiBonus=window.ShiftboardBonusLevels?window.ShiftboardBonusLevels.siteDavanti(key,units,month):(rule.davantiTarget==null?0:bonusDavanti(units,rule.davantiTarget));
       const addOnBonus=typeof bonusAddOn==='function'?bonusAddOn(snap):0;
       return {siteKey:key,sales,staffBonus,davantiBonus,addOnBonus};
     }catch(_e){return null;}

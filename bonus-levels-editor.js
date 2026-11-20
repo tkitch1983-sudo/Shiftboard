@@ -112,7 +112,15 @@
   bonusNeilTurnover=function(sales){return groupBonus('neilTurnover',sales);};
   bonusNeilDavanti=function(units){return groupBonus('neilDavanti',units);};
   const oldRenderBonus=renderAdminBonus;
-  renderAdminBonus=function(){syncCore(state.admin.bonusMonth||currentMonth());return oldRenderBonus.apply(this,arguments);};
+  renderAdminBonus=function(){
+    syncCore(state.admin.bonusMonth||currentMonth());
+    if(window.__bonusTonyView==='levels'&&isTonyLogin()){
+      return '<div class="no-print" style="display:flex;gap:7px;margin-bottom:16px;">'+
+        '<button type="button" data-bonus-view="sheet" class="add-btn secondary">Bonus Sheet</button>'+
+        '<button type="button" data-bonus-view="levels" class="add-btn">Bonus Levels</button></div>'+renderEditor();
+    }
+    return oldRenderBonus.apply(this,arguments);
+  };
 
   function numericInput(value,attrs){
     return '<input type="number" min="0" step="'+(attrs.step||'1')+'" value="'+escapeHtml(value==null?'':value)+'" '+attrs.data+' style="width:100%;max-width:160px;margin-top:4px;padding:7px;">';

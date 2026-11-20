@@ -896,12 +896,12 @@ const ADMIN_TAB_OPTIONS=[
   ['tonydashboard','Tony Dashboard','Tony'],['remittances','Remittances','Tony'],
   ['register','Register','Attendance'],['sickness','Sickness','Attendance'],['bradford','Bradford','Attendance'],['timesheets','Timesheets','Attendance'],['clocklog','Clock Log','Attendance'],
   ['requests','Requests','Holiday'],['calendar','Calendar','Holiday'],['holidayallowance','Holiday Allowance','Holiday'],['christmasholidays','Christmas Holidays','Holiday'],['bankholidays','Bank Holidays','Holiday'],
-  ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
+  ['sales','Live Sales','Sales'],['targets','Targets','Sales'],['targetsetup','Target Setup','Sales'],['bonus','Bonus Sheet','Sales'],['bonuslevels','Bonus Levels','Sales'],['analysis','Sales Analysis','Sales'],['salesvs','Sales VS','Sales'],
   ['employees','Employees','Staff'],['contacts','Contacts','Staff'],['payrates','Pay Rates','Staff'],['managers','Managers','Staff'],['passwords','Passwords','Staff'],
   ['mot','MOT Logs','Reports'],['stock','Stock Value','Reports'],['jobs','Jobs & Margins','Reports'],['checkstatus','Checklist Status','Reports'],['audit','Audit','Reports'],
   ['cameras','Cameras','System'],['autoworkcreds','Autowork Logins','System'],['locations','Branch Locations','System'],['sites','Sites','System'],['settings','Settings / My account','System']
 ];
-const SITE_UNAVAILABLE_TABS=new Set(['bonus','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
+const SITE_UNAVAILABLE_TABS=new Set(['bonus','bonuslevels','mot','stock','analysis','salesvs','passwords','managers','sites','bankholidays','audit']);
 const SITE_BASE_TABS=new Set(['register','sickness','bradford','requests','calendar','timesheets','contacts','clocklog','locations','settings']);
 
 function defaultTabAccessFor(role,siteId,email,tab){
@@ -939,6 +939,7 @@ function canAccessAdminTab(tab){
   // through the generic portal_tab_permissions overrides.
   if(tab==='workdiaries') return !!_session && _session.role==='super' && state.admin.role==='super';
   if(tab==='checkstatus') return state.admin.role==='super';
+  if(tab==='bonuslevels') return isTonyLogin();
   if(tab==='tonydashboard'||tab==='autoworkcreds'||tab==='remittances') return isTonyLogin();
   if(tab==='christmasholidays') return isTonyLogin();
   if(tab==='holidayallowance') return state.admin.role==='super';
@@ -4128,7 +4129,7 @@ function renderAdminBonus(){
   Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{
     const snap=snaps[key];
     const sales=snap?bonusAmount(snap.total_current):0, units=snap?bonusAmount(snap.davanti):0, addOnBonus=bonusAddOn(snap);
-    const siteCalc={siteKey:key,sales,staffBonus:rule.staffStart==null?0:bonusTier(sales,rule.staffStart,rule.staffBase),davantiBonus:rule.davantiTarget==null?0:bonusDavanti(units,rule.davantiTarget),addOnBonus};
+    const siteCalc={siteKey:key,sales,staffBonus:window.ShiftboardBonusLevels?window.ShiftboardBonusLevels.siteTurnover(key,'staff',sales,month):(rule.staffStart==null?0:bonusTier(sales,rule.staffStart,rule.staffBase)),davantiBonus:window.ShiftboardBonusLevels?window.ShiftboardBonusLevels.siteDavanti(key,units,month):(rule.davantiTarget==null?0:bonusDavanti(units,rule.davantiTarget)),addOnBonus};
     if(rule.groupActive!==false){ totalSales+=sales; totalDavanti+=units; }
     if(snap&&String(snap.snapshot_date||'')>latest) latest=String(snap.snapshot_date||'');
     const site=state.config.sites.find(s=>bonusSiteKey(s.name)===key);
@@ -4152,7 +4153,7 @@ function renderAdminBonus(){
     </div>`);
   });
   let tonySales=0, tonySalesBonus=0;
-  Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{ if(rule.tonyStart==null) return; const value=bonusAmount(snaps[key]?.total_current); tonySales+=value; tonySalesBonus+=bonusTier(value,rule.tonyStart,rule.tonyBase); });
+  Object.entries(BONUS_SITE_RULES).forEach(([key,rule])=>{ if(rule.tonyStart==null) return; const value=bonusAmount(snaps[key]?.total_current); tonySales+=value; tonySalesBonus+=window.ShiftboardBonusLevels?window.ShiftboardBonusLevels.siteTurnover(key,'tony',value,month):bonusTier(value,rule.tonyStart,rule.tonyBase); });
   const tonyDavanti=bonusTonyDavanti(Object.entries(snaps).filter(([key])=>key!=='gateshead').reduce((n,[,r])=>n+bonusAmount(r.davanti),0));
   const tonyAdjustment=bonusAmount(draft.tonyAdjustment), tonyTotal=tonySalesBonus+tonyDavanti+tonyAdjustment;
   const neilSales=bonusNeilTurnover(totalSales), neilDavanti=bonusNeilDavanti(totalDavanti), neilOwed=bonusAmount(draft.neilOwed), neilTotal=neilSales+neilDavanti+neilOwed;
@@ -4644,6 +4645,7 @@ function renderAdmin(){
       (async ()=>{ state.admin._loadingSales=false; await loadSalesData(false); render(); })();
     }
   }
+  else if(state.admin.tab==='bonuslevels') body=window.ShiftboardBonusLevels?.render?window.ShiftboardBonusLevels.render():'<div class="card">Bonus Levels loading…</div>';
   else if(state.admin.tab==='bonus'){
     body = renderAdminBonus();
     if(state.admin.salesHistory===null && !state.admin._loadingSales){
@@ -9439,5 +9441,6 @@ init();
 <script src="./remittances.js?v=11"></script>
 <script src="./invoice-lookup.js?v=1"></script>
 <script src="./sales-ytd-comparison.js?v=1"></script>
+<script src="./bonus-levels-editor.js?v=2"></script>
 </body>
 </html>

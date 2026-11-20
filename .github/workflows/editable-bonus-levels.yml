@@ -1,0 +1,47 @@
+name: Shiftboard editable bonus levels
+on:
+  push:
+    paths:
+      - 'bonus-levels-editor.js'
+      - 'public/bonus-levels-editor.js'
+      - 'index.html'
+      - 'public/index.html'
+      - 'bonus-prediction-lido.js'
+      - 'public/bonus-prediction-lido.js'
+      - 'sw.js'
+      - 'public/sw.js'
+      - 'tests/editable-bonus-levels.test.cjs'
+      - '.github/workflows/editable-bonus-levels.yml'
+  pull_request:
+    paths:
+      - 'bonus-levels-editor.js'
+      - 'public/bonus-levels-editor.js'
+      - 'index.html'
+      - 'public/index.html'
+      - 'bonus-prediction-lido.js'
+      - 'public/bonus-prediction-lido.js'
+      - 'sw.js'
+      - 'public/sw.js'
+      - 'tests/editable-bonus-levels.test.cjs'
+      - '.github/workflows/editable-bonus-levels.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and mirroring
+        run: |
+          node --check bonus-levels-editor.js
+          node --check public/bonus-levels-editor.js
+          node --check bonus-prediction-lido.js
+          node --check public/bonus-prediction-lido.js
+          cmp -s bonus-levels-editor.js public/bonus-levels-editor.js
+          cmp -s bonus-prediction-lido.js public/bonus-prediction-lido.js
+      - name: Bonus calculations and history
+        run: node --test tests/editable-bonus-levels.test.cjs tests/bonus-lee-dunn-transition.test.cjs

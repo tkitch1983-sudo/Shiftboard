@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v98';
+const CACHE='neas-shift-board-shell-v100';
 const INJECT=[
   ['config-recovery.js','1'],
   ['pins-tab.js','2'],
@@ -41,6 +41,7 @@ const INJECT=[
   ['bonus-tracking-fix.js','4'],
   ['bonus-personal-overrides.js','1'],
   ['bonus-prediction-lido.js','3'],
+  ['bonus-levels-editor.js','2'],
   ['floater-bonus.js','1'],
   ['bonus-excel-export.js','1'],
   ['auto-update.js','1']

@@ -17,16 +17,18 @@
     const rules=Object.fromEntries(Object.entries(defaults).map(([key,x])=>[key,{
       label:key,staffStart:x[0],staffBase:x[1],davantiTarget:x[2],tonyStart:x[3],tonyBase:x[4],groupActive:key!=='lido'
     }]));
+    const handlers={};
     const ctx={
       window:{},state:{config:{},admin:{bonusMonth:'2026-11'}},
       BONUS_SITE_RULES:rules,bonusManagerExtra:()=>0,
       bonusTonyDavanti:()=>0,bonusNeilTurnover:()=>0,bonusNeilDavanti:()=>0,
       renderAdminBonus:()=>'<div>LEGACY BONUS SHEET</div>',
-      document:{addEventListener(){}},
+      document:{addEventListener(type,handler){(handlers[type]||(handlers[type]=[])).push(handler);}},
       isTonyLogin:()=>tony,showToast(){},saveConfig:async()=>true,render(){},
       _session:{email:'tony@neautoservices.com'}
     };
     vm.runInNewContext(script,ctx,{filename:'bonus-levels-editor.js'});
+    ctx.handlers=handlers;
     return ctx;
   }
   test('all original bonus figures remain unchanged until a version is saved',()=>{
@@ -58,6 +60,55 @@
     assert.equal(ctx.bonusManagerExtra({name:'T Hope'},'middlesbrough',160000),900);
     assert.equal(ctx.bonusNeilTurnover(600000),1000);
   });
+  test('Lido can have its own saved levels without changing Seaham or prior months',()=>{
+    const ctx=setup(),editor=ctx.window.ShiftboardBonusLevels;
+    ctx.state.config.bonusLevelVersions={'2027-01':{sites:{
+      lido:{staffStart:50000,staffBase:450,staffStepSales:10000,staffStepPay:75,
+        davantiTarget:70,davantiBase:65,davantiExtra:4,
+        tonyStart:50000,tonyBase:100,tonyStepSales:5000,tonyStepPay:15}
+    }}};
+    assert.equal(editor.siteTurnover('lido','staff',60000,'2026-12'),0);
+    assert.equal(editor.siteTurnover('lido','staff',60000,'2027-01'),525);
+    assert.equal(editor.siteTurnover('seaham','staff',70000,'2027-01'),350);
+    assert.equal(editor.siteDavanti('lido',72,'2027-01'),73);
+    assert.equal(editor.siteDavanti('seaham',102,'2027-01'),54);
+    assert.equal(editor.siteTurnover('lido','tony',60000,'2027-01'),130);
+    editor.syncCore('2027-01');
+    assert.equal(ctx.BONUS_SITE_RULES.lido.groupActive,false);
+    assert.equal(ctx.BONUS_SITE_RULES.seaham.staffStart,70000);
+  });
+  test('Lido inputs appear on the editor and are included when saving',async()=>{
+    const ctx=setup(),editor=ctx.window.ShiftboardBonusLevels,scheme=editor.active('2026-11');
+    const page=editor.render();
+    assert.match(page,/data-bl-site="lido" data-bl-field="staffStart"/);
+    assert.match(page,/data-bl-site="lido" data-bl-field="davantiTarget"/);
+    assert.match(page,/data-bl-site="lido" data-bl-field="tonyStart"/);
+    assert.match(page,/Set Lido levels independently of Seaham/);
+    ctx.document.querySelector=selector=>{
+      const site=/^\[data-bl-site="([^"]+)"\]\[data-bl-field="([^"]+)"\]$/.exec(selector);
+      if(site){
+        const value=site[1]==='lido'&&site[2]==='staffStart'?55000:scheme.sites[site[1]][site[2]];
+        return {value:value==null?'':String(value)};
+      }
+      const group=/^\[data-bl-group="([^"]+)"\]\[data-bl-group-field="([^"]+)"\]$/.exec(selector);
+      if(group)return {value:String(scheme.group[group[1]][group[2]])};
+      return null;
+    };
+    ctx.document.querySelectorAll=selector=>{
+      const manager=/^\[data-bl-manager-row="([^"]+)"\]$/.exec(selector);
+      if(!manager)return [];
+      return scheme.managers[manager[1]].tiers.map(tier=>({
+        querySelector:field=>({value:String(field.includes('threshold')?tier[0]:tier[1])})
+      }));
+    };
+    const click=ctx.handlers.click[0];
+    click({target:{closest:()=>({dataset:{action:'bl-save'}})},preventDefault(){},stopImmediatePropagation(){}});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(ctx.state.config.bonusLevelVersions['2026-11'].sites.lido.staffStart,55000);
+    assert.equal(ctx.state.config.bonusLevelVersions['2026-11'].sites.seaham.staffStart,70000);
+    assert.equal(editor.siteTurnover('lido','staff',55000,'2026-11'),350);
+    assert.equal(editor.siteTurnover('seaham','staff',55000,'2026-11'),0);
+  });
   test('the legacy Bonus Levels toggle and the new admin tab show the editable page to Tony only',()=>{
     const ctx=setup(),editor=ctx.window.ShiftboardBonusLevels;
     assert.match(editor.render(),/Save bonus levels/);
@@ -76,12 +127,12 @@
       const html=fs.readFileSync(path.join(root,file),'utf8');
       assert.match(html,/\['bonuslevels','Bonus Levels','Sales'\]/);
       assert.match(html,/if\(tab==='bonuslevels'\) return isTonyLogin\(\)/);
-      assert.match(html,/<script src="\.\/bonus-levels-editor\.js\?v=3" defer><\/script>/);
+      assert.match(html,/<script src="\.\/bonus-levels-editor\.js\?v=4" defer><\/script>/);
       assert.match(html,/ShiftboardBonusLevels\.siteTurnover/);
     }
     for(const file of ['sw.js','public/sw.js']){
       const sw=fs.readFileSync(path.join(root,file),'utf8');
-      assert.match(sw,/\['bonus-levels-editor\.js','3'\]/);
+      assert.match(sw,/\['bonus-levels-editor\.js','4'\]/);
     }
   });
 })();

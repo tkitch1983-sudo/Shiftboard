@@ -10,8 +10,9 @@
   const monthNow=()=>{ try{return (state&&state.admin&&state.admin.bonusMonth)||new Date().toISOString().slice(0,7);}catch(_e){return new Date().toISOString().slice(0,7);} };
   const draftFor=month=>{ try{return typeof bonusMonthData==='function'?bonusMonthData(month):null;}catch(_e){return null;} };
 
-  // Lido uses the same site bonus levels as Seaham. Group inclusion remains
-  // unchanged because that is a separate Neil/group rule rather than a site level.
+  // Legacy starting levels: when no independent Lido scheme has been saved,
+  // use Seaham as the baseline. The Bonus Levels editor can override Lido
+  // separately from the chosen effective month without changing group inclusion.
   try{
     if(typeof BONUS_SITE_RULES!=='undefined' && BONUS_SITE_RULES.seaham && BONUS_SITE_RULES.lido){
       const s=BONUS_SITE_RULES.seaham, l=BONUS_SITE_RULES.lido;
@@ -156,7 +157,7 @@
       });
     }catch(_e){}
     if(rendered.includes('<h2>Bonus Levels</h2>')){
-      rendered+='<div class="card" style="border-left:4px solid var(--green);"><b>2026/27 transition</b><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;">Lido uses the same staff, Davanti and Tony site-sales bonus levels as Seaham. Lee Dunn receives the Fairfield base staff bonus from September through December 2026; his Davanti bonus and add-on share remain based on Lido. From January 2027, his base bonus also follows Lido.</div></div>';
+      rendered+='<div class="card" style="border-left:4px solid var(--green);"><b>2026/27 transition</b><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;">Lido staff, Davanti and Tony site-sales levels can now be edited independently of Seaham. Lee Dunn receives the Fairfield base staff bonus from September through December 2026; his Davanti bonus and add-on share remain based on Lido. From January 2027, his base bonus also follows Lido.</div></div>';
     }
     return rendered;
   }

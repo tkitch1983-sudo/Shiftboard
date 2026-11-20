@@ -76,7 +76,7 @@
       const html=fs.readFileSync(path.join(root,file),'utf8');
       assert.match(html,/\['bonuslevels','Bonus Levels','Sales'\]/);
       assert.match(html,/if\(tab==='bonuslevels'\) return isTonyLogin\(\)/);
-      assert.match(html,/bonus-levels-editor\.js\?v=2/);
+      assert.match(html,/bonus-levels-editor\\.js\\?v=3/);
       assert.match(html,/ShiftboardBonusLevels\.siteTurnover/);
     }
     for(const file of ['sw.js','public/sw.js']){

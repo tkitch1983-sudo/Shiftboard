@@ -12,6 +12,7 @@
   const siteFields=['staffStart','staffBase','staffStepSales','staffStepPay','davantiTarget','davantiBase','davantiExtra','tonyStart','tonyBase','tonyStepSales','tonyStepPay'];
   const defaults={};
   siteKeys.forEach(key=>{
+    // Lido's initial figures match the old Seaham-based scheme, but can now be saved separately.
     const rule=key==='lido'?BONUS_SITE_RULES.seaham:BONUS_SITE_RULES[key];
     defaults[key]={
       label:BONUS_SITE_RULES[key].label,
@@ -44,7 +45,6 @@
     const result={sites:copy(defaults),managers:copy(managerDefaults),group:copy(groupDefaults)};
     const version=allVersions()[activeMonthKey(month)]||{};
     for(const key of siteKeys){
-      if(key==='lido') continue;
       const saved=version.sites&&version.sites[key];
       if(!saved||typeof saved!=='object') continue;
       for(const field of siteFields){
@@ -55,8 +55,10 @@
         }
       }
     }
-    // These are deliberately linked: Lido follows Seaham, but is excluded from Neil's group.
-    result.sites.lido={...result.sites.seaham,label:'Lido'};
+    // Old saved schemes did not contain Lido. Preserve their historic Seaham-linked
+    // result until a Tony-saved version explicitly gives Lido independent levels.
+    if(!version.sites||!version.sites.lido||typeof version.sites.lido!=='object')
+      result.sites.lido={...result.sites.seaham,label:'Lido'};
     result.sites.gateshead.tonyStart=null;
     result.sites.gateshead.tonyBase=0;
     for(const key of Object.keys(managerDefaults)){
@@ -129,9 +131,9 @@
     return '<label style="font-size:11px;color:var(--muted);display:block;">'+escapeHtml(label)+numericInput(value,{step:step||'1',data:'data-bl-site="'+key+'" data-bl-field="'+field+'"'})+'</label>';
   }
   function sitePanel(key,s){
-    if(key==='lido') return '<div class="card" style="margin:0;"><b>Lido</b><p style="font-size:12px;color:var(--muted);">Lido follows Seaham staff, Davanti and Tony site-sales levels. Edit Seaham to change Lido. Its group exclusion is unchanged.</p></div>';
     return '<div class="card" style="margin:0;padding:14px;">'+
-      '<h3 style="margin:0 0 10px;">'+escapeHtml(s.label)+'</h3>'+
+      '<h3 style="margin:0 0 10px;">'+escapeHtml(s.label)+'</h3>'+ 
+      (key==='lido'?'<div style="font-size:11px;color:var(--muted);margin-bottom:9px;">Set Lido levels independently of Seaham. Lido remains excluded from Neil’s group turnover calculation.</div>':'')+
       '<div style="font-weight:700;font-size:12px;margin-bottom:5px;">Staff turnover</div>'+
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:9px;">'+
       siteInput(key,'Starts at (£)','staffStart',s.staffStart)+siteInput(key,'First bonus (£)','staffBase',s.staffBase)+siteInput(key,'Every extra sales (£)','staffStepSales',s.staffStepSales)+siteInput(key,'Bonus increases (£)','staffStepPay',s.staffStepPay)+'</div>'+
@@ -190,7 +192,6 @@
   function readEditor(){
     const scheme=active(editorMonth);
     for(const key of siteKeys){
-      if(key==='lido') continue;
       for(const field of siteFields){
         if(key==='gateshead'&&field.startsWith('tony')) continue;
         const input=document.querySelector('[data-bl-site="'+key+'"][data-bl-field="'+field+'"]');
@@ -201,7 +202,6 @@
         if(scheme.sites[key][field]<=0) throw new Error(scheme.sites[key].label+' step must be greater than zero.');
       }
     }
-    delete scheme.sites.lido; // Always linked to Seaham, never an independently saved level.
     for(const key of Object.keys(managerDefaults)){
       const rows=[...document.querySelectorAll('[data-bl-manager-row="'+key+'"]')];
       const tiers=rows.map(row=>[

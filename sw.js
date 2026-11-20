@@ -1,4 +1,4 @@
-const CACHE='neas-shift-board-shell-v153';
+const CACHE='neas-shift-board-shell-v154';
 const INJECT=[
   ['director-email-prompt.js','1'],
   ['config-recovery.js','1'],
@@ -50,8 +50,8 @@ const INJECT=[
   ['mobile-register-fix.js','1'],
   ['bonus-tracking-fix.js','4'],
   ['bonus-personal-overrides.js','1'],
-  ['bonus-prediction-lido.js','3'],
-  ['bonus-levels-editor.js','3'],
+  ['bonus-prediction-lido.js','4'],
+  ['bonus-levels-editor.js','4'],
   ['floater-bonus.js','1'],
   ['bonus-excel-export.js','1'],
   ['invoice-lookup.js','1'],

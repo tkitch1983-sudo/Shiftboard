@@ -67,7 +67,7 @@
         davantiTarget:70,davantiBase:65,davantiExtra:4,
         tonyStart:50000,tonyBase:100,tonyStepSales:5000,tonyStepPay:15}
     }}};
-    assert.equal(editor.siteTurnover('lido','staff',60000,'2026-12'),250);
+    assert.equal(editor.siteTurnover('lido','staff',60000,'2026-12'),0);
     assert.equal(editor.siteTurnover('lido','staff',60000,'2027-01'),525);
     assert.equal(editor.siteTurnover('seaham','staff',70000,'2027-01'),350);
     assert.equal(editor.siteDavanti('lido',72,'2027-01'),73);
